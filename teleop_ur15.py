@@ -46,6 +46,7 @@ TARGET_LINK = "tool0"
 POLL_HZ = 30
 PLAY_HZ = 60                    # viz refresh when idle
 STREAM_HZ = 50                  # shared rate for viz playback and servoJ
+LIVE_HZ = 30                    # live gizmo-follow: IK + servoJ update rate
 MAX_JOINT_SPEED = 1.0           # rad/s peak per joint at slider=1.0
 MIN_SEG_DURATION_S = 0.5        # floor on segment time so tiny moves are still smooth
 DWELL_S = 0.2                   # pause at each intermediate waypoint
@@ -112,6 +113,7 @@ waypoint_frames: list = []                            # corresponding viser fram
 plan_segments: list[tuple[np.ndarray, np.ndarray]] | None = None  # list of (q_start, q_end)
 gripper_finger = GRIPPER_FINGER_OPEN   # displayed per-side finger opening (m); start open
 playing = threading.Event()
+live = threading.Event()               # live gizmo-follow (continuous IK + servoJ) active
 stop_flag = threading.Event()
 
 # ---------- UR15 RTDE ----------
@@ -245,6 +247,7 @@ gui_stop = server.gui.add_button("Stop", disabled=True)
 gui_reset = server.gui.add_button("Reset gizmo to current EE")
 gui_speed = server.gui.add_slider("Speed", min=0.1, max=2.0, step=0.05, initial_value=1.0)
 gui_execute = server.gui.add_checkbox("Execute on robot", initial_value=False)
+gui_live = server.gui.add_checkbox("Live (drive robot)", initial_value=False)
 gui_grip_open = server.gui.add_button("Open gripper")
 gui_grip_close = server.gui.add_button("Close gripper")
 gui_grip_status = server.gui.add_text(
@@ -397,6 +400,7 @@ def _play() -> None:
     playing.set()
     stop_flag.clear()
     gui_play.disabled = True
+    gui_live.disabled = True
     gui_stop.disabled = False
 
     try:
@@ -459,6 +463,7 @@ def _play() -> None:
             rtde_c.servoStop(SERVO_STOP_DECEL)
         playing.clear()
         gui_stop.disabled = True
+        gui_live.disabled = False
         gui_status.value = "Stopped" if stop_flag.is_set() else "Done"
 
     if execute and completed:
@@ -479,12 +484,73 @@ def _(_):
 @gui_stop.on_click
 def _(_):
     stop_flag.set()
+    live.clear()
+    if gui_live.value:
+        gui_live.value = False
+    gui_plan.disabled = False
+
+
+def _live_loop() -> None:
+    """Continuously chase the gizmo: solve IK each tick and servoJ there, with a
+    per-tick joint-step clamp so a fast drag or IK branch-flip can't make the arm
+    lurch — it just rate-limits toward the target."""
+    dt = 1.0 / LIVE_HZ
+    max_step = MAX_JOINT_SPEED * dt
+    with state_lock:
+        q_cmd = current_q.copy()
+    try:
+        while live.is_set() and not stop_flag.is_set():
+            pos_t, wxyz_t = _grasp_to_tool0(np.asarray(gizmo.position), np.asarray(gizmo.wxyz))
+            try:
+                q_target = np.asarray(pks.solve_ik_seeded(
+                    robot=robot,
+                    target_link_name=TARGET_LINK,
+                    target_position=pos_t,
+                    target_wxyz=wxyz_t,
+                    q_seed=q_cmd,
+                    rest_weight=2.0,
+                ))
+            except Exception:
+                time.sleep(dt)
+                continue
+            q_cmd = q_cmd + np.clip(q_target - q_cmd, -max_step, max_step)
+            viser_urdf.update_cfg(q_cmd)
+            _update_gripper_viz(q_cmd)
+            rtde_c.servoJ(q_cmd.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
+            time.sleep(dt)
+    finally:
+        rtde_c.servoStop(SERVO_STOP_DECEL)
+        gui_status.value = "Live off"
+
+
+@gui_live.on_update
+def _(_):
+    if gui_live.value:
+        # snap the gizmo to the current EE first, so the arm doesn't lurch toward
+        # a stale gizmo pose, then start chasing it
+        with state_lock:
+            q = current_q.copy()
+        T = grasp_pose(q)
+        gizmo.position = np.asarray(T.translation())
+        gizmo.wxyz = np.asarray(T.rotation().wxyz)
+        stop_flag.clear()
+        live.set()
+        gui_plan.disabled = True
+        gui_play.disabled = True
+        gui_stop.disabled = False
+        gui_status.value = "LIVE: arm follows gizmo"
+        threading.Thread(target=_live_loop, daemon=True).start()
+    else:
+        live.clear()
+        gui_plan.disabled = False
+        gui_play.disabled = plan_segments is None
+        gui_stop.disabled = True
 
 
 def viz_loop() -> None:
     period = 1.0 / PLAY_HZ
     while True:
-        if not playing.is_set():
+        if not playing.is_set() and not live.is_set():
             with state_lock:
                 q = current_q.copy()
             viser_urdf.update_cfg(q)
