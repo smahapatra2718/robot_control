@@ -32,15 +32,16 @@ from viser.extras import ViserUrdf
 
 import abb_rws
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
 import pyroki_snippets as pks  # noqa: E402
 
 # ---------- config ----------
 ROBOT_IP = "192.168.125.1"      # GoFa MGMT port (direct Mac connection)
 RWS_USER = "Default User"
 RWS_PASSWORD = "robotics"
-URDF_PATH = "crb15000_12_127.urdf"
-URDF_MESH_DIR_PREFIX = "abb_desc"  # used to resolve package:// URIs at load time
+URDF_PATH = os.path.join(_HERE, "crb15000_12_127.urdf")
+URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")  # used to resolve package:// URIs at load time
 TARGET_LINK = "tool0"
 
 RAPID_TASK = "T_ROB1"
