@@ -48,17 +48,15 @@ class HandEGripper:
             self._sock = None
 
     def _cmd(self, line: str) -> str:
-        """Send one command line and return its single-line reply (stripped)."""
+        """Send one command line and return its reply (stripped).
+
+        The URCap socket replies are short and not reliably newline-terminated,
+        so we do a single recv like the canonical robotiq_gripper.py driver
+        rather than waiting for a '\\n' that may never arrive.
+        """
         assert self._sock is not None, "call connect() first"
         self._sock.sendall(line.encode("ascii") + b"\n")
-        buf = b""
-        deadline = time.monotonic() + self.timeout
-        while b"\n" not in buf and time.monotonic() < deadline:
-            chunk = self._sock.recv(256)
-            if not chunk:
-                break
-            buf += chunk
-        return buf.decode("ascii").strip()
+        return self._sock.recv(1024).decode("ascii").strip()
 
     def _set(self, **vars_: int) -> None:
         parts = " ".join(f"{k} {int(v)}" for k, v in vars_.items())
