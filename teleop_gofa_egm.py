@@ -15,6 +15,8 @@ Run:
   ./robot_control/bin/python teleop_gofa_egm.py
 """
 
+import datetime
+import json
 import os
 import sys
 import threading
@@ -48,6 +50,7 @@ RAPID_MODULE = "PyEgm"
 
 EGM_LOCAL_PORT = 6510                # must match RemotePortNumber in EGM_COMM.cfg
 
+TRAJ_DIR = os.path.join(_HERE, "trajectories")  # saved teach trajectories (<name>.json)
 POLL_HZ = 10                         # RWS state polling (idle viz only)
 PLAY_HZ = 60                         # viz refresh when idle
 STREAM_HZ = 100                      # EGM target stream rate (controller side runs ~250Hz)
@@ -89,7 +92,9 @@ NUM_JOINTS = robot.joints.num_actuated_joints
 state_lock = threading.Lock()
 current_q = np.zeros(NUM_JOINTS)
 last_poll_ok = False
-waypoints: list[tuple[np.ndarray, np.ndarray]] = []
+# Each waypoint: {"q": [6 joints]|None, "pos": [x,y,z], "wxyz": [w,x,y,z]}
+# q is filled by free-drive capture (real joints) or backfilled by IK at Plan.
+waypoints: list[dict] = []
 waypoint_frames: list = []
 plan_segments: list[tuple[np.ndarray, np.ndarray]] | None = None
 playing = threading.Event()
@@ -205,6 +210,7 @@ gui_rws_status = server.gui.add_text("RWS", initial_value="?", disabled=True)
 gui_egm_status = server.gui.add_text("EGM", initial_value="idle", disabled=True)
 gui_wp_count = server.gui.add_text("Waypoints", initial_value="0", disabled=True)
 gui_add_wp = server.gui.add_button("Add waypoint (from gizmo)")
+gui_capture = server.gui.add_button("Capture waypoint (current pose)")
 gui_pop_wp = server.gui.add_button("Remove last waypoint")
 gui_clear_wp = server.gui.add_button("Clear waypoints")
 gui_plan = server.gui.add_button("Plan")
@@ -214,24 +220,48 @@ gui_reset = server.gui.add_button("Reset gizmo to current EE")
 gui_speed = server.gui.add_slider("Speed (unified)", min=0.1, max=1.0, step=0.05, initial_value=1.0)
 gui_execute = server.gui.add_checkbox("Execute on robot (EGM stream)", initial_value=False)
 gui_live = server.gui.add_checkbox("Live (drive robot)", initial_value=False)
+gui_traj_name = server.gui.add_text("Trajectory name", initial_value="traj1")
+gui_save = server.gui.add_button("Save trajectory")
+gui_load = server.gui.add_button("Load trajectory")
 
 
 def _refresh_wp_count() -> None:
     gui_wp_count.value = str(len(waypoints))
 
 
-@gui_add_wp.on_click
-def _(_):
-    pos = np.asarray(gizmo.position)
-    wxyz = np.asarray(gizmo.wxyz)
-    waypoints.append((pos, wxyz))
+def _add_waypoint(wp: dict) -> None:
+    i = len(waypoints)
+    waypoints.append(wp)
     handle = server.scene.add_frame(
-        f"/waypoints/{len(waypoints) - 1}",
-        position=pos, wxyz=wxyz, axes_length=0.12, axes_radius=0.005,
+        f"/waypoints/{i}",
+        position=np.asarray(wp["pos"]), wxyz=np.asarray(wp["wxyz"]),
+        axes_length=0.12, axes_radius=0.005,
     )
     waypoint_frames.append(handle)
     _refresh_wp_count()
-    gui_status.value = f"Added waypoint {len(waypoints)}"
+
+
+@gui_add_wp.on_click
+def _(_):
+    _add_waypoint({
+        "q": None,  # filled by IK at Plan
+        "pos": np.asarray(gizmo.position).tolist(),
+        "wxyz": np.asarray(gizmo.wxyz).tolist(),
+    })
+    gui_status.value = f"Added waypoint {len(waypoints)} (gizmo)"
+
+
+@gui_capture.on_click
+def _(_):
+    with state_lock:
+        q = current_q.copy()
+    T = ee_pose(q)
+    _add_waypoint({
+        "q": q.tolist(),  # taught joints (hand-guide via the GoFa lead-through button) — replayed exactly
+        "pos": np.asarray(T.translation()).tolist(),
+        "wxyz": np.asarray(T.rotation().wxyz).tolist(),
+    })
+    gui_status.value = f"Captured waypoint {len(waypoints)} (joints)"
 
 
 @gui_pop_wp.on_click
@@ -265,21 +295,29 @@ def _(_):
 @gui_plan.on_click
 def _(_):
     global plan_segments
-    targets = waypoints if waypoints else [(np.asarray(gizmo.position), np.asarray(gizmo.wxyz))]
+    if waypoints:
+        targets = waypoints
+    else:
+        targets = [{"q": None, "pos": np.asarray(gizmo.position).tolist(),
+                    "wxyz": np.asarray(gizmo.wxyz).tolist()}]
     with state_lock:
         q = current_q.copy()
     segments: list[tuple[np.ndarray, np.ndarray]] = []
-    for i, (pos, wxyz) in enumerate(targets):
-        try:
-            q_next = pks.solve_ik_seeded(
-                robot=robot, target_link_name=TARGET_LINK,
-                target_position=pos, target_wxyz=wxyz,
-                q_seed=q, rest_weight=2.0,
-            )
-        except Exception as e:
-            gui_status.value = f"IK failed at waypoint {i + 1}: {e}"
-            return
-        segments.append((q.copy(), np.asarray(q_next)))
+    for i, wp in enumerate(targets):
+        if wp.get("q") is not None:
+            q_next = np.asarray(wp["q"], dtype=np.float64)  # taught joints, replay exactly
+        else:
+            try:
+                q_next = np.asarray(pks.solve_ik_seeded(
+                    robot=robot, target_link_name=TARGET_LINK,
+                    target_position=np.asarray(wp["pos"]), target_wxyz=np.asarray(wp["wxyz"]),
+                    q_seed=q, rest_weight=2.0,
+                ))
+            except Exception as e:
+                gui_status.value = f"IK failed at waypoint {i + 1}: {e}"
+                return
+            wp["q"] = q_next.tolist()  # backfill so a save-after-plan carries joints too
+        segments.append((q.copy(), q_next))
         q = np.asarray(q_next)
     plan_segments = segments
     total = sum(np.linalg.norm(b - a) for a, b in segments)
@@ -524,6 +562,43 @@ def _(_):
         threading.Thread(target=_live_loop, daemon=True).start()
     else:
         live.clear()
+
+
+@gui_save.on_click
+def _(_):
+    os.makedirs(TRAJ_DIR, exist_ok=True)
+    name = (gui_traj_name.value or "traj").strip()
+    path = os.path.join(TRAJ_DIR, f"{name}.json")
+    data = {
+        "robot": "gofa",
+        "created": datetime.datetime.now().isoformat(timespec="seconds"),
+        "waypoints": waypoints,
+    }
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+    gui_status.value = f"Saved {len(waypoints)} waypoint(s) -> {name}.json"
+
+
+@gui_load.on_click
+def _(_):
+    name = (gui_traj_name.value or "traj").strip()
+    path = os.path.join(TRAJ_DIR, f"{name}.json")
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except Exception as e:
+        gui_status.value = f"Load failed: {e}"
+        return
+    global plan_segments
+    for h in waypoint_frames:
+        h.remove()
+    waypoint_frames.clear()
+    waypoints.clear()
+    for wp in data.get("waypoints", []):
+        _add_waypoint(wp)
+    plan_segments = None
+    gui_play.disabled = True
+    gui_status.value = f"Loaded {len(waypoints)} waypoint(s) from {name}.json — Plan to replay"
 
 
 def viz_loop() -> None:

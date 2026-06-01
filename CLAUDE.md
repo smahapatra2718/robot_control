@@ -138,15 +138,15 @@ Per-arm:
 - **UR15:** `servoJ` each tick; `servoStop` on exit.
 - **GoFa:** streams the target over the *existing* EGM session (no supervisor change). Because `PyEgm.mod` uses `\CondTime := 1`, a >1 s pause lets the robot converge and RAPID drops the session; `_live_loop` detects the stale feed (`egm.is_fresh`) and **re-arms** (`_start_egm_session`) on the next motion — so expect a brief hitch after a long pause. It also applies the `MAX_TCP_SPEED` collaborative cap by scaling the per-tick step. On exit it holds the last pose for `HOLD_AFTER_PLAY_S` so `\CondTime` cleanly closes the session. (A smoother-through-pauses version would need a larger `\CondTime` in the supervisor + installer re-run.)
 
-## Free-drive teach & saved trajectories (UR15)
+## Free-drive teach & saved trajectories
 
-Teach-by-demonstration: hand-guide the arm, capture poses, save/replay. (UR15 only so far; GoFa pending — see below.)
+Teach-by-demonstration: hand-guide the arm, capture poses, save/replay. UR15 has the full version (software free-drive + gripper actions); the GoFa has capture + save/load with hand-guiding via its hardware button.
 
 - **Free-drive** checkbox → `ur_rtde` `teachMode()` (zero-gravity hand-guiding); unticking / Stop calls `endTeachMode()`. Mutually exclusive with Plan/Play/Live. **`teachMode` must be ended before any `servoJ`** or the control mode conflicts — every exit path does this.
 - **Capture waypoint** snapshots the live joints + FK grasp pose; **Add waypoint** still captures the gizmo pose. Both tag the **Gripper @ waypoint** dropdown value (`none`/`open`/`close`).
 - **Waypoint model:** `{"q": [6]|None, "pos", "wxyz", "grip"}`. Capture fills `q` (taught joints); gizmo-add leaves `q=None` and Plan backfills it from IK. At Plan, a waypoint **with `q` replays those joints exactly** (no IK); without `q` it IKs from the Cartesian pose (sequential seed, as before). `plan_segments` is now `(q_start, q_goal, grip)`; `_play` fires the grip action at each waypoint (real gripper only on an executed play, viz tweens either way) while holding the arm with `servoJ`.
 - **Save/Load:** `trajectories/<name>.json` = `{robot, created, waypoints}`. Load clears + repopulates the waypoint list and frames; then Plan to replay. (Saved trajectories are tracked, not gitignored — they sync across machines via the repo.)
-- **GoFa:** not yet — free-drive there needs the hardware lead-through button + a capture/save path (no `teachMode` equivalent over RWS; programmatic lead-through would need a RAPID-supervisor addition).
+- **GoFa:** same Capture + Save/Load (waypoints store joints+Cartesian; taught joints replay exactly). **No software free-drive toggle** — press the GoFa's **physical lead-through button** to hand-guide, then Capture (RWS polling tracks the hand-moved joints). No gripper actions. A software lead-through toggle would need a RAPID-supervisor addition + installer re-run — deferred.
 
 ---
 
