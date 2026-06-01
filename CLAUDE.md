@@ -3,7 +3,7 @@
 Browser-based teleop for two arms, sharing the same viser + pyroki stack:
 
 - **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`). Speed slider is unified: the same `q` is sent to both the viser preview and `rtde_c.servoJ()` each tick, so viz and robot move in lockstep.
-- **`teleop_gofa.py`** — ABB GoFa CRB 15000 (variant `crb15000_12_127`) over Robot Web Services (RWS), via the minimal client in `abb_rws.py`. Each segment endpoint is committed as a `MoveAbsJ` via a tiny RAPID supervisor (`PyExec`) running on the controller. Speed slider only affects the in-browser preview; real motion speed comes from `v_tcp` + `AccSet` inside `PyExec.mod`. EGM would let the slider become unified — see [Future: EGM swap](#future-egm-swap).
+- **`teleop_gofa.py`** — ABB GoFa CRB 15000 (variant `crb15000_5_95`) over Robot Web Services (RWS), via the minimal client in `abb_rws.py`. Each segment endpoint is committed as a `MoveAbsJ` via a tiny RAPID supervisor (`PyExec`) running on the controller. Speed slider only affects the in-browser preview; real motion speed comes from `v_tcp` + `AccSet` inside `PyExec.mod`. EGM would let the slider become unified — see [Future: EGM swap](#future-egm-swap).
 
 Both scripts share: the same UI (viser scene + gizmo + waypoints), the same IK (`pyroki_snippets._solve_ik_seeded`), the same trapezoidal-time alpha profile in the play loop, and the same auto-cleanup after a successful executed Play.
 
@@ -23,7 +23,8 @@ abb_foga/
 ├── pyroki_src/                # git clone of chungmin99/pyroki, installed -e
 ├── pyroki_snippets/           # copied from pyroki_src/examples/ + our _solve_ik_seeded.py
 ├── abb_desc/                  # clone of ros-industrial/abb (GoFa URDF + meshes)
-├── crb15000_12_127.urdf       # generated from abb_desc/.../crb15000_12_127.xacro
+├── crb15000_5_95.urdf         # generated from abb_desc/.../crb15000_5_95.xacro (active variant)
+├── crb15000_12_127.urdf       # unused: wrong variant, kept for reference
 ├── teleop_ur15.py             # UR15 script (RTDE / servoJ)
 ├── teleop_gofa.py             # GoFa script (RWS / MoveAbsJ via PyExec)
 ├── abb_rws.py                 # minimal RWS client for OmniCore (RobotWare 7+)
@@ -40,7 +41,7 @@ System (brew): cmake, **boost@1.85** (keg-only, for ur_rtde build only).
 
 URDFs:
 - **UR15**: loaded at runtime via `robot_descriptions.loaders.yourdfpy.load_robot_description("ur15_description")`. No local file.
-- **GoFa**: local `crb15000_12_127.urdf`, generated once via `xacrodoc` from the ros-industrial repo. Mesh paths use `package://abb_crb15000_support/...`; resolved via `URDF_MESH_DIR_PREFIX = "abb_desc"` and a custom `filename_handler` in `teleop_gofa.py`. The generated URDF has `file://` URIs stripped (yourdfpy can't resolve those — only `package://` or plain paths).
+- **GoFa**: local `crb15000_5_95.urdf` (the 5 kg / 0.95 m reach variant — match this to your actual hardware nameplate), generated via `xacrodoc` from the ros-industrial repo: `xacrodoc.packages.look_in(["abb_desc"]); XacroDoc.from_file(".../crb15000_5_95.xacro").to_urdf_file(...)`. Mesh paths are rewritten to `package://abb_crb15000_support/...`; resolved via `URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")` and a custom `filename_handler` in `teleop_gofa.py`. xacrodoc emits absolute `file://` URIs (yourdfpy can't resolve those); strip the `file://.../abb_desc/` prefix down to `package://`.
 
 ---
 

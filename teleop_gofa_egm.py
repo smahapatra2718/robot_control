@@ -42,7 +42,7 @@ import pyroki_snippets as pks  # noqa: E402
 ROBOT_IP = "192.168.125.1"
 RWS_USER = "Default User"
 RWS_PASSWORD = "robotics"
-URDF_PATH = os.path.join(_HERE, "crb15000_12_127.urdf")
+URDF_PATH = os.path.join(_HERE, "crb15000_5_95.urdf")
 URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")
 TARGET_LINK = "tool0"
 
