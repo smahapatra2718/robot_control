@@ -11,8 +11,8 @@ Flow:
 
 A Robotiq Hand-E gripper is mounted on the wrist: its mesh rides tool0 in viser,
 the gizmo/IK target sits at the grasp point (a fixed tool0 offset, so IK is
-unchanged), and Open/Close buttons drive the real gripper over Modbus RTU (see
-hande_gripper.py) plus a matching viz animation.
+unchanged), and Open/Close buttons drive the real gripper over the Robotiq
+URCap socket (see hande_gripper.py) plus a matching viz animation.
 
 Run from project root so `pyroki_snippets/` is on the path:
   ./robot_control/bin/python teleop_ur15.py
@@ -56,7 +56,7 @@ SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (defaul
 
 # ---- Hand-E gripper ----
 GRIPPER_URDF_PATH = os.path.join(_HERE, "hande.urdf")
-GRIPPER_HOST = ROBOT_IP         # tool RS-485 socket (RS485 / Tool-Comm URCap daemon)
+GRIPPER_HOST = ROBOT_IP         # Robotiq Grippers URCap socket server (on the UR controller)
 GRIPPER_PORT = hande_gripper.DEFAULT_PORT
 GRIPPER_FINGER_OPEN = 0.025     # per-side finger travel (m) = URDF upper limit (open)
 GRIPPER_TWEEN_S = 0.8           # viz finger animation duration to match the real move

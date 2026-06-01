@@ -14,6 +14,12 @@ render the official mesh on the wrist, and add real open/close control.
   as a background-daemon TCP socket. Python speaks Modbus RTU over it,
   independent of ur_rtde's resident control script. (Pendant gripper buttons are
   given up — accepted.)
+  - **Update (implementation):** superseded by a simpler channel that needs no
+    swap — the *Grippers* URCap already runs a daemon socket at
+    `<robot_ip>:63352` (ASCII `SET`/`GET`), independent of the active program, so
+    it coexists with ur_rtde and keeps the pendant buttons. `hande_gripper.py`
+    uses that. Falls back to the RS485 bridge or a USB-RS485 adapter if 63352
+    isn't reachable on PolyScope X.
 - **TCP frame: grasp point.** The gizmo/IK target represents the gripper's grasp
   point, not the bare flange.
 

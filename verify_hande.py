@@ -2,11 +2,11 @@
 One-shot Hand-E comms probe. Run this BEFORE trusting gripper control in
 teleop_ur15.py.
 
-Prereq (control path A): the UR's tool RS-485 must be exposed as a TCP socket.
-Swap the Robotiq *Grippers* URCap for the Robotiq *RS485* URCap (or enable the
-Tool Communication Interface) so a background daemon forwards the wrist
-connector to HOST:PORT below. This is independent of the running program, so it
-coexists with ur_rtde.
+Prereq: the Robotiq *Grippers* URCap must be installed (its background daemon
+serves the gripper on <robot_ip>:63352, independent of the running program, so
+it coexists with ur_rtde). Nothing to swap. On PolyScope X the Services
+firewall may block 63352 by default -- if connect fails, allow that port
+(Settings -> Security -> Services), the same place you enabled RTDE/Dashboard.
 
 What it does: connect, activate, open, close, open, printing status each step.
 If this passes, the same HandEGripper drives teleop_ur15.py unchanged.
@@ -24,15 +24,15 @@ PORT = hande_gripper.DEFAULT_PORT
 
 
 def main() -> int:
-    print(f"Connecting to Hand-E socket at {HOST}:{PORT}")
+    print(f"Connecting to Robotiq URCap socket at {HOST}:{PORT}")
     g = hande_gripper.HandEGripper(HOST, PORT)
     try:
         g.connect()
     except Exception as e:
         print(f"  connect FAILED: {e}")
-        print("  -> Is the RS485/Tool-Comm URCap installed and forwarding this port?")
-        print("     On PolyScope X the port/forwarding may differ; this is the unknown")
-        print("     we're verifying. Check the URCap's exposed socket and update PORT.")
+        print("  -> Is the Robotiq Grippers URCap installed?")
+        print("  -> Is port 63352 open in the PolyScope X Services firewall?")
+        print("     (Settings -> Security -> Services -- same place as RTDE/Dashboard.)")
         return 1
     print("  connected.")
 

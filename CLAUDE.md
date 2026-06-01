@@ -106,21 +106,21 @@ A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V th
 
 **Rendering & TCP.** `hande.urdf` is rendered as a second `ViserUrdf` rooted at `/world/gripper`, whose frame is slaved to the live `tool0` pose every viz/play tick (`_update_gripper_viz`). The gripper is rigid, so the grasp point is a *fixed* `tool0`→`hande_end` offset (`TOOL0_T_GRASP`, ~0.1565 m along tool0 +z, read straight from the URDF). The gizmo/waypoints live at the grasp point; `_grasp_to_tool0()` maps them back to a `tool0` target so **the UR IK model and the seeded-IK call are unchanged**. Only the one actuated finger joint animates (the other `mimic`s it); 0 m = closed, 0.025 m = open.
 
-**Control path — why a socket.** ur_rtde keeps its control script resident for the whole session, so a separate Robotiq URCap *program* can't run concurrently. Gripper control therefore goes through a channel that's independent of the active program: **Robotiq's RS485 URCap / Tool Communication Interface**, which forwards the wrist RS-485 to a TCP socket as a background daemon. `hande_gripper.py` speaks Modbus RTU over that socket (hand-framed FC16 write / FC04 read + CRC16; no pymodbus/pyserial dependency). This replaces the *Grippers* URCap, so the pendant gripper buttons go away — accepted trade-off.
+**Control path — the URCap socket.** ur_rtde keeps its control script resident for the whole session, so a Robotiq gripper *program* can't run concurrently. But the **Grippers URCap also runs a background daemon** that owns the wrist RS-485 and serves a socket at **`<robot_ip>:63352`** — independent of whatever program is playing, so it coexists with ur_rtde, and the pendant buttons keep working (both route through the same daemon). No URCap swap. `hande_gripper.py` speaks the URCap's newline-terminated ASCII protocol over that socket (`SET POS 255 SPE 255 FOR 150 GTO 1` → `ack`; `GET STA` → `STA 3`); stdlib `socket` only, no deps. This is the same channel the standalone `robotiq_gripper.py` driver uses.
 
-⚠️ **PolyScope X unknown.** Socket forwarding behaves differently on PolyScope X than classic PolyScope 5 (port, URCap availability). **Run `verify_hande.py` first** — it connects, activates, and open/closes the gripper standalone. Only once it passes is gripper control in `teleop_ur15.py` trustworthy. If the port/forwarding differs, fix it in `hande_gripper.py` (`DEFAULT_PORT`) / `verify_hande.py`; nothing else changes. The gripper connect in `teleop_ur15.py` is best-effort — if the socket is absent, it logs and runs viz-only (Open/Close still animate the meshes).
+⚠️ **PolyScope X firewall.** Like RTDE/Dashboard, port 63352 is likely blocked by the Services firewall by default — allow it under **Settings → Security → Services**. **Run `verify_hande.py` first** (connect → activate → open/close standalone); only once it passes is gripper control in `teleop_ur15.py` trustworthy. If 63352 isn't reachable on X even after opening it, the fallbacks are a USB-RS485 adapter (talk Modbus straight to the gripper) or the RS485 URCap socket bridge — both absorbed by swapping `HandEGripper`'s transport. The gripper connect in `teleop_ur15.py` is best-effort: if the socket is absent it logs and runs viz-only (Open/Close still animate the meshes).
 
-**Robotiq register map** (slave id 9): write 3 regs at `0x03E8` — byte0 `rACT|rGTO` (0x09), byte3 `rPR` position (0 open … 255 closed), byte4 `rSP` speed, byte5 `rFR` force; read 3 regs at `0x07D0` for status — byte0 has `gSTA` (==3 ⇒ activated) and `gOBJ` (1/2 ⇒ object grasped), byte4 `gPO` actual position.
+**URCap socket protocol** (port 63352): `SET <VAR> <val> …` → `ack`, `GET <VAR>` → `<VAR> <val>`. Vars: `ACT` activate, `GTO` go-to, `POS` request (0 open … 255 closed), `SPE` speed, `FOR` force (all 0–255), `STA` status (==3 ⇒ activated), `OBJ` object detection (1/2 ⇒ stopped on an object), `FLT` fault.
 
 ### Tunables — Hand-E (`teleop_ur15.py` / `hande_gripper.py`)
 
 | Constant | Default | Effect |
 |---|---|---|
-| `GRIPPER_HOST` | `ROBOT_IP` | Tool RS-485 socket host (the UR controller) |
-| `GRIPPER_PORT` | `54321` | Tool RS-485 → TCP port (verify on PolyScope X) |
+| `GRIPPER_HOST` | `ROBOT_IP` | Grippers URCap socket host (the UR controller) |
+| `GRIPPER_PORT` | `63352` | Robotiq URCap socket server port (open it in the X firewall) |
 | `GRIPPER_FINGER_OPEN` | `0.025` m | Per-side finger travel at "open" (URDF upper limit) |
 | `GRIPPER_TWEEN_S` | `0.8` s | Viz finger animation duration (match the real move) |
-| `DEFAULT_SPEED` / `DEFAULT_FORCE` | `255` / `150` | Robotiq `rSP` / `rFR` (0–255); force kept collaborative |
+| `DEFAULT_SPEED` / `DEFAULT_FORCE` | `255` / `150` | Robotiq `SPE` / `FOR` (0–255); force kept collaborative |
 
 ---
 

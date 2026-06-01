@@ -2,7 +2,7 @@
 
 Browser-based teleop for two robot arms sharing the same [viser](https://github.com/nerfstudio-project/viser) + [pyroki](https://github.com/chungmin99/pyroki) stack:
 
-- **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`), streaming `servoJ`, with a Robotiq Hand-E gripper on the wrist (mesh + Open/Close over Modbus RTU; see `hande_gripper.py` / `verify_hande.py`).
+- **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`), streaming `servoJ`, with a Robotiq Hand-E gripper on the wrist (mesh + Open/Close via the Grippers URCap socket; see `hande_gripper.py` / `verify_hande.py`).
 - **`teleop_gofa_egm.py`** — ABB GoFa CRB 15000 over Externally Guided Motion (EGM): joint targets stream over UDP to a RAPID supervisor (`PyEgm.mod`), with RWS (`abb_rws.py`) for mastership and the start/stop flag. Slider-unified like the UR15, with a TCP-speed cap.
 
 Both share the same UI (viser scene + 6-DoF gizmo + waypoints), the same seeded IK (`pyroki_snippets/_solve_ik_seeded.py`), and the same trapezoidal play loop. See [`CLAUDE.md`](CLAUDE.md) for the full architecture, controller bring-up notes, tunables, and hard-won gotchas.
