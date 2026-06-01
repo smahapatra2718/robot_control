@@ -303,7 +303,7 @@ Used by both `teleop_ur15.py` and `teleop_gofa_egm.py`.
 
 - **PyRoki's `solve_ik` lives in `examples/pyroki_snippets/`, not the package itself.** It's NOT installed by `pip install -e .`. Workaround: the `pyroki_snippets/` directory in the project root is a copy of `pyroki_src/examples/pyroki_snippets/` plus our `_solve_ik_seeded.py`, and both teleop scripts add the project root to `sys.path` so `import pyroki_snippets` works.
 
-- **First IK call takes ~800 ms (JAX JIT compile).** Subsequent calls are milliseconds. The first Plan click will feel slow.
+- **First IK call takes ~800 ms (JAX JIT compile); subsequent calls are milliseconds.** Both teleop scripts call `_warmup_ik()` at launch (a no-op IK at the current pose) to pay this cost during startup instead of on the first Plan click — so launch prints "Warming up IK solver…" and takes ~800 ms longer, but the first real Plan is fast.
 
 - **UR15 model is brand new.** It postdates a lot of training data — if Claude says "there's no UR15", point at https://www.universal-robots.com/products/ur15/. The official ROS2 description repo supports `ur_type:=ur15`.
 

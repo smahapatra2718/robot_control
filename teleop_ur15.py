@@ -162,6 +162,25 @@ def _grasp_to_tool0(pos: np.ndarray, wxyz: np.ndarray) -> tuple[np.ndarray, np.n
     return np.asarray(T_tool0.translation()), np.asarray(T_tool0.rotation().wxyz)
 
 
+def _warmup_ik() -> None:
+    """Pre-compile the IK solver (JAX JIT, ~800 ms) so the first Plan is fast.
+    Solves a no-op IK at the current pose; result discarded."""
+    with state_lock:
+        q = current_q.copy()
+    T = ee_pose(q)
+    try:
+        pks.solve_ik_seeded(
+            robot=robot,
+            target_link_name=TARGET_LINK,
+            target_position=np.asarray(T.translation()),
+            target_wxyz=np.asarray(T.rotation().wxyz),
+            q_seed=q,
+            rest_weight=2.0,
+        )
+    except Exception as e:
+        print(f"IK warmup skipped: {e}")
+
+
 # ---------- viser ----------
 server = viser.ViserServer()
 server.scene.add_grid("/ground", width=2, height=2)
@@ -464,6 +483,9 @@ def viz_loop() -> None:
 
 
 threading.Thread(target=viz_loop, daemon=True).start()
+
+print("Warming up IK solver (JAX JIT compile)...")
+_warmup_ik()
 
 print("viser running. Open the URL printed above in a browser.")
 while True:
