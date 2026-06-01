@@ -53,6 +53,7 @@ RAMP_FRAC = 0.25                # fraction of segment spent ramping up (same for
 SERVO_LOOKAHEAD = 0.1           # servoJ lookahead_time (s)
 SERVO_GAIN = 300                # servoJ gain
 SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (default 10 is harsh)
+FINAL_SETTLE_S = 0.4            # hold the last target (still streaming) so the arm converges before stop
 
 # ---- Hand-E gripper ----
 GRIPPER_URDF_PATH = os.path.join(_HERE, "hande.urdf")
@@ -396,6 +397,17 @@ def _play() -> None:
                         rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
                     time.sleep(dt)
                     t += dt
+
+        # Final settle: servoJ trails its setpoint, so keep streaming the last
+        # target briefly to let the arm converge before servoStop — otherwise it
+        # halts short of the end and the gizmo re-anchors to that short pose.
+        if execute and not stop_flag.is_set():
+            q_final = plan_segments[-1][1]
+            t = 0.0
+            while t < FINAL_SETTLE_S and not stop_flag.is_set():
+                rtde_c.servoJ(q_final.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
+                time.sleep(dt)
+                t += dt
         completed = not stop_flag.is_set()
     finally:
         if execute:
