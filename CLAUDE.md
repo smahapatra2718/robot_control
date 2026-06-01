@@ -98,6 +98,7 @@ Safety:
 | `DWELL_S` | `0.2` s | Pause at each intermediate waypoint |
 | `SERVO_STOP_DECEL` | `2.0` rad/s² | Final settle deceleration |
 | `STREAM_HZ` | `50` | servoJ + viz frame rate |
+| `LIVE_HZ` | `30` | Live gizmo-follow IK + servoJ update rate |
 | `rest_weight` (in Plan handler) | `2.0` | IK pull toward current joints |
 
 ## Hand-E gripper
@@ -124,6 +125,18 @@ A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V th
 | `DEFAULT_SPEED` / `DEFAULT_FORCE` | `255` / `150` | Robotiq `SPE` / `FOR` (0–255); force kept collaborative |
 
 **End-of-play precision & the payload.** With the ~1 kg gripper on the wrist, an *undeclared* payload makes `servoJ` hold the loaded joints slightly below target (gravity droop) — which is why end-of-play undershoot felt worse after mounting it. `setPayload(GRIPPER_MASS, GRIPPER_COG)` at startup fixes that. Separately, the gizmo now targets the grasp point (~156 mm past `tool0`), so the *same* joint error shows up as a larger Cartesian shift — geometric, not a regression. The end-of-play settle (`SETTLE_*`) drives joint error to the `servoJ` floor regardless.
+
+## Live gizmo-follow mode
+
+Both scripts have a **"Live (drive robot)"** checkbox: a single toggle that makes the real arm chase the gizmo in real time (no Plan/Play). The `_live_loop` thread, at `LIVE_HZ` (30): reads the gizmo pose → seeded IK (seeded from the *last commanded* `q`, not measured, to avoid feedback jitter) → clamps the step → commands the arm. Mutually exclusive with Plan/Play; **Stop** or unticking ends it.
+
+Safety, shared:
+- **Snap-on-enable:** the gizmo jumps to the current EE first, so the arm never lurches toward a stale gizmo pose.
+- **Per-tick clamp:** `|Δq|` per tick is capped at `MAX_JOINT_SPEED · dt`, so a fast drag or an IK branch-flip rate-limits toward the target instead of jumping.
+
+Per-arm:
+- **UR15:** `servoJ` each tick; `servoStop` on exit.
+- **GoFa:** streams the target over the *existing* EGM session (no supervisor change). Because `PyEgm.mod` uses `\CondTime := 1`, a >1 s pause lets the robot converge and RAPID drops the session; `_live_loop` detects the stale feed (`egm.is_fresh`) and **re-arms** (`_start_egm_session`) on the next motion — so expect a brief hitch after a long pause. It also applies the `MAX_TCP_SPEED` collaborative cap by scaling the per-tick step. On exit it holds the last pose for `HOLD_AFTER_PLAY_S` so `\CondTime` cleanly closes the session. (A smoother-through-pauses version would need a larger `\CondTime` in the supervisor + installer re-run.)
 
 ---
 
@@ -258,6 +271,7 @@ Startup safety: the script sets `egm_go = FALSE` on connect so a stray TRUE does
 | `HOLD_AFTER_PLAY_S` | `1.5` s | Hold final target so RAPID's `\CondTime` fires |
 | `POLL_HZ` | `10` | RWS state polling rate |
 | `STREAM_HZ` | `100` | EGM target stream + viz frame rate |
+| `LIVE_HZ` | `30` | Live gizmo-follow IK + EGM target update rate |
 | `rest_weight` (Plan handler) | `2.0` | IK pull toward current joints |
 
 ## OmniCore RWS gotchas

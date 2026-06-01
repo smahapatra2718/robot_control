@@ -51,6 +51,7 @@ EGM_LOCAL_PORT = 6510                # must match RemotePortNumber in EGM_COMM.c
 POLL_HZ = 10                         # RWS state polling (idle viz only)
 PLAY_HZ = 60                         # viz refresh when idle
 STREAM_HZ = 100                      # EGM target stream rate (controller side runs ~250Hz)
+LIVE_HZ = 30                         # live gizmo-follow: IK + EGM target update rate
 MAX_JOINT_SPEED = 1.0                # rad/s peak per joint at slider=1.0
 MAX_TCP_SPEED = 0.25                 # m/s — hard cap on real tool speed (ISO/TS 15066
                                      # collaborative limit). Enforced against the actual
@@ -92,6 +93,7 @@ waypoints: list[tuple[np.ndarray, np.ndarray]] = []
 waypoint_frames: list = []
 plan_segments: list[tuple[np.ndarray, np.ndarray]] | None = None
 playing = threading.Event()
+live = threading.Event()             # live gizmo-follow (continuous IK + EGM stream) active
 stop_flag = threading.Event()
 
 # ---------- RWS (for state + RAPID flag control) ----------
@@ -211,6 +213,7 @@ gui_stop = server.gui.add_button("Stop", disabled=True)
 gui_reset = server.gui.add_button("Reset gizmo to current EE")
 gui_speed = server.gui.add_slider("Speed (unified)", min=0.1, max=1.0, step=0.05, initial_value=1.0)
 gui_execute = server.gui.add_checkbox("Execute on robot (EGM stream)", initial_value=False)
+gui_live = server.gui.add_checkbox("Live (drive robot)", initial_value=False)
 
 
 def _refresh_wp_count() -> None:
@@ -351,6 +354,7 @@ def _play() -> None:
     playing.set()
     stop_flag.clear()
     gui_play.disabled = True
+    gui_live.disabled = True
     gui_stop.disabled = False
     gui_status.value = "Starting..."
 
@@ -419,6 +423,7 @@ def _play() -> None:
     finally:
         playing.clear()
         gui_stop.disabled = True
+        gui_live.disabled = False
         gui_status.value = "Stopped" if stop_flag.is_set() else "Done"
 
     if execute and completed:
@@ -438,12 +443,93 @@ def _(_):
 @gui_stop.on_click
 def _(_):
     stop_flag.set()
+    live.clear()
+    if gui_live.value:
+        gui_live.value = False
+    gui_plan.disabled = False
+
+
+def _live_loop() -> None:
+    """Continuously chase the gizmo over EGM: solve IK each tick and stream the
+    target, with a per-tick joint clamp AND a TCP-speed clamp (the GoFa collaborative
+    limit). Re-arms the EGM session if RAPID's CondTime drops it during a pause —
+    so no supervisor change is needed."""
+    dt = 1.0 / LIVE_HZ
+    if not _start_egm_session():
+        live.clear()
+        gui_live.value = False
+        return
+    gui_egm_status.value = "streaming (live)"
+    with state_lock:
+        q_cmd = current_q.copy()
+    try:
+        while live.is_set() and not stop_flag.is_set():
+            # re-arm if the controller dropped the session (CondTime exit on a pause)
+            if not egm.is_fresh(max_age_s=0.3):
+                gui_egm_status.value = "re-arming..."
+                if not _start_egm_session():
+                    break
+                gui_egm_status.value = "streaming (live)"
+                with state_lock:
+                    q_cmd = current_q.copy()
+            try:
+                q_target = np.asarray(pks.solve_ik_seeded(
+                    robot=robot, target_link_name=TARGET_LINK,
+                    target_position=np.asarray(gizmo.position),
+                    target_wxyz=np.asarray(gizmo.wxyz),
+                    q_seed=q_cmd, rest_weight=2.0,
+                ))
+            except Exception:
+                time.sleep(dt)
+                continue
+            dq = np.clip(q_target - q_cmd, -MAX_JOINT_SPEED * dt, MAX_JOINT_SPEED * dt)
+            # cap real TCP speed (collaborative limit) by scaling the step down
+            p0 = np.asarray(ee_pose(q_cmd).translation())
+            p1 = np.asarray(ee_pose(q_cmd + dq).translation())
+            d = float(np.linalg.norm(p1 - p0))
+            if d > MAX_TCP_SPEED * dt and d > 1e-9:
+                dq *= (MAX_TCP_SPEED * dt) / d
+            q_cmd = q_cmd + dq
+            viser_urdf.update_cfg(q_cmd)
+            egm.set_target_rad(q_cmd.tolist())
+            time.sleep(dt)
+    finally:
+        # hold the last pose so EGMRunJoint converges (CondTime) and the session exits
+        for _ in range(int(HOLD_AFTER_PLAY_S * STREAM_HZ)):
+            egm.set_target_rad(q_cmd.tolist())
+            time.sleep(1.0 / STREAM_HZ)
+        _wait_egm_clear()
+        gui_egm_status.value = "idle"
+        gui_status.value = "Live off"
+        gui_plan.disabled = False
+        gui_play.disabled = plan_segments is None
+        gui_stop.disabled = True
+
+
+@gui_live.on_update
+def _(_):
+    if gui_live.value:
+        # snap gizmo to the current EE first (no lurch), then chase it
+        with state_lock:
+            q = current_q.copy()
+        T = ee_pose(q)
+        gizmo.position = np.asarray(T.translation())
+        gizmo.wxyz = np.asarray(T.rotation().wxyz)
+        stop_flag.clear()
+        live.set()
+        gui_plan.disabled = True
+        gui_play.disabled = True
+        gui_stop.disabled = False
+        gui_status.value = "LIVE: GoFa follows gizmo"
+        threading.Thread(target=_live_loop, daemon=True).start()
+    else:
+        live.clear()
 
 
 def viz_loop() -> None:
     period = 1.0 / PLAY_HZ
     while True:
-        if not playing.is_set():
+        if not playing.is_set() and not live.is_set():
             with state_lock:
                 q = current_q.copy()
                 ok = last_poll_ok
