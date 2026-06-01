@@ -6,12 +6,12 @@
   <link name="base_link">
     <collision>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_12_127/collision/base_link.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_12_127/collision/base_link.stl"/>
       </geometry>
     </collision>
     <visual>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_12_127/visual/base_link.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_12_127/visual/base_link.stl"/>
       </geometry>
       <material name="">
         <color rgba="0.3450980 0.3647059 0.3686275 1"/>
@@ -21,12 +21,12 @@
   <link name="link_1">
     <collision>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_12_127/collision/link_1.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_12_127/collision/link_1.stl"/>
       </geometry>
     </collision>
     <visual>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_12_127/visual/link_1.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_12_127/visual/link_1.stl"/>
       </geometry>
       <material name="">
         <color rgba="0.3450980 0.3647059 0.3686275 1"/>
@@ -36,12 +36,12 @@
   <link name="link_2">
     <collision>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_12_127/collision/link_2.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_12_127/collision/link_2.stl"/>
       </geometry>
     </collision>
     <visual>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_12_127/visual/link_2.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_12_127/visual/link_2.stl"/>
       </geometry>
       <material name="">
         <color rgba="0.3450980 0.3647059 0.3686275 1"/>
@@ -51,12 +51,12 @@
   <link name="link_3">
     <collision>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_5_95/collision/link_3.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_5_95/collision/link_3.stl"/>
       </geometry>
     </collision>
     <visual>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_5_95/visual/link_3.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_5_95/visual/link_3.stl"/>
       </geometry>
       <material name="">
         <color rgba="0.3450980 0.3647059 0.3686275 1"/>
@@ -66,12 +66,12 @@
   <link name="link_4">
     <collision>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_12_127/collision/link_4.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_12_127/collision/link_4.stl"/>
       </geometry>
     </collision>
     <visual>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_12_127/visual/link_4.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_12_127/visual/link_4.stl"/>
       </geometry>
       <material name="">
         <color rgba="0.7725490 0.7803922 0.7686275 1"/>
@@ -81,12 +81,12 @@
   <link name="link_5">
     <collision>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_5_95/collision/link_5.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_5_95/collision/link_5.stl"/>
       </geometry>
     </collision>
     <visual>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_5_95/visual/link_5.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_5_95/visual/link_5.stl"/>
       </geometry>
       <material name="">
         <color rgba="0.7725490 0.7803922 0.7686275 1"/>
@@ -96,12 +96,12 @@
   <link name="link_6">
     <collision>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_5_95/collision/link_6.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_5_95/collision/link_6.stl"/>
       </geometry>
     </collision>
     <visual>
       <geometry>
-        <mesh filename="/Users/samarthmahapatra/Developer/abb_foga/abb_desc/abb_crb15000_support/meshes/crb15000_5_95/visual/link_6.stl"/>
+        <mesh filename="package://abb_crb15000_support/meshes/crb15000_5_95/visual/link_6.stl"/>
       </geometry>
       <material name="">
         <color rgba="0.8392157 0.8352941 0.7921569 1"/>
