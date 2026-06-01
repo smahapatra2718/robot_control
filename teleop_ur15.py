@@ -51,9 +51,10 @@ MIN_SEG_DURATION_S = 0.5        # floor on segment time so tiny moves are still 
 DWELL_S = 0.2                   # pause at each intermediate waypoint
 RAMP_FRAC = 0.25                # fraction of segment spent ramping up (same for ramp-down)
 SERVO_LOOKAHEAD = 0.1           # servoJ lookahead_time (s)
-SERVO_GAIN = 300                # servoJ gain
+SERVO_GAIN = 300                # servoJ gain during motion
 SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (default 10 is harsh)
-SETTLE_TOL_RAD = 0.0007         # converged when max |current_q - q_final| is below this (~0.04 deg, ~2 mm)
+SETTLE_GAIN = 600               # stiffer servoJ gain for the static end-of-play hold (tighter convergence)
+SETTLE_TOL_RAD = 0.0002         # converged when max |current_q - q_final| is below this (~0.011 deg, ~0.6 mm)
 SETTLE_MAX_S = 3.0              # cap on the final convergence hold
 
 # ---- Hand-E gripper ----
@@ -407,7 +408,7 @@ def _play() -> None:
             q_final = plan_segments[-1][1]
             deadline = time.monotonic() + SETTLE_MAX_S
             while not stop_flag.is_set():
-                rtde_c.servoJ(q_final.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
+                rtde_c.servoJ(q_final.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SETTLE_GAIN)
                 time.sleep(dt)
                 with state_lock:
                     err = float(np.max(np.abs(current_q - q_final)))
