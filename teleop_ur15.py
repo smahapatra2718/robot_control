@@ -412,8 +412,8 @@ def _play() -> None:
                 with state_lock:
                     err = float(np.max(np.abs(current_q - q_final)))
                 if err < SETTLE_TOL_RAD or time.monotonic() > deadline:
-                    print(f"[settle] converged in joint err={np.degrees(err):.3f} deg"
-                          + ("" if err < SETTLE_TOL_RAD else " (hit SETTLE_MAX_S cap)"))
+                    if err >= SETTLE_TOL_RAD:
+                        print(f"[settle] hit SETTLE_MAX_S cap at {np.degrees(err):.3f} deg")
                     break
         completed = not stop_flag.is_set()
     finally:
@@ -426,13 +426,6 @@ def _play() -> None:
     if execute and completed:
         # Wait briefly for current_q to catch up to the commanded final pose
         time.sleep(0.15)
-        with state_lock:
-            q_meas = current_q.copy()
-        shift = float(np.linalg.norm(
-            np.asarray(grasp_pose(q_meas).translation()) - np.asarray(gizmo.position)
-        ))
-        print(f"[end-of-play] gizmo snap-back = {shift * 1000:.1f} mm "
-              f"(max joint err {np.degrees(np.max(np.abs(q_meas - plan_segments[-1][1]))):.3f} deg)")
         _post_execute_cleanup()
     else:
         gui_play.disabled = plan_segments is None
