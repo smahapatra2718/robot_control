@@ -53,7 +53,8 @@ RAMP_FRAC = 0.25                # fraction of segment spent ramping up (same for
 SERVO_LOOKAHEAD = 0.1           # servoJ lookahead_time (s)
 SERVO_GAIN = 300                # servoJ gain
 SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (default 10 is harsh)
-FINAL_SETTLE_S = 0.4            # hold the last target (still streaming) so the arm converges before stop
+SETTLE_TOL_RAD = 0.002          # converged when max |current_q - q_final| is below this (~0.11 deg)
+SETTLE_MAX_S = 3.0              # cap on the final convergence hold
 
 # ---- Hand-E gripper ----
 GRIPPER_URDF_PATH = os.path.join(_HERE, "hande.urdf")
@@ -398,16 +399,22 @@ def _play() -> None:
                     time.sleep(dt)
                     t += dt
 
-        # Final settle: servoJ trails its setpoint, so keep streaming the last
-        # target briefly to let the arm converge before servoStop — otherwise it
+        # Final settle: servoJ trails its setpoint during motion, so keep
+        # streaming the last target and WAIT until the measured joints actually
+        # arrive (a held setpoint has ~0 steady-state error). Otherwise the arm
         # halts short of the end and the gizmo re-anchors to that short pose.
         if execute and not stop_flag.is_set():
             q_final = plan_segments[-1][1]
-            t = 0.0
-            while t < FINAL_SETTLE_S and not stop_flag.is_set():
+            deadline = time.monotonic() + SETTLE_MAX_S
+            while not stop_flag.is_set():
                 rtde_c.servoJ(q_final.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
                 time.sleep(dt)
-                t += dt
+                with state_lock:
+                    err = float(np.max(np.abs(current_q - q_final)))
+                if err < SETTLE_TOL_RAD or time.monotonic() > deadline:
+                    print(f"[settle] converged in joint err={np.degrees(err):.3f} deg"
+                          + ("" if err < SETTLE_TOL_RAD else " (hit SETTLE_MAX_S cap)"))
+                    break
         completed = not stop_flag.is_set()
     finally:
         if execute:
@@ -419,6 +426,13 @@ def _play() -> None:
     if execute and completed:
         # Wait briefly for current_q to catch up to the commanded final pose
         time.sleep(0.15)
+        with state_lock:
+            q_meas = current_q.copy()
+        shift = float(np.linalg.norm(
+            np.asarray(grasp_pose(q_meas).translation()) - np.asarray(gizmo.position)
+        ))
+        print(f"[end-of-play] gizmo snap-back = {shift * 1000:.1f} mm "
+              f"(max joint err {np.degrees(np.max(np.abs(q_meas - plan_segments[-1][1]))):.3f} deg)")
         _post_execute_cleanup()
     else:
         gui_play.disabled = plan_segments is None
