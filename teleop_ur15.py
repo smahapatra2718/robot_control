@@ -65,6 +65,8 @@ GRIPPER_HOST = ROBOT_IP         # Robotiq Grippers URCap socket server (on the U
 GRIPPER_PORT = hande_gripper.DEFAULT_PORT
 GRIPPER_FINGER_OPEN = 0.025     # per-side finger travel (m) = URDF upper limit (open)
 GRIPPER_TWEEN_S = 0.8           # viz finger animation duration to match the real move
+GRIPPER_MASS = 1.0              # Hand-E payload (kg) told to the UR so it compensates gravity at the loaded wrist
+GRIPPER_COG = (0.0, 0.0, 0.06)  # payload center of gravity in the tool-flange frame (m); raise if you add a workpiece
 
 
 def _alpha_to_s(alpha: float, r: float = RAMP_FRAC) -> float:
@@ -115,6 +117,14 @@ stop_flag = threading.Event()
 # ---------- UR15 RTDE ----------
 rtde_r = RTDEReceiveInterface(ROBOT_IP)
 rtde_c = RTDEControlInterface(ROBOT_IP)   # only used if Execute is toggled on
+
+# Tell the controller about the gripper so it compensates gravity at the loaded
+# wrist — otherwise servoJ holds the loaded joints slightly below target (droop).
+try:
+    rtde_c.setPayload(GRIPPER_MASS, list(GRIPPER_COG))
+    print(f"Payload set: {GRIPPER_MASS} kg @ {GRIPPER_COG} m (gripper).")
+except Exception as e:
+    print(f"setPayload failed ({e}); end-of-play droop may be larger.")
 
 # ---------- Hand-E gripper (best-effort: viz still works if it's unreachable) ----------
 try:

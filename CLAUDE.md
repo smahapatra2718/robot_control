@@ -120,7 +120,10 @@ A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V th
 | `GRIPPER_PORT` | `63352` | Robotiq URCap socket server port (open it in the X firewall) |
 | `GRIPPER_FINGER_OPEN` | `0.025` m | Per-side finger travel at "open" (URDF upper limit) |
 | `GRIPPER_TWEEN_S` | `0.8` s | Viz finger animation duration (match the real move) |
+| `GRIPPER_MASS` / `GRIPPER_COG` | `1.0` kg / `(0,0,0.06)` m | Payload told to the UR via `setPayload` so it compensates gravity at the loaded wrist (bump if you add a workpiece) |
 | `DEFAULT_SPEED` / `DEFAULT_FORCE` | `255` / `150` | Robotiq `SPE` / `FOR` (0–255); force kept collaborative |
+
+**End-of-play precision & the payload.** With the ~1 kg gripper on the wrist, an *undeclared* payload makes `servoJ` hold the loaded joints slightly below target (gravity droop) — which is why end-of-play undershoot felt worse after mounting it. `setPayload(GRIPPER_MASS, GRIPPER_COG)` at startup fixes that. Separately, the gizmo now targets the grasp point (~156 mm past `tool0`), so the *same* joint error shows up as a larger Cartesian shift — geometric, not a regression. The end-of-play settle (`SETTLE_*`) drives joint error to the `servoJ` floor regardless.
 
 ---
 
