@@ -54,7 +54,7 @@ SERVO_LOOKAHEAD = 0.1           # servoJ lookahead_time (s)
 SERVO_GAIN = 300                # servoJ gain during motion
 SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (default 10 is harsh)
 SETTLE_GAIN = 600               # stiffer servoJ gain for the static end-of-play hold (tighter convergence)
-SETTLE_TOL_RAD = 0.0001         # early-stop target (~0.006 deg); plateau detector catches the hardware floor below this
+SETTLE_TOL_RAD = 0.0            # 0 = no "good enough" early-out; converge to the servoJ floor (plateau) or the cap
 SETTLE_EPS_RAD = 0.00002        # min per-check improvement to count as "still converging"
 SETTLE_STALL_TICKS = 10         # consecutive non-improving checks => at the servoJ floor, stop
 SETTLE_MAX_S = 3.0              # hard cap on the final convergence hold
