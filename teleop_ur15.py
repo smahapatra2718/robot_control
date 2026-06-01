@@ -101,13 +101,26 @@ def ee_pose(q: np.ndarray) -> jaxlie.SE3:
 # ---------- viser ----------
 server = viser.ViserServer()
 server.scene.add_grid("/ground", width=2, height=2)
-viser_urdf = ViserUrdf(server, urdf, root_node_name="/base")
+
+# Display-only yaw: render the robot + gizmo + waypoints rotated about world Z.
+# Everything nested under /world inherits this rotation, but viser node poses are
+# parent-relative, so each child's local pose (which IK reads/writes) stays in the
+# robot base frame — the real robot motion is unchanged.
+VIZ_YAW_DEG = 30.0
+_half_yaw = np.deg2rad(VIZ_YAW_DEG) / 2.0
+server.scene.add_frame(
+    "/world",
+    show_axes=False,
+    wxyz=(np.cos(_half_yaw), 0.0, 0.0, np.sin(_half_yaw)),
+    position=(0.0, 0.0, 0.0),
+)
+viser_urdf = ViserUrdf(server, urdf, root_node_name="/world/base")
 
 with state_lock:
     q0 = current_q.copy()
 T_ee0 = ee_pose(q0)
 gizmo = server.scene.add_transform_controls(
-    "/ee_target",
+    "/world/ee_target",
     scale=0.25,
     position=np.asarray(T_ee0.translation()),
     wxyz=np.asarray(T_ee0.rotation().wxyz),
@@ -137,7 +150,7 @@ def _(_):
     wxyz = np.asarray(gizmo.wxyz)
     waypoints.append((pos, wxyz))
     handle = server.scene.add_frame(
-        f"/waypoints/{len(waypoints)-1}",
+        f"/world/waypoints/{len(waypoints)-1}",
         position=pos,
         wxyz=wxyz,
         axes_length=0.12,
