@@ -63,6 +63,7 @@ MIN_SEG_DURATION_S = 0.5
 DWELL_S = 0.2
 RAMP_FRAC = 0.25
 HOLD_AFTER_PLAY_S = 1.5              # hold final target this long so RAPID's CondTime triggers
+DIAG_EGM = True                      # TEMP: print controller/EGM state during execute plays
 
 
 def _alpha_to_s(alpha: float, r: float = RAMP_FRAC) -> float:
@@ -311,6 +312,31 @@ def _wait_egm_clear(timeout_s: float = 8.0) -> bool:
     return False
 
 
+def _egm_diag_loop(stop_evt: threading.Event) -> None:
+    """TEMP diagnostic: sample controller + EGM state during an execute play and
+    print every transition. Distinguishes a normal EGM convergence-exit
+    (egm_go->FALSE while ctrl stays 'motoron') from a controller safety/protective
+    stop (ctrl -> 'guardstop'/'emergencystop', exec -> 'stopped', feedback stale).
+    Gated by DIAG_EGM; remove once the multi-waypoint bug is root-caused.
+    """
+    t0 = time.time()
+    last = None
+    while not stop_evt.is_set():
+        try:
+            ctrl = rws.get_controller_state()
+            exec_ = rws.get_execution_state()
+            go = rws.get_rapid_data(RAPID_GO_FLAG_VAR, module=RAPID_MODULE).strip()
+        except Exception as e:
+            ctrl, exec_, go = "?", "?", f"<rws err: {e}>"
+        fresh = egm.is_fresh(max_age_s=0.2)
+        snap = (ctrl, exec_, go, fresh)
+        if snap != last:
+            print(f"[egm-diag t={time.time() - t0:5.1f}s] "
+                  f"ctrl={ctrl} exec={exec_} egm_go={go} egm_fresh={fresh}", flush=True)
+            last = snap
+        time.sleep(0.2)
+
+
 def _post_execute_cleanup() -> None:
     global plan_segments
     for h in waypoint_frames:
@@ -341,12 +367,19 @@ def _play() -> None:
     gui_stop.disabled = False
     gui_status.value = "Starting..."
 
+    diag_stop = threading.Event()
+    diag_thread: threading.Thread | None = None
+
     try:
         if execute:
             gui_status.value = "Starting EGM session..."
             if not _start_egm_session():
                 return
             gui_egm_status.value = "streaming"
+            if DIAG_EGM:
+                diag_thread = threading.Thread(target=_egm_diag_loop, args=(diag_stop,), daemon=True)
+                diag_thread.start()
+                print(f"[egm-diag] play start: {len(plan_segments)} segment(s)", flush=True)
 
         for seg_idx, (q_start, q_goal) in enumerate(plan_segments):
             if stop_flag.is_set():
@@ -354,6 +387,10 @@ def _play() -> None:
             delta = q_goal - q_start
             seg_duration = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / MAX_JOINT_SPEED)
             seg_duration = _cap_seg_duration(q_start, delta, seg_duration, dt)
+            if execute and DIAG_EGM:
+                print(f"[egm-diag] -> segment {seg_idx + 1}/{len(plan_segments)} "
+                      f"|delta|max={float(np.max(np.abs(delta))):.3f} rad "
+                      f"seg_duration={seg_duration:.2f}s", flush=True)
             gui_status.value = f"Segment {seg_idx + 1}/{len(plan_segments)}"
 
             alpha = 0.0
@@ -404,6 +441,11 @@ def _play() -> None:
                 gui_egm_status.value = "stuck? (egm_go still TRUE)"
 
     finally:
+        diag_stop.set()
+        if diag_thread is not None:
+            diag_thread.join(timeout=1.0)
+            print(f"[egm-diag] play end: completed={completed} "
+                  f"stop_flag={stop_flag.is_set()} egm_stats={egm.stats()}", flush=True)
         playing.clear()
         gui_stop.disabled = True
         gui_status.value = "Stopped" if stop_flag.is_set() else "Done"
