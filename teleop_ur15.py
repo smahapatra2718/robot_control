@@ -18,6 +18,8 @@ Run from project root so `pyroki_snippets/` is on the path:
   ./robot_control/bin/python teleop_ur15.py
 """
 
+import datetime
+import json
 import os
 import sys
 import threading
@@ -68,6 +70,7 @@ GRIPPER_FINGER_OPEN = 0.025     # per-side finger travel (m) = URDF upper limit 
 GRIPPER_TWEEN_S = 0.8           # viz finger animation duration to match the real move
 GRIPPER_MASS = 1.0              # Hand-E payload (kg) told to the UR so it compensates gravity at the loaded wrist
 GRIPPER_COG = (0.0, 0.0, 0.06)  # payload center of gravity in the tool-flange frame (m); raise if you add a workpiece
+TRAJ_DIR = os.path.join(_HERE, "trajectories")  # saved teach trajectories (<name>.json)
 
 
 def _alpha_to_s(alpha: float, r: float = RAMP_FRAC) -> float:
@@ -108,12 +111,15 @@ TOOL0_T_GRASP = jaxlie.SE3.from_matrix(
 # ---------- shared state ----------
 state_lock = threading.Lock()
 current_q = np.zeros(NUM_JOINTS)
-waypoints: list[tuple[np.ndarray, np.ndarray]] = []  # list of (position xyz, wxyz)
+# Each waypoint: {"q": [6 joints]|None, "pos": [x,y,z], "wxyz": [w,x,y,z], "grip": "open"|"close"|None}
+# q is filled by free-drive capture (real joints) or backfilled by IK at Plan.
+waypoints: list[dict] = []
 waypoint_frames: list = []                            # corresponding viser frame handles
-plan_segments: list[tuple[np.ndarray, np.ndarray]] | None = None  # list of (q_start, q_end)
+plan_segments: list[tuple[np.ndarray, np.ndarray, str | None]] | None = None  # (q_start, q_goal, grip)
 gripper_finger = GRIPPER_FINGER_OPEN   # displayed per-side finger opening (m); start open
 playing = threading.Event()
 live = threading.Event()               # live gizmo-follow (continuous IK + servoJ) active
+freedrive = threading.Event()          # hand-guiding (teachMode) active
 stop_flag = threading.Event()
 
 # ---------- UR15 RTDE ----------
@@ -238,7 +244,10 @@ def _update_gripper_viz(q: np.ndarray) -> None:
 # ---------- GUI ----------
 gui_status = server.gui.add_text("Status", initial_value="Idle", disabled=True)
 gui_wp_count = server.gui.add_text("Waypoints", initial_value="0", disabled=True)
+gui_freedrive = server.gui.add_checkbox("Free-drive (hand-guide)", initial_value=False)
 gui_add_wp = server.gui.add_button("Add waypoint (from gizmo)")
+gui_capture = server.gui.add_button("Capture waypoint (current pose)")
+gui_grip_action = server.gui.add_dropdown("Gripper @ waypoint", ("none", "open", "close"))
 gui_pop_wp = server.gui.add_button("Remove last waypoint")
 gui_clear_wp = server.gui.add_button("Clear waypoints")
 gui_plan = server.gui.add_button("Plan")
@@ -253,27 +262,57 @@ gui_grip_close = server.gui.add_button("Close gripper")
 gui_grip_status = server.gui.add_text(
     "Gripper", initial_value=("ready" if gripper is not None else "viz-only"), disabled=True
 )
+gui_traj_name = server.gui.add_text("Trajectory name", initial_value="traj1")
+gui_save = server.gui.add_button("Save trajectory")
+gui_load = server.gui.add_button("Load trajectory")
 
 
 def _refresh_wp_count() -> None:
     gui_wp_count.value = str(len(waypoints))
 
 
-@gui_add_wp.on_click
-def _(_):
-    pos = np.asarray(gizmo.position)
-    wxyz = np.asarray(gizmo.wxyz)
-    waypoints.append((pos, wxyz))
+def _grip_choice() -> str | None:
+    return None if gui_grip_action.value == "none" else gui_grip_action.value
+
+
+def _add_waypoint(wp: dict) -> None:
+    """Append a waypoint dict and draw its frame (label includes the grip action)."""
+    i = len(waypoints)
+    waypoints.append(wp)
     handle = server.scene.add_frame(
-        f"/world/waypoints/{len(waypoints)-1}",
-        position=pos,
-        wxyz=wxyz,
+        f"/world/waypoints/{i}",
+        position=np.asarray(wp["pos"]),
+        wxyz=np.asarray(wp["wxyz"]),
         axes_length=0.12,
         axes_radius=0.005,
     )
     waypoint_frames.append(handle)
     _refresh_wp_count()
-    gui_status.value = f"Added waypoint {len(waypoints)}"
+
+
+@gui_add_wp.on_click
+def _(_):
+    _add_waypoint({
+        "q": None,  # filled by IK at Plan
+        "pos": np.asarray(gizmo.position).tolist(),
+        "wxyz": np.asarray(gizmo.wxyz).tolist(),
+        "grip": _grip_choice(),
+    })
+    gui_status.value = f"Added waypoint {len(waypoints)} (gizmo)"
+
+
+@gui_capture.on_click
+def _(_):
+    with state_lock:
+        q = current_q.copy()
+    T = grasp_pose(q)
+    _add_waypoint({
+        "q": q.tolist(),  # taught joints — replayed exactly, no IK
+        "pos": np.asarray(T.translation()).tolist(),
+        "wxyz": np.asarray(T.rotation().wxyz).tolist(),
+        "grip": _grip_choice(),
+    })
+    gui_status.value = f"Captured waypoint {len(waypoints)} (joints)"
 
 
 @gui_pop_wp.on_click
@@ -300,28 +339,36 @@ def _(_):
 def _(_):
     global plan_segments
     # If no waypoints have been added, treat the current gizmo pose as a single target.
-    targets = waypoints if waypoints else [(np.asarray(gizmo.position), np.asarray(gizmo.wxyz))]
+    if waypoints:
+        targets = waypoints
+    else:
+        targets = [{"q": None, "pos": np.asarray(gizmo.position).tolist(),
+                    "wxyz": np.asarray(gizmo.wxyz).tolist(), "grip": None}]
     with state_lock:
         q = current_q.copy()
-    segments: list[tuple[np.ndarray, np.ndarray]] = []
-    for i, (pos, wxyz) in enumerate(targets):
-        pos_t, wxyz_t = _grasp_to_tool0(pos, wxyz)  # gizmo is at the grasp point
-        try:
-            q_next = pks.solve_ik_seeded(
-                robot=robot,
-                target_link_name=TARGET_LINK,
-                target_position=pos_t,
-                target_wxyz=wxyz_t,
-                q_seed=q,
-                rest_weight=2.0,
-            )
-        except Exception as e:
-            gui_status.value = f"IK failed at waypoint {i + 1}: {e}"
-            return
-        segments.append((q.copy(), np.asarray(q_next)))
-        q = np.asarray(q_next)
+    segments: list[tuple[np.ndarray, np.ndarray, str | None]] = []
+    for i, wp in enumerate(targets):
+        if wp.get("q") is not None:
+            q_next = np.asarray(wp["q"], dtype=np.float64)  # taught joints, replay exactly
+        else:
+            pos_t, wxyz_t = _grasp_to_tool0(np.asarray(wp["pos"]), np.asarray(wp["wxyz"]))
+            try:
+                q_next = np.asarray(pks.solve_ik_seeded(
+                    robot=robot,
+                    target_link_name=TARGET_LINK,
+                    target_position=pos_t,
+                    target_wxyz=wxyz_t,
+                    q_seed=q,
+                    rest_weight=2.0,
+                ))
+            except Exception as e:
+                gui_status.value = f"IK failed at waypoint {i + 1}: {e}"
+                return
+            wp["q"] = q_next.tolist()  # backfill so a save-after-plan carries joints too
+        segments.append((q.copy(), q_next, wp.get("grip")))
+        q = q_next
     plan_segments = segments
-    total = sum(np.linalg.norm(b - a) for a, b in segments)
+    total = sum(np.linalg.norm(b - a) for a, b, _ in segments)
     gui_play.disabled = False
     gui_status.value = f"Planned {len(segments)} segment(s), total |Δq|={total:.3f}"
 
@@ -390,6 +437,7 @@ def _post_execute_cleanup() -> None:
 
 
 def _play() -> None:
+    global gripper_finger
     assert plan_segments is not None
     execute = gui_execute.value   # latched at play-start
     if execute:
@@ -401,10 +449,11 @@ def _play() -> None:
     stop_flag.clear()
     gui_play.disabled = True
     gui_live.disabled = True
+    gui_freedrive.disabled = True
     gui_stop.disabled = False
 
     try:
-        for seg_idx, (q_start, q_goal) in enumerate(plan_segments):
+        for seg_idx, (q_start, q_goal, grip) in enumerate(plan_segments):
             if stop_flag.is_set():
                 break
             delta = q_goal - q_start
@@ -424,6 +473,29 @@ def _play() -> None:
                     rtde_c.servoJ(q.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
                 time.sleep(dt)
                 alpha = min(1.0, alpha + dt * speed / seg_duration)
+
+            # gripper action recorded at this waypoint (hold the arm with servoJ
+            # while the fingers tween; real command only on an executed play)
+            if not stop_flag.is_set() and grip in ("open", "close"):
+                gui_status.value = f"Gripper: {grip}"
+                target_f = GRIPPER_FINGER_OPEN if grip == "open" else 0.0
+                if execute and gripper is not None:
+                    try:
+                        getattr(gripper, "open" if grip == "open" else "close_gripper")()
+                    except Exception as e:
+                        gui_grip_status.value = f"cmd failed: {e}"
+                start_f = gripper_finger
+                steps = max(1, int(GRIPPER_TWEEN_S * STREAM_HZ))
+                for k in range(1, steps + 1):
+                    if stop_flag.is_set():
+                        break
+                    gripper_finger = start_f + (target_f - start_f) * k / steps
+                    if execute:
+                        rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
+                    viser_urdf.update_cfg(q_goal)
+                    _update_gripper_viz(q_goal)
+                    time.sleep(dt)
+                gripper_finger = target_f
 
             # dwell at the waypoint (still streaming to hold pose firmly)
             if not stop_flag.is_set() and seg_idx < len(plan_segments) - 1:
@@ -464,6 +536,7 @@ def _play() -> None:
         playing.clear()
         gui_stop.disabled = True
         gui_live.disabled = False
+        gui_freedrive.disabled = False
         gui_status.value = "Stopped" if stop_flag.is_set() else "Done"
 
     if execute and completed:
@@ -487,6 +560,8 @@ def _(_):
     live.clear()
     if gui_live.value:
         gui_live.value = False
+    if gui_freedrive.value:
+        gui_freedrive.value = False   # triggers off-branch -> endTeachMode
     gui_plan.disabled = False
 
 
@@ -537,6 +612,7 @@ def _(_):
         live.set()
         gui_plan.disabled = True
         gui_play.disabled = True
+        gui_freedrive.disabled = True
         gui_stop.disabled = False
         gui_status.value = "LIVE: arm follows gizmo"
         threading.Thread(target=_live_loop, daemon=True).start()
@@ -544,7 +620,73 @@ def _(_):
         live.clear()
         gui_plan.disabled = False
         gui_play.disabled = plan_segments is None
+        gui_freedrive.disabled = False
         gui_stop.disabled = True
+
+
+@gui_freedrive.on_update
+def _(_):
+    if gui_freedrive.value:
+        try:
+            rtde_c.teachMode()   # zero-gravity hand-guiding
+        except Exception as e:
+            gui_status.value = f"teachMode failed: {e}"
+            gui_freedrive.value = False
+            return
+        freedrive.set()
+        gui_plan.disabled = True
+        gui_play.disabled = True
+        gui_live.disabled = True
+        gui_stop.disabled = False
+        gui_status.value = "FREE-DRIVE: move the arm by hand, then Capture waypoint"
+    else:
+        freedrive.clear()
+        try:
+            rtde_c.endTeachMode()
+        except Exception:
+            pass
+        gui_plan.disabled = False
+        gui_play.disabled = plan_segments is None
+        gui_live.disabled = False
+        gui_stop.disabled = True
+        gui_status.value = "Free-drive off"
+
+
+@gui_save.on_click
+def _(_):
+    os.makedirs(TRAJ_DIR, exist_ok=True)
+    name = (gui_traj_name.value or "traj").strip()
+    path = os.path.join(TRAJ_DIR, f"{name}.json")
+    data = {
+        "robot": "ur15",
+        "created": datetime.datetime.now().isoformat(timespec="seconds"),
+        "waypoints": waypoints,
+    }
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+    gui_status.value = f"Saved {len(waypoints)} waypoint(s) -> {name}.json"
+
+
+@gui_load.on_click
+def _(_):
+    name = (gui_traj_name.value or "traj").strip()
+    path = os.path.join(TRAJ_DIR, f"{name}.json")
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except Exception as e:
+        gui_status.value = f"Load failed: {e}"
+        return
+    global plan_segments
+    for h in waypoint_frames:
+        h.remove()
+    waypoint_frames.clear()
+    waypoints.clear()
+    for wp in data.get("waypoints", []):
+        _add_waypoint(wp)
+    plan_segments = None
+    gui_play.disabled = True
+    gui_status.value = f"Loaded {len(waypoints)} waypoint(s) from {name}.json — Plan to replay"
 
 
 def viz_loop() -> None:
