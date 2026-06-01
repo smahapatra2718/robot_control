@@ -1,0 +1,295 @@
+# abb_foga — robot teleop scaffold
+
+Browser-based teleop for two arms, sharing the same viser + pyroki stack:
+
+- **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`). Speed slider is unified: the same `q` is sent to both the viser preview and `rtde_c.servoJ()` each tick, so viz and robot move in lockstep.
+- **`teleop_gofa.py`** — ABB GoFa CRB 15000 (variant `crb15000_12_127`) over Robot Web Services (RWS), via the minimal client in `abb_rws.py`. Each segment endpoint is committed as a `MoveAbsJ` via a tiny RAPID supervisor (`PyExec`) running on the controller. Speed slider only affects the in-browser preview; real motion speed comes from `v_tcp` + `AccSet` inside `PyExec.mod`. EGM would let the slider become unified — see [Future: EGM swap](#future-egm-swap).
+
+Both scripts share: the same UI (viser scene + gizmo + waypoints), the same IK (`pyroki_snippets._solve_ik_seeded`), the same trapezoidal-time alpha profile in the play loop, and the same auto-cleanup after a successful executed Play.
+
+Run:
+
+```bash
+./robot_control/bin/python teleop_ur15.py   # or teleop_gofa.py
+```
+
+Open the printed `http://localhost:8080`. Each script connects to its controller at startup and aborts if it can't reach.
+
+## Project layout
+
+```
+abb_foga/
+├── robot_control/             # Python venv (3.13)
+├── pyroki_src/                # git clone of chungmin99/pyroki, installed -e
+├── pyroki_snippets/           # copied from pyroki_src/examples/ + our _solve_ik_seeded.py
+├── abb_desc/                  # clone of ros-industrial/abb (GoFa URDF + meshes)
+├── crb15000_12_127.urdf       # generated from abb_desc/.../crb15000_12_127.xacro
+├── teleop_ur15.py             # UR15 script (RTDE / servoJ)
+├── teleop_gofa.py             # GoFa script (RWS / MoveAbsJ via PyExec)
+├── abb_rws.py                 # minimal RWS client for OmniCore (RobotWare 7+)
+├── install_gofa_rapid.py      # one-shot: uploads PyExec.mod, gets it running
+├── ur_desc/                   # unused leftover clone of UR ROS2 description
+└── CLAUDE.md                  # this file
+```
+
+## Dependencies (already installed in `robot_control/`)
+
+Python: numpy, viser, yourdfpy, jaxlie, jax, jaxlib, robot_descriptions, xacrodoc, pyroki (editable), ur_rtde 1.6.3, requests, urllib3.
+
+System (brew): cmake, **boost@1.85** (keg-only, for ur_rtde build only).
+
+URDFs:
+- **UR15**: loaded at runtime via `robot_descriptions.loaders.yourdfpy.load_robot_description("ur15_description")`. No local file.
+- **GoFa**: local `crb15000_12_127.urdf`, generated once via `xacrodoc` from the ros-industrial repo. Mesh paths use `package://abb_crb15000_support/...`; resolved via `URDF_MESH_DIR_PREFIX = "abb_desc"` and a custom `filename_handler` in `teleop_gofa.py`. The generated URDF has `file://` URIs stripped (yourdfpy can't resolve those — only `package://` or plain paths).
+
+---
+
+# UR15
+
+## Controller setup (one-time)
+
+UR15 ships with Polyscope X, which firewalls external services by default. On the pendant:
+
+1. **Settings → Security → Services**: enable Dashboard (29999), Primary (30001), RTDE (30004). Ping works without this but every TCP port times out.
+2. **Top-right toggle: Remote Control mode.** `RTDEControlInterface` refuses to attach in Local mode.
+3. Robot must be in Normal state — base ring **green**.
+
+Quick diagnostic from your Mac:
+
+```bash
+for p in 29999 30001 30002 30004; do nc -zv -G 2 192.168.0.100 $p; done
+```
+
+All four should report "succeeded".
+
+## Architecture of `teleop_ur15.py`
+
+Threads:
+- **`poll_loop`** — `rtde_r.getActualQ()` at 30 Hz into `current_q` under `state_lock`.
+- **`viz_loop`** — when not playing, writes `current_q` into the `ViserUrdf`.
+- **`_play`** — spawned per Play click; owns the URDF viz and (when Execute is on) the `servoJ` stream.
+
+State machine:
+1. **Idle:** browser mirrors real arm. User drags a 6-DoF gizmo.
+2. **Add waypoint:** snapshots `(pos, wxyz)` into `waypoints[]` and adds a frame to the scene. Remove-last / Clear reverse it.
+3. **Plan:** seeded IK at each waypoint in order (each segment's solution seeds the next). Stores `plan_segments: list[(q_start, q_goal)]`. If no waypoints, falls back to the gizmo's current pose.
+4. **Play:** iterates segments. Per segment, advances `alpha ∈ [0,1]` at `dt * speed_slider / seg_duration` per tick, with `seg_duration = max(MIN_SEG_DURATION_S, max(|Δq|) / MAX_JOINT_SPEED)`. Maps alpha through `_alpha_to_s` (trapezoidal: 25% parabolic ramp / 50% linear cruise / 25% parabolic ramp) and writes `q = q_start + delta * eased` to the URDF and (if Execute on) `rtde_c.servoJ(q, 0, 0, dt, lookahead, gain)`.
+5. **Auto-cleanup after a successful executed Play:** clears waypoints + their frames, resets the gizmo to the new EE pose, drops `plan_segments`, unchecks Execute, disables Play. Stopped or preview plays leave state untouched.
+
+Safety:
+- Execute auto-unchecks the instant a Play with Execute=on begins.
+- Stop button → `stop_flag` → loop breaks → `finally` calls `rtde_c.servoStop(SERVO_STOP_DECEL=2.0)` (default 10 felt jerky).
+
+## Tunables — `teleop_ur15.py`
+
+| Constant | Default | Effect |
+|---|---|---|
+| `ROBOT_IP` | `192.168.0.100` | UR15 controller address |
+| `MAX_JOINT_SPEED` | `1.0` rad/s | Peak per-joint speed at slider=1.0 |
+| `MIN_SEG_DURATION_S` | `0.5` s | Floor on per-segment time |
+| `RAMP_FRAC` | `0.25` | Trapezoidal ramp fraction. `0.5` = triangle, `0.1` = sharper |
+| `DWELL_S` | `0.2` s | Pause at each intermediate waypoint |
+| `SERVO_STOP_DECEL` | `2.0` rad/s² | Final settle deceleration |
+| `STREAM_HZ` | `50` | servoJ + viz frame rate |
+| `rest_weight` (in Plan handler) | `2.0` | IK pull toward current joints |
+
+---
+
+# GoFa CRB 15000
+
+## Controller setup (one-time, ~20 minutes)
+
+This is more involved than the UR because ABB controllers always run a RAPID program for motion — Python doesn't talk to the motion executor directly; it pokes RAPID variables and a RAPID `WHILE TRUE` loop does the work.
+
+### Hardware
+
+**1. Safety jumpers.** The OmniCore C30 ships with the safeguard chain expecting an external safety device. For a standalone benchtop GoFa, you need physical jumpers on the **X14** terminal block:
+
+| Pair | Function | Status (lab install) |
+|---|---|---|
+| ES1 (pins 1–2) | Emergency stop ch 1 | jumpered |
+| ES2 (pins 3–4) | Emergency stop ch 2 | jumpered |
+| AS1 (pins 5–6) | Auto stop / safeguard ch 1 | **must be jumpered** |
+| AS2 (pins 7–8) | Auto stop / safeguard ch 2 | **must be jumpered** |
+
+Symptom of missing AS jumpers: Manual mode works (the pendant enabling grip switch bypasses AS), Auto mode immediately fires a "guard stop / protective stop circuit open". Look at the **specific** event log entry — if it says AS1/AS2 or "protective stop circuit", jumper them.
+
+Safety note: jumpering AS bypasses external safeguarding inputs. The GoFa's built-in cobot collision detection still protects against collisions, but **don't** run high-speed Auto motion with people in the workspace.
+
+### Network
+
+OmniCore C30 has three logical networks; pick one for RWS access:
+
+| Logical network | Physical port | What lives there |
+|---|---|---|
+| Private / MGMT | **MGMT** (the rightmost of the three at bottom-right) | RWS at `192.168.125.1`, FlexPendant, RobotStudio direct |
+| Public / WAN | **WAN** (next to MGMT) | RWS on plant subnet, IP configurable from pendant |
+| I/O Network | **LAN** + X1–X5 ETHERNET SWITCH | EtherNet/IP, Profinet, fieldbus only — **not RWS** |
+
+For lab use, the simplest path is Mac → MGMT direct via Ethernet cable, with the Mac's Ethernet interface set to a static `192.168.125.x` (anything except `.1`).
+
+⚠️ **VPN gotcha.** If your Mac is on a VPN that claims the `192.168.125.0/24` subnet (e.g., a corporate VPN), packets to the GoFa will be routed into the VPN tunnel instead of out the Ethernet cable. Symptom: connect-refused or timeouts on every port. Either disconnect the VPN while working with the GoFa, or use the WAN port on a non-conflicting subnet (e.g., `192.168.0.102` if your lab network is `192.168.0.0/24` — same subnet as the UR15).
+
+Diagnostic from Mac:
+
+```bash
+ping -c 2 192.168.125.1               # should reply, ~0.5 ms
+nc -zv -G 2 192.168.125.1 443         # should be "succeeded" (OmniCore is HTTPS)
+route get 192.168.125.1 | grep interface   # should be en* (Ethernet), NOT utun* (VPN)
+```
+
+### Pendant: enter Auto mode
+
+OmniCore C30 has **no physical Auto/Manual key switch** (unlike larger ABB controllers). Mode selection is on the FlexPendant touchscreen — usually a small mode-icon in the top status bar. Tap it → Automatic → confirm. There may be a separate white motors-on button on the front of the controller cabinet that needs to be pressed once.
+
+### Push the RAPID supervisor
+
+Run the installer:
+
+```bash
+./robot_control/bin/python install_gofa_rapid.py
+```
+
+What it does:
+1. Connects to RWS over HTTPS at `ROBOT_IP` (default `192.168.125.1`).
+2. Probes controller state, opmode, exec state.
+3. Grabs RAPID mastership.
+4. Stops any running program (skipped if already stopped).
+5. **Unloads `MainModule`** — it ships with a `PROC main()` that collides with ours.
+6. Uploads `PyExec.mod` to `$HOME/` on the controller.
+7. Loads `PyExec.mod` into task `T_ROB1`.
+8. Turns motors on (if off).
+9. Tries `resetpp` + `start_program` over RWS. **These fail** on OmniCore for us (the exact RWS shape eluded me — see [OmniCore RWS gotchas](#omnicore-rws-gotchas)). When they fail, the script prompts:
+   - On the pendant, tap **PP to Main** (now possible since mastership was released for the prompt).
+   - Press the green **Play** button.
+10. Confirms the program is running, then exits.
+
+After this, `PyExec` is parked at `WaitUntil py_go = TRUE` and will execute MoveAbsJ to `py_target` whenever Python sets `py_go = TRUE`. The module persists across reboots (saved in `$HOME/PyExec.mod`); you only re-run the installer if you change the module text.
+
+### PyExec.mod — the supervisor
+
+```RAPID
+MODULE PyExec
+  VAR jointtarget py_target := [[0,0,0,0,0,0],[9E9,9E9,9E9,9E9,9E9,9E9]];
+  PERS bool       py_go     := FALSE;
+  CONST speeddata v_tcp     := v200;
+
+  PROC main()
+    AccSet 50, 50;  ! 50% accel, 50% ramp = smooth start/stop
+    WHILE TRUE DO
+      WaitUntil py_go = TRUE;
+      MoveAbsJ py_target, v_tcp, fine, tool0;
+      py_go := FALSE;
+    ENDWHILE
+  ENDPROC
+ENDMODULE
+```
+
+Three knobs live here, not in Python:
+
+- `v_tcp = v200` — TCP speed during MoveAbsJ. Swap for `v50`, `v100`, `v500` etc.
+- `AccSet 50, 50` — first arg is acceleration % of max, second is ramp %. `30, 50` very smooth, `80, 80` snappy.
+- `fine` — exact stop at each waypoint. Swap for `z10`, `z50`, `z100` for blend zones (curves through waypoints, less precise).
+
+After editing the template in `install_gofa_rapid.py`, rerun the installer. (Ctrl+C any running teleop first so mastership is free.)
+
+## Architecture of `teleop_gofa.py`
+
+Same shape as `teleop_ur15.py` with two substitutions:
+
+- **State polling** uses `rws.get_joints()` at ~10 Hz instead of RTDE at 500 Hz. The browser viz lags slightly more behind the real arm; for visual preview-only this is fine.
+- **Execute mode** is sequential commit-and-wait, not streaming:
+  1. Viser plays out the segment preview at the slider speed (lockstep with the URDF — same code path as UR15).
+  2. After the preview finishes, `_execute_segment` fires:
+     ```
+     set py_target = q_goal
+     set py_go = TRUE
+     wait until RAPID clears py_go to FALSE
+     ```
+     RAPID picks up `py_go = TRUE`, executes MoveAbsJ, and resets `py_go := FALSE`. Python polls `py_go` until it's FALSE again — that's how we know the move finished.
+  3. Loop to the next segment.
+
+Important consequence: **the speed slider only changes the viser preview speed, not the robot's MoveAbsJ speed**. Real speed is `v_tcp` in RAPID.
+
+Startup safety: after grabbing mastership, the script pre-loads `py_target` with the current joints and sets `py_go = FALSE`. That way a stray external `py_go = TRUE` triggers a no-op move-to-self.
+
+## Tunables — `teleop_gofa.py`
+
+| Constant | Default | Effect |
+|---|---|---|
+| `ROBOT_IP` | `192.168.125.1` | GoFa MGMT IP (direct cable). For WAN/lab use, set to whatever Public IP you assigned. |
+| `RWS_USER` / `RWS_PASSWORD` | `Default User` / `robotics` | OmniCore defaults |
+| `MAX_JOINT_SPEED` | `1.0` rad/s | Peak viz speed at slider=1.0 |
+| `MIN_SEG_DURATION_S` | `0.5` s | Floor on per-segment viz time |
+| `RAMP_FRAC` | `0.25` | Trapezoidal viz profile ramp fraction |
+| `DWELL_S` | `0.2` s | Pause between segments (viz only) |
+| `EXECUTE_SETTLE_S` | `0.5` s | Extra wait after RAPID clears py_go |
+| `POLL_HZ` | `10` | RWS state polling rate |
+| `STREAM_HZ` | `50` | Viz preview frame rate |
+| `rest_weight` (Plan handler) | `2.0` | IK pull toward current joints |
+
+## OmniCore RWS gotchas
+
+These bit us during the GoFa bring-up. Captured here so future-us doesn't relearn them:
+
+- **HTTPS only, port 443.** Port 80 is disabled by default. Use `https=True` (the default in `abb_rws.RWSClient`). The cert is self-signed; we set `verify=False` and suppress `InsecureRequestWarning`.
+
+- **HTTP Basic auth, NOT Digest.** OmniCore RWS 2.0 advertises `WWW-Authenticate: Basic`. `abb_robot_client` (the popular Python lib) uses Digest, which is for IRC5/RW6 — it'll silently 401 against OmniCore. `abb_rws.RWSClient` uses Basic by default; pass `auth_scheme="digest"` for legacy IRC5.
+
+- **Every POST/PUT must have `Content-Type: application/x-www-form-urlencoded;v=2.0`** — note the `;v=2.0` suffix. Without it you get `406 Not Acceptable`. `_post()` sets this automatically.
+
+- **Mastership URL has action in the path, not the body.** OmniCore: `POST /rw/mastership/edit/request`. IRC5 was: `POST /rw/mastership/edit` body `action=request`. Many other endpoints still use action-in-body — there's no consistent convention.
+
+- **RAPID symbol data URL needs the module name in the path.** OmniCore: `POST /rw/rapid/symbol/RAPID/{task}/{module}/{var}/data` body `value=...`. IRC5 was: `POST /rw/rapid/symbol/data/RAPID/{task}/{var}?action=set`.
+
+- **Mastership orphans easily.** If a process holding mastership crashes, the controller still thinks it's held until the session times out. Symptom: subsequent `request` calls 403. Fix: reboot the controller from the pendant, or wait ~30s for session timeout. `abb_rws.RWSClient.__post_init__` registers an `atexit` hook to release on clean exit.
+
+- **`MainModule` collision.** The GoFa ships with a `MainModule.mod` that has its own `PROC main()`. RAPID won't compile two `main`s — when we load PyExec the controller logs "Errors in RAPID program" event 40160. The installer unloads `MainModule` before loading PyExec via `POST /rw/rapid/tasks/T_ROB1/unloadmod` body `module=MainModule`.
+
+- **Build errors are visible at `/rw/rapid/tasks/T_ROB1/program/builderror`.** Useful for diagnosing semantic errors after a module load — it returns module name, row, column, error type. Way more useful than the generic "errors in RAPID program" event log entry.
+
+- **`resetpp` (PP-to-Main) and `start_program` via RWS** — we couldn't find the right shape on OmniCore. Every variation returned 400 "semantic error" or 403. The installer falls back to telling the user to press PP-to-Main + Play on the pendant. If you crack the right URL, it would tighten the install flow.
+
+- **OmniCore C30 has no physical Auto/Manual key switch.** Mode is selected on the FlexPendant touchscreen (top status bar icon). Larger ABB controllers do have a key switch — don't assume.
+
+## Future: EGM swap
+
+The speed slider unification on UR15 works because `servoJ` is a streaming primitive — Python sends 50 Hz updates and the controller follows. GoFa can do the equivalent via **Externally Guided Motion (EGM)** — UDP at 250 Hz — but EGM is a paid licensed option on the controller and requires its own RAPID program (`EGMActJoint` / `EGMRunJoint`).
+
+To swap GoFa to EGM:
+1. Confirm EGM option is licensed on the controller (Settings → System → Software Resources).
+2. Write a RAPID module that calls `EGMActJoint` then `EGMRunJoint` in a loop. Replace `PyExec.mod`.
+3. Replace the body of `_execute_segment` in `teleop_gofa.py` with a UDP socket that streams joint targets at 250 Hz, identical in shape to the UR15 servoJ loop.
+4. Drop the per-segment commit-and-wait. Speed slider becomes unified.
+
+The viser/pyroki layer stays the same — only `_execute_segment` and the RAPID module change.
+
+---
+
+# Custom IK: `pyroki_snippets/_solve_ik_seeded.py`
+
+PyRoki's stock `solve_ik` snippet has no seed and no posture cost, so it returns *a* valid IK solution that often lives in a distant null-space branch (wrist flipped 180°, elbow on the wrong side, etc.). `solve_ik_seeded` adds:
+- `pk.costs.rest_cost(joint_var, q_seed, weight=rest_weight)` — pulls the solution toward `q_seed` (defaults to `rest_weight=2.0`).
+- `initial_vals=VarValues.make([joint_var.with_value(q_seed)])` — starts the optimizer at the seed instead of at zeros.
+
+Trade-off: at `rest_weight=2.0` the pose error is ~0.5 mm. Raise to 5–10 if the IK still picks wrong branches; the gizmo target then drifts more but stays in the same kinematic family.
+
+Used by both `teleop_ur15.py` and `teleop_gofa.py`.
+
+---
+
+# Other gotchas
+
+- **Boost 1.90 breaks ur_rtde on macOS.** Boost made `Boost.System` header-only in 1.87+, so homebrew Boost 1.90 ships no `boost_system-*-Config.cmake` and ur_rtde's `find_package(boost_system CONFIG)` dies. Fix: `brew install boost@1.85` (keg-only, doesn't shadow 1.90), then build ur_rtde with `BOOST_ROOT=/opt/homebrew/opt/boost@1.85 CMAKE_PREFIX_PATH=/opt/homebrew/opt/boost@1.85 pip install ur_rtde`. Already done in `robot_control/`.
+
+- **`pip install pyroki` doesn't exist.** Install from source: `git clone https://github.com/chungmin99/pyroki.git pyroki_src && ./robot_control/bin/pip install -e ./pyroki_src`. Already done.
+
+- **PyRoki's `solve_ik` lives in `examples/pyroki_snippets/`, not the package itself.** It's NOT installed by `pip install -e .`. Workaround: the `pyroki_snippets/` directory in the project root is a copy of `pyroki_src/examples/pyroki_snippets/` plus our `_solve_ik_seeded.py`, and both teleop scripts add the project root to `sys.path` so `import pyroki_snippets` works.
+
+- **First IK call takes ~800 ms (JAX JIT compile).** Subsequent calls are milliseconds. The first Plan click will feel slow.
+
+- **UR15 model is brand new.** It postdates a lot of training data — if Claude says "there's no UR15", point at https://www.universal-robots.com/products/ur15/. The official ROS2 description repo supports `ur_type:=ur15`.
+
+- **yourdfpy + `file://` URIs.** When `xacrodoc` processes a xacro to URDF, it resolves `package://` URIs into absolute `file://...` paths. yourdfpy's `filename_handler` callback only fires for unresolved URIs (`package://`, plain paths) — `file://` is passed straight to trimesh which can't open them. Fix: strip `file://` prefix from the URDF after xacro processing. The GoFa URDF was generated this way.
+
+- **ABB `abb-robot-client` (Python) only supports IRC5.** Despite being the most-starred ABB python lib, it doesn't work on OmniCore. We wrote `abb_rws.py` ourselves; see [OmniCore RWS gotchas](#omnicore-rws-gotchas).

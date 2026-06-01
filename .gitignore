@@ -1,0 +1,11 @@
+# Python venv — regenerable, machine-specific (see README "Setup")
+robot_control/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# macOS
+.DS_Store

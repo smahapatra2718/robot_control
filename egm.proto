@@ -1,0 +1,137 @@
+// Externally Guided Motion (EGM) protobuf wire format for ABB OmniCore
+// controllers. Transcribed from ABB Application Manual "Externally Guided
+// Motion" (3HAC073319-001) / "Controller software OmniCore" (3HAC066554-001).
+//
+// Generate the Python binding with:
+//   ./robot_control/bin/python -m grpc_tools.protoc -I. --python_out=. egm.proto
+
+syntax = "proto2";
+
+package abb.egm;
+
+message EgmHeader {
+    optional uint32 seqno = 1;
+    optional uint32 tm    = 2;
+    enum MessageType {
+        MSGTYPE_UNDEFINED       = 0;
+        MSGTYPE_COMMAND         = 1;
+        MSGTYPE_DATA            = 2;
+        MSGTYPE_CORRECTION      = 3;
+        MSGTYPE_PATH_CORRECTION = 4;
+    }
+    optional MessageType mtype = 3 [default = MSGTYPE_UNDEFINED];
+}
+
+message EgmCartesian {
+    required double x = 1;
+    required double y = 2;
+    required double z = 3;
+}
+
+message EgmQuaternion {
+    required double u0 = 1;
+    required double u1 = 2;
+    required double u2 = 3;
+    required double u3 = 4;
+}
+
+message EgmEuler {
+    required double x = 1;
+    required double y = 2;
+    required double z = 3;
+}
+
+message EgmPose {
+    optional EgmCartesian  pos    = 1;
+    optional EgmQuaternion orient = 2;
+    optional EgmEuler      euler  = 3;
+}
+
+message EgmCartesianSpeed {
+    repeated double value = 1;
+}
+
+message EgmJoints {
+    repeated double joints = 1;
+}
+
+message EgmExternalJoints {
+    repeated double joints = 1;
+}
+
+message EgmClock {
+    required double sec  = 1;
+    required double usec = 2;
+}
+
+message EgmPlanned {
+    optional EgmJoints         joints         = 1;
+    optional EgmPose           cartesian      = 2;
+    optional EgmExternalJoints externalJoints = 3;
+    optional EgmClock          time           = 4;
+}
+
+enum EgmMotorState {
+    MOTORS_UNDEFINED = 0;
+    MOTORS_ON        = 1;
+    MOTORS_OFF       = 2;
+}
+
+enum EgmMCIState {
+    MCI_UNDEFINED = 0;
+    MCI_ERROR     = 1;
+    MCI_STOPPED   = 2;
+    MCI_RUNNING   = 3;
+}
+
+enum EgmRapidCtrlExecState {
+    RAPID_UNDEFINED = 0;
+    RAPID_STOPPED   = 1;
+    RAPID_RUNNING   = 2;
+}
+
+message EgmFeedBack {
+    optional EgmJoints         joints         = 1;
+    optional EgmPose           cartesian      = 2;
+    optional EgmExternalJoints externalJoints = 3;
+    optional EgmClock          time           = 4;
+}
+
+message EgmMeasuredForce {
+    optional bool   fcTcpForceValid = 1;
+    repeated double force           = 2;
+}
+
+message EgmTestSignals {
+    repeated double signals = 1;
+}
+
+message EgmRobot {
+    optional EgmHeader             header              = 1;
+    optional EgmFeedBack           feedBack            = 2;
+    optional EgmPlanned            planned             = 3;
+    optional EgmMotorState         motorState          = 4;
+    optional EgmMCIState           mciState            = 5;
+    optional bool                  mciConvergenceMet   = 6;
+    optional EgmTestSignals        testSignals         = 7;
+    optional EgmRapidCtrlExecState rapidExecState      = 8;
+    optional EgmMeasuredForce      measuredForce       = 9;
+    optional EgmExternalJoints     utilizationRate     = 10;
+}
+
+message EgmSpeedRef {
+    optional EgmJoints         joints         = 1;
+    optional EgmCartesianSpeed cartesian      = 2;
+    optional EgmExternalJoints externalJoints = 3;
+}
+
+message EgmSensor {
+    optional EgmHeader   header   = 1;
+    optional EgmPlanned  planned  = 2;
+    optional EgmSpeedRef speedRef = 3;
+}
+
+message EgmSensorPathCorr {
+    optional EgmHeader header = 1;
+    optional EgmPose   pos    = 2;
+}
