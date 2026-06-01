@@ -53,7 +53,7 @@ RAMP_FRAC = 0.25                # fraction of segment spent ramping up (same for
 SERVO_LOOKAHEAD = 0.1           # servoJ lookahead_time (s)
 SERVO_GAIN = 300                # servoJ gain
 SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (default 10 is harsh)
-SETTLE_TOL_RAD = 0.002          # converged when max |current_q - q_final| is below this (~0.11 deg)
+SETTLE_TOL_RAD = 0.0007         # converged when max |current_q - q_final| is below this (~0.04 deg, ~2 mm)
 SETTLE_MAX_S = 3.0              # cap on the final convergence hold
 
 # ---- Hand-E gripper ----
