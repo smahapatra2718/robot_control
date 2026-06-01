@@ -56,6 +56,9 @@ POLL_HZ = 10                         # RWS state polling (idle viz only)
 PLAY_HZ = 60                         # viz refresh when idle
 STREAM_HZ = 100                      # EGM target stream rate (controller side runs ~250Hz)
 MAX_JOINT_SPEED = 1.0                # rad/s peak per joint at slider=1.0
+MAX_TCP_SPEED = 0.25                 # m/s — hard cap on real tool speed (ISO/TS 15066
+                                     # collaborative limit). Enforced against the actual
+                                     # kinematics per segment; slider can only slow below it.
 MIN_SEG_DURATION_S = 0.5
 DWELL_S = 0.2
 RAMP_FRAC = 0.25
@@ -146,6 +149,26 @@ def ee_pose(q: np.ndarray) -> jaxlie.SE3:
     return jaxlie.SE3(Ts[TARGET_LINK_IDX])
 
 
+def _cap_seg_duration(q_start: np.ndarray, delta: np.ndarray,
+                      seg_duration: float, dt: float) -> float:
+    """Stretch seg_duration so the real TCP speed never exceeds MAX_TCP_SPEED.
+
+    Walks the eased trajectory through forward kinematics at slider=1.0 and
+    measures the peak instantaneous TCP speed. Because TCP speed scales as
+    1/seg_duration for a fixed path, one measurement gives the exact stretch
+    factor. The slider only scales below 1.0, so this is the worst case.
+    """
+    alpha, prev_p, peak = 0.0, np.asarray(ee_pose(q_start).translation()), 0.0
+    while alpha < 1.0:
+        alpha = min(1.0, alpha + dt / seg_duration)
+        p = np.asarray(ee_pose(q_start + delta * _alpha_to_s(alpha)).translation())
+        peak = max(peak, float(np.linalg.norm(p - prev_p)) / dt)
+        prev_p = p
+    if peak > MAX_TCP_SPEED:
+        seg_duration *= peak / MAX_TCP_SPEED
+    return seg_duration
+
+
 # ---------- viser ----------
 server = viser.ViserServer()
 server.scene.add_grid("/ground", width=2, height=2)
@@ -173,7 +196,7 @@ gui_plan = server.gui.add_button("Plan")
 gui_play = server.gui.add_button("Play", disabled=True)
 gui_stop = server.gui.add_button("Stop", disabled=True)
 gui_reset = server.gui.add_button("Reset gizmo to current EE")
-gui_speed = server.gui.add_slider("Speed (unified)", min=0.1, max=2.0, step=0.05, initial_value=1.0)
+gui_speed = server.gui.add_slider("Speed (unified)", min=0.1, max=1.0, step=0.05, initial_value=1.0)
 gui_execute = server.gui.add_checkbox("Execute on robot (EGM stream)", initial_value=False)
 
 
@@ -330,6 +353,7 @@ def _play() -> None:
                 break
             delta = q_goal - q_start
             seg_duration = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / MAX_JOINT_SPEED)
+            seg_duration = _cap_seg_duration(q_start, delta, seg_duration, dt)
             gui_status.value = f"Segment {seg_idx + 1}/{len(plan_segments)}"
 
             alpha = 0.0

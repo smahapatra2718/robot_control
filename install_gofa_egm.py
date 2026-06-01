@@ -79,8 +79,11 @@ MODULE PyEgm
       EGMSetupUC ROB_1, egm_id, EGM_EXT_NAME, EGM_UC_NAME \\Joint;
 
       !   \\LpFilter         : low-pass cutoff in Hz (lower = more smoothing)
-      !   \\MaxSpeedDeviation: cap on per-joint speed during EGM, deg/s
-      EGMActJoint egm_id \\LpFilter := 20 \\MaxSpeedDeviation := 60;
+      !   \\MaxSpeedDeviation: cap on per-joint speed during EGM, deg/s.
+      !     20 deg/s ~= 0.35 rad/s; at the 0.95 m reach that bounds the TCP
+      !     near the 250 mm/s collaborative limit as a controller-side backstop
+      !     to the Python MAX_TCP_SPEED cap. Raise both together if you raise speed.
+      EGMActJoint egm_id \\LpFilter := 20 \\MaxSpeedDeviation := 20;
 
       EGMRunJoint egm_id, EGM_STOP_HOLD
         \\J1 \\J2 \\J3 \\J4 \\J5 \\J6
