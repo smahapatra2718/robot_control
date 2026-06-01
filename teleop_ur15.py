@@ -54,8 +54,10 @@ SERVO_LOOKAHEAD = 0.1           # servoJ lookahead_time (s)
 SERVO_GAIN = 300                # servoJ gain during motion
 SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (default 10 is harsh)
 SETTLE_GAIN = 600               # stiffer servoJ gain for the static end-of-play hold (tighter convergence)
-SETTLE_TOL_RAD = 0.0002         # converged when max |current_q - q_final| is below this (~0.011 deg, ~0.6 mm)
-SETTLE_MAX_S = 3.0              # cap on the final convergence hold
+SETTLE_TOL_RAD = 0.0001         # early-stop target (~0.006 deg); plateau detector catches the hardware floor below this
+SETTLE_EPS_RAD = 0.00002        # min per-check improvement to count as "still converging"
+SETTLE_STALL_TICKS = 10         # consecutive non-improving checks => at the servoJ floor, stop
+SETTLE_MAX_S = 3.0              # hard cap on the final convergence hold
 
 # ---- Hand-E gripper ----
 GRIPPER_URDF_PATH = os.path.join(_HERE, "hande.urdf")
@@ -407,13 +409,19 @@ def _play() -> None:
         if execute and not stop_flag.is_set():
             q_final = plan_segments[-1][1]
             deadline = time.monotonic() + SETTLE_MAX_S
+            best, stalls = float("inf"), 0
             while not stop_flag.is_set():
                 rtde_c.servoJ(q_final.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SETTLE_GAIN)
                 time.sleep(dt)
                 with state_lock:
                     err = float(np.max(np.abs(current_q - q_final)))
-                if err < SETTLE_TOL_RAD or time.monotonic() > deadline:
-                    if err >= SETTLE_TOL_RAD:
+                if err < best - SETTLE_EPS_RAD:
+                    best, stalls = err, 0
+                else:
+                    stalls += 1
+                # stop when converged, when error plateaus (hardware floor), or at the cap
+                if err < SETTLE_TOL_RAD or stalls >= SETTLE_STALL_TICKS or time.monotonic() > deadline:
+                    if time.monotonic() > deadline and err >= SETTLE_TOL_RAD:
                         print(f"[settle] hit SETTLE_MAX_S cap at {np.degrees(err):.3f} deg")
                     break
         completed = not stop_flag.is_set()
