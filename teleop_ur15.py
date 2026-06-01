@@ -3,11 +3,16 @@ viser + pyroki teleop scaffold for a UR15.
 
 Flow:
   - Background thread polls real UR15 joints via RTDE -> shared `current_q`.
-  - Viser shows the live state. A 6-DoF gizmo sits at the EE.
+  - Viser shows the live state. A 6-DoF gizmo sits at the gripper grasp point.
   - User drags the gizmo freely. Robot does NOT move.
   - "Plan"  -> solve IK from current_q to gizmo pose, build a joint-space trajectory.
   - "Play"  -> animate the URDF through the trajectory in viser.
               If "Execute on robot" is checked, also stream to the UR15.
+
+A Robotiq Hand-E gripper is mounted on the wrist: its mesh rides tool0 in viser,
+the gizmo/IK target sits at the grasp point (a fixed tool0 offset, so IK is
+unchanged), and Open/Close buttons drive the real gripper over Modbus RTU (see
+hande_gripper.py) plus a matching viz animation.
 
 Run from project root so `pyroki_snippets/` is on the path:
   ./robot_control/bin/python teleop_ur15.py
@@ -23,12 +28,15 @@ import jaxlie
 import numpy as np
 import pyroki as pk
 import viser
+import yourdfpy
 from robot_descriptions.loaders.yourdfpy import load_robot_description
 from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
 from viser.extras import ViserUrdf
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+import hande_gripper  # noqa: E402
 import pyroki_snippets as pks  # noqa: E402
 
 # ---------- config ----------
@@ -45,6 +53,13 @@ RAMP_FRAC = 0.25                # fraction of segment spent ramping up (same for
 SERVO_LOOKAHEAD = 0.1           # servoJ lookahead_time (s)
 SERVO_GAIN = 300                # servoJ gain
 SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (default 10 is harsh)
+
+# ---- Hand-E gripper ----
+GRIPPER_URDF_PATH = os.path.join(_HERE, "hande.urdf")
+GRIPPER_HOST = ROBOT_IP         # tool RS-485 socket (RS485 / Tool-Comm URCap daemon)
+GRIPPER_PORT = hande_gripper.DEFAULT_PORT
+GRIPPER_FINGER_OPEN = 0.025     # per-side finger travel (m) = URDF upper limit (open)
+GRIPPER_TWEEN_S = 0.8           # viz finger animation duration to match the real move
 
 
 def _alpha_to_s(alpha: float, r: float = RAMP_FRAC) -> float:
@@ -65,18 +80,48 @@ robot = pk.Robot.from_urdf(urdf)
 TARGET_LINK_IDX = robot.links.names.index(TARGET_LINK)
 NUM_JOINTS = robot.joints.num_actuated_joints
 
+
+# ---------- gripper model ----------
+def _resolve_gripper_mesh(fname: str) -> str:
+    if fname.startswith("package://"):
+        pkg, rest = fname[len("package://") :].split("/", 1)
+        return os.path.join(_HERE, pkg, rest)
+    return fname
+
+
+gripper_urdf = yourdfpy.URDF.load(GRIPPER_URDF_PATH, filename_handler=_resolve_gripper_mesh)
+# Fixed tool0 -> grasp-point (hande_end) offset, read straight from the URDF.
+# The gripper is rigid, so this is a constant; IK keeps targeting tool0.
+gripper_urdf.update_cfg(np.array([GRIPPER_FINGER_OPEN]))
+TOOL0_T_GRASP = jaxlie.SE3.from_matrix(
+    jnp.asarray(gripper_urdf.get_transform("robotiq_hande_end", "tool0"))
+)
+
 # ---------- shared state ----------
 state_lock = threading.Lock()
 current_q = np.zeros(NUM_JOINTS)
 waypoints: list[tuple[np.ndarray, np.ndarray]] = []  # list of (position xyz, wxyz)
 waypoint_frames: list = []                            # corresponding viser frame handles
 plan_segments: list[tuple[np.ndarray, np.ndarray]] | None = None  # list of (q_start, q_end)
+gripper_finger = GRIPPER_FINGER_OPEN   # displayed per-side finger opening (m); start open
 playing = threading.Event()
 stop_flag = threading.Event()
 
 # ---------- UR15 RTDE ----------
 rtde_r = RTDEReceiveInterface(ROBOT_IP)
 rtde_c = RTDEControlInterface(ROBOT_IP)   # only used if Execute is toggled on
+
+# ---------- Hand-E gripper (best-effort: viz still works if it's unreachable) ----------
+try:
+    gripper: hande_gripper.HandEGripper | None = hande_gripper.HandEGripper(
+        GRIPPER_HOST, GRIPPER_PORT
+    )
+    gripper.connect()
+    gripper.activate()
+    print("Hand-E gripper connected + activated.")
+except Exception as e:
+    gripper = None
+    print(f"Hand-E gripper unavailable ({e}); running viz-only gripper.")
 
 
 def poll_loop() -> None:
@@ -98,6 +143,20 @@ def ee_pose(q: np.ndarray) -> jaxlie.SE3:
     return jaxlie.SE3(Ts[TARGET_LINK_IDX])
 
 
+def grasp_pose(q: np.ndarray) -> jaxlie.SE3:
+    """Grasp-point (gripper fingertip) pose for joint config q. The gizmo lives here."""
+    return ee_pose(q).multiply(TOOL0_T_GRASP)
+
+
+def _grasp_to_tool0(pos: np.ndarray, wxyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Map a grasp-point target (gizmo/waypoint) back to a tool0 target for IK."""
+    T_grasp = jaxlie.SE3.from_rotation_and_translation(
+        jaxlie.SO3(jnp.asarray(wxyz)), jnp.asarray(pos)
+    )
+    T_tool0 = T_grasp.multiply(TOOL0_T_GRASP.inverse())
+    return np.asarray(T_tool0.translation()), np.asarray(T_tool0.rotation().wxyz)
+
+
 # ---------- viser ----------
 server = viser.ViserServer()
 server.scene.add_grid("/ground", width=2, height=2)
@@ -116,15 +175,29 @@ server.scene.add_frame(
 )
 viser_urdf = ViserUrdf(server, urdf, root_node_name="/world/base")
 
+# Hand-E rides the wrist: a second ViserUrdf rooted at /world/gripper, whose frame
+# we slave to the live tool0 pose every tick (see _update_gripper_viz). Both live
+# under /world, so the display yaw above is inherited; IK is unaffected.
+gripper_frame = server.scene.add_frame("/world/gripper", show_axes=False)
+gripper_viser = ViserUrdf(server, gripper_urdf, root_node_name="/world/gripper")
+
 with state_lock:
     q0 = current_q.copy()
-T_ee0 = ee_pose(q0)
+T_grasp0 = grasp_pose(q0)
 gizmo = server.scene.add_transform_controls(
     "/world/ee_target",
     scale=0.25,
-    position=np.asarray(T_ee0.translation()),
-    wxyz=np.asarray(T_ee0.rotation().wxyz),
+    position=np.asarray(T_grasp0.translation()),
+    wxyz=np.asarray(T_grasp0.rotation().wxyz),
 )
+
+
+def _update_gripper_viz(q: np.ndarray) -> None:
+    """Glue the gripper meshes to the wrist and show the current finger opening."""
+    T = ee_pose(q)
+    gripper_frame.wxyz = np.asarray(T.rotation().wxyz)
+    gripper_frame.position = np.asarray(T.translation())
+    gripper_viser.update_cfg(np.array([gripper_finger]))
 
 # ---------- GUI ----------
 gui_status = server.gui.add_text("Status", initial_value="Idle", disabled=True)
@@ -138,6 +211,11 @@ gui_stop = server.gui.add_button("Stop", disabled=True)
 gui_reset = server.gui.add_button("Reset gizmo to current EE")
 gui_speed = server.gui.add_slider("Speed", min=0.1, max=2.0, step=0.05, initial_value=1.0)
 gui_execute = server.gui.add_checkbox("Execute on robot", initial_value=False)
+gui_grip_open = server.gui.add_button("Open gripper")
+gui_grip_close = server.gui.add_button("Close gripper")
+gui_grip_status = server.gui.add_text(
+    "Gripper", initial_value=("ready" if gripper is not None else "viz-only"), disabled=True
+)
 
 
 def _refresh_wp_count() -> None:
@@ -190,12 +268,13 @@ def _(_):
         q = current_q.copy()
     segments: list[tuple[np.ndarray, np.ndarray]] = []
     for i, (pos, wxyz) in enumerate(targets):
+        pos_t, wxyz_t = _grasp_to_tool0(pos, wxyz)  # gizmo is at the grasp point
         try:
             q_next = pks.solve_ik_seeded(
                 robot=robot,
                 target_link_name=TARGET_LINK,
-                target_position=pos,
-                target_wxyz=wxyz,
+                target_position=pos_t,
+                target_wxyz=wxyz_t,
                 q_seed=q,
                 rest_weight=2.0,
             )
@@ -214,10 +293,45 @@ def _(_):
 def _(_):
     with state_lock:
         q = current_q.copy()
-    T = ee_pose(q)
+    T = grasp_pose(q)
     gizmo.position = np.asarray(T.translation())
     gizmo.wxyz = np.asarray(T.rotation().wxyz)
     gui_status.value = "Gizmo reset to current EE"
+
+
+def _actuate_gripper(target_finger: float, action: str) -> None:
+    """Command the real gripper (if connected), then tween the viz fingers to match."""
+    global gripper_finger
+    if gripper is not None:
+        try:
+            getattr(gripper, action)()
+        except Exception as e:
+            gui_grip_status.value = f"cmd failed: {e}"
+            return
+    start = gripper_finger
+    steps = max(1, int(GRIPPER_TWEEN_S * PLAY_HZ))
+    for i in range(1, steps + 1):
+        gripper_finger = start + (target_finger - start) * i / steps
+        time.sleep(1.0 / PLAY_HZ)
+    gripper_finger = target_finger
+    if gripper is not None:
+        gui_grip_status.value = "object grasped" if gripper.status()["object"] else (
+            "open" if target_finger > 0 else "closed"
+        )
+
+
+@gui_grip_open.on_click
+def _(_):
+    threading.Thread(
+        target=_actuate_gripper, args=(GRIPPER_FINGER_OPEN, "open"), daemon=True
+    ).start()
+
+
+@gui_grip_close.on_click
+def _(_):
+    threading.Thread(
+        target=_actuate_gripper, args=(0.0, "close_gripper"), daemon=True
+    ).start()
 
 
 def _post_execute_cleanup() -> None:
@@ -231,7 +345,7 @@ def _post_execute_cleanup() -> None:
     _refresh_wp_count()
     with state_lock:
         q = current_q.copy()
-    T = ee_pose(q)
+    T = grasp_pose(q)
     gizmo.position = np.asarray(T.translation())
     gizmo.wxyz = np.asarray(T.rotation().wxyz)
     plan_segments = None
@@ -267,6 +381,7 @@ def _play() -> None:
                 eased = _alpha_to_s(alpha)
                 q = q_start + delta * eased
                 viser_urdf.update_cfg(q)
+                _update_gripper_viz(q)
                 if execute:
                     rtde_c.servoJ(q.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
                 time.sleep(dt)
@@ -316,6 +431,7 @@ def viz_loop() -> None:
             with state_lock:
                 q = current_q.copy()
             viser_urdf.update_cfg(q)
+            _update_gripper_viz(q)
         time.sleep(period)
 
 

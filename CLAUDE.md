@@ -24,7 +24,11 @@ abb_foga/
 ├── pyroki_snippets/           # copied from pyroki_src/examples/ + our _solve_ik_seeded.py
 ├── abb_desc/                  # clone of ros-industrial/abb (GoFa URDF + meshes)
 ├── crb15000_5_95.urdf         # generated from abb_desc/.../crb15000_5_95.xacro
-├── teleop_ur15.py             # UR15 script (RTDE / servoJ)
+├── robotiq_hande_description/ # vendored macmacal/robotiq_hande_description (Hand-E URDF + meshes)
+├── hande.urdf                 # generated from robotiq_hande_description/.../robotiq_hande_gripper.urdf.xacro
+├── hande_gripper.py           # minimal Hand-E Modbus-RTU-over-socket client
+├── verify_hande.py            # one-shot gripper comms probe (run before trusting control)
+├── teleop_ur15.py             # UR15 script (RTDE / servoJ) + Hand-E gripper
 ├── teleop_gofa_egm.py         # GoFa script (EGM joint streaming)
 ├── abb_rws.py                 # minimal RWS client for OmniCore (RobotWare 7+)
 ├── abb_egm.py                 # minimal EGM UDP client (protobuf wire format)
@@ -42,6 +46,7 @@ System (brew): cmake, **boost@1.85** (keg-only, for ur_rtde build only).
 
 URDFs:
 - **UR15**: loaded at runtime via `robot_descriptions.loaders.yourdfpy.load_robot_description("ur15_description")`. No local file.
+- **Hand-E**: local `hande.urdf`, generated via `xacrodoc` from the vendored `robotiq_hande_description` (`xacrodoc.packages.look_in(["."]); XacroDoc.from_file(".../robotiq_hande_gripper.urdf.xacro").to_urdf_file("hande.urdf")`). Same `file://` → `package://` strip as the GoFa; resolved by a `filename_handler` in `teleop_ur15.py` with prefix `_HERE`. The `<ros2_control>` block (irrelevant to us) was stripped after generation. Rendered as a *second* `ViserUrdf` whose root frame is slaved to the live `tool0` pose — the UR IK model is untouched.
 - **GoFa**: local `crb15000_5_95.urdf` (the 5 kg / 0.95 m reach variant — match this to your actual hardware nameplate), generated via `xacrodoc` from the ros-industrial repo: `xacrodoc.packages.look_in(["abb_desc"]); XacroDoc.from_file(".../crb15000_5_95.xacro").to_urdf_file(...)`. Mesh paths are rewritten to `package://abb_crb15000_support/...`; resolved via `URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")` and a custom `filename_handler` in `teleop_gofa_egm.py`. xacrodoc emits absolute `file://` URIs (yourdfpy can't resolve those); strip the `file://.../abb_desc/` prefix down to `package://`.
 
 ---
@@ -94,6 +99,28 @@ Safety:
 | `SERVO_STOP_DECEL` | `2.0` rad/s² | Final settle deceleration |
 | `STREAM_HZ` | `50` | servoJ + viz frame rate |
 | `rest_weight` (in Plan handler) | `2.0` | IK pull toward current joints |
+
+## Hand-E gripper
+
+A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V through the tool flange connector).
+
+**Rendering & TCP.** `hande.urdf` is rendered as a second `ViserUrdf` rooted at `/world/gripper`, whose frame is slaved to the live `tool0` pose every viz/play tick (`_update_gripper_viz`). The gripper is rigid, so the grasp point is a *fixed* `tool0`→`hande_end` offset (`TOOL0_T_GRASP`, ~0.1565 m along tool0 +z, read straight from the URDF). The gizmo/waypoints live at the grasp point; `_grasp_to_tool0()` maps them back to a `tool0` target so **the UR IK model and the seeded-IK call are unchanged**. Only the one actuated finger joint animates (the other `mimic`s it); 0 m = closed, 0.025 m = open.
+
+**Control path — why a socket.** ur_rtde keeps its control script resident for the whole session, so a separate Robotiq URCap *program* can't run concurrently. Gripper control therefore goes through a channel that's independent of the active program: **Robotiq's RS485 URCap / Tool Communication Interface**, which forwards the wrist RS-485 to a TCP socket as a background daemon. `hande_gripper.py` speaks Modbus RTU over that socket (hand-framed FC16 write / FC04 read + CRC16; no pymodbus/pyserial dependency). This replaces the *Grippers* URCap, so the pendant gripper buttons go away — accepted trade-off.
+
+⚠️ **PolyScope X unknown.** Socket forwarding behaves differently on PolyScope X than classic PolyScope 5 (port, URCap availability). **Run `verify_hande.py` first** — it connects, activates, and open/closes the gripper standalone. Only once it passes is gripper control in `teleop_ur15.py` trustworthy. If the port/forwarding differs, fix it in `hande_gripper.py` (`DEFAULT_PORT`) / `verify_hande.py`; nothing else changes. The gripper connect in `teleop_ur15.py` is best-effort — if the socket is absent, it logs and runs viz-only (Open/Close still animate the meshes).
+
+**Robotiq register map** (slave id 9): write 3 regs at `0x03E8` — byte0 `rACT|rGTO` (0x09), byte3 `rPR` position (0 open … 255 closed), byte4 `rSP` speed, byte5 `rFR` force; read 3 regs at `0x07D0` for status — byte0 has `gSTA` (==3 ⇒ activated) and `gOBJ` (1/2 ⇒ object grasped), byte4 `gPO` actual position.
+
+### Tunables — Hand-E (`teleop_ur15.py` / `hande_gripper.py`)
+
+| Constant | Default | Effect |
+|---|---|---|
+| `GRIPPER_HOST` | `ROBOT_IP` | Tool RS-485 socket host (the UR controller) |
+| `GRIPPER_PORT` | `54321` | Tool RS-485 → TCP port (verify on PolyScope X) |
+| `GRIPPER_FINGER_OPEN` | `0.025` m | Per-side finger travel at "open" (URDF upper limit) |
+| `GRIPPER_TWEEN_S` | `0.8` s | Viz finger animation duration (match the real move) |
+| `DEFAULT_SPEED` / `DEFAULT_FORCE` | `255` / `150` | Robotiq `rSP` / `rFR` (0–255); force kept collaborative |
 
 ---
 
