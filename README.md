@@ -3,13 +3,12 @@
 Browser-based teleop for two robot arms sharing the same [viser](https://github.com/nerfstudio-project/viser) + [pyroki](https://github.com/chungmin99/pyroki) stack:
 
 - **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`), streaming `servoJ`.
-- **`teleop_gofa.py`** — ABB GoFa CRB 15000 over Robot Web Services (RWS), committing each segment as a `MoveAbsJ` via a small RAPID supervisor (`PyExec`).
-- **`teleop_gofa_egm.py`** — experimental GoFa variant using Externally Guided Motion (EGM) for streamed, slider-unified motion.
+- **`teleop_gofa_egm.py`** — ABB GoFa CRB 15000 over Externally Guided Motion (EGM): joint targets stream over UDP to a RAPID supervisor (`PyEgm.mod`), with RWS (`abb_rws.py`) for mastership and the start/stop flag. Slider-unified like the UR15, with a TCP-speed cap.
 
 Both share the same UI (viser scene + 6-DoF gizmo + waypoints), the same seeded IK (`pyroki_snippets/_solve_ik_seeded.py`), and the same trapezoidal play loop. See [`CLAUDE.md`](CLAUDE.md) for the full architecture, controller bring-up notes, tunables, and hard-won gotchas.
 
 ```bash
-./robot_control/bin/python teleop_ur15.py   # or teleop_gofa.py
+./robot_control/bin/python teleop_ur15.py   # or teleop_gofa_egm.py
 ```
 
 Then open the printed `http://localhost:8080`.
@@ -52,6 +51,5 @@ These directories are vendored copies (their upstream `.git` history was strippe
 |---|---|---|---|
 | `pyroki_src/` | https://github.com/chungmin99/pyroki | `388e43e` | see dir |
 | `abb_desc/` | https://github.com/ros-industrial/abb | `45f4769` | see dir |
-| `ur_desc/` | https://github.com/UniversalRobots/Universal_Robots_ROS2_Description | `e2d047f` | see dir |
 
 `pyroki_snippets/` is a copy of `pyroki_src/examples/pyroki_snippets/` plus the custom `_solve_ik_seeded.py`.

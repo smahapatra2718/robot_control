@@ -3,14 +3,14 @@
 Browser-based teleop for two arms, sharing the same viser + pyroki stack:
 
 - **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`). Speed slider is unified: the same `q` is sent to both the viser preview and `rtde_c.servoJ()` each tick, so viz and robot move in lockstep.
-- **`teleop_gofa.py`** — ABB GoFa CRB 15000 (variant `crb15000_5_95`) over Robot Web Services (RWS), via the minimal client in `abb_rws.py`. Each segment endpoint is committed as a `MoveAbsJ` via a tiny RAPID supervisor (`PyExec`) running on the controller. Speed slider only affects the in-browser preview; real motion speed comes from `v_tcp` + `AccSet` inside `PyExec.mod`. EGM would let the slider become unified — see [Future: EGM swap](#future-egm-swap).
+- **`teleop_gofa_egm.py`** — ABB GoFa CRB 15000 (variant `crb15000_5_95`) over Externally Guided Motion (EGM), with RWS (`abb_rws.py`) for mastership and the start/stop flag. Joint targets stream over UDP at `STREAM_HZ` to a RAPID supervisor (`PyEgm.mod`) running `EGMRunJoint`, so the slider is unified like the UR15 — the same `q` drives both the viser preview and the robot. Real tool speed is held under `MAX_TCP_SPEED` regardless of slider/pose. EGM is a licensed controller option.
 
 Both scripts share: the same UI (viser scene + gizmo + waypoints), the same IK (`pyroki_snippets._solve_ik_seeded`), the same trapezoidal-time alpha profile in the play loop, and the same auto-cleanup after a successful executed Play.
 
 Run:
 
 ```bash
-./robot_control/bin/python teleop_ur15.py   # or teleop_gofa.py
+./robot_control/bin/python teleop_ur15.py   # or teleop_gofa_egm.py
 ```
 
 Open the printed `http://localhost:8080`. Each script connects to its controller at startup and aborts if it can't reach.
@@ -23,13 +23,14 @@ abb_foga/
 ├── pyroki_src/                # git clone of chungmin99/pyroki, installed -e
 ├── pyroki_snippets/           # copied from pyroki_src/examples/ + our _solve_ik_seeded.py
 ├── abb_desc/                  # clone of ros-industrial/abb (GoFa URDF + meshes)
-├── crb15000_5_95.urdf         # generated from abb_desc/.../crb15000_5_95.xacro (active variant)
-├── crb15000_12_127.urdf       # unused: wrong variant, kept for reference
+├── crb15000_5_95.urdf         # generated from abb_desc/.../crb15000_5_95.xacro
 ├── teleop_ur15.py             # UR15 script (RTDE / servoJ)
-├── teleop_gofa.py             # GoFa script (RWS / MoveAbsJ via PyExec)
+├── teleop_gofa_egm.py         # GoFa script (EGM joint streaming)
 ├── abb_rws.py                 # minimal RWS client for OmniCore (RobotWare 7+)
-├── install_gofa_rapid.py      # one-shot: uploads PyExec.mod, gets it running
-├── ur_desc/                   # unused leftover clone of UR ROS2 description
+├── abb_egm.py                 # minimal EGM UDP client (protobuf wire format)
+├── egm.proto / egm_pb2.py     # EGM protobuf schema + generated bindings
+├── EGM_COMM.cfg / EGM_MOC.cfg # controller EGM config (uploaded by installer)
+├── install_gofa_egm.py        # one-shot: uploads PyEgm.mod + .cfg, gets it running
 └── CLAUDE.md                  # this file
 ```
 
@@ -41,7 +42,7 @@ System (brew): cmake, **boost@1.85** (keg-only, for ur_rtde build only).
 
 URDFs:
 - **UR15**: loaded at runtime via `robot_descriptions.loaders.yourdfpy.load_robot_description("ur15_description")`. No local file.
-- **GoFa**: local `crb15000_5_95.urdf` (the 5 kg / 0.95 m reach variant — match this to your actual hardware nameplate), generated via `xacrodoc` from the ros-industrial repo: `xacrodoc.packages.look_in(["abb_desc"]); XacroDoc.from_file(".../crb15000_5_95.xacro").to_urdf_file(...)`. Mesh paths are rewritten to `package://abb_crb15000_support/...`; resolved via `URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")` and a custom `filename_handler` in `teleop_gofa.py`. xacrodoc emits absolute `file://` URIs (yourdfpy can't resolve those); strip the `file://.../abb_desc/` prefix down to `package://`.
+- **GoFa**: local `crb15000_5_95.urdf` (the 5 kg / 0.95 m reach variant — match this to your actual hardware nameplate), generated via `xacrodoc` from the ros-industrial repo: `xacrodoc.packages.look_in(["abb_desc"]); XacroDoc.from_file(".../crb15000_5_95.xacro").to_urdf_file(...)`. Mesh paths are rewritten to `package://abb_crb15000_support/...`; resolved via `URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")` and a custom `filename_handler` in `teleop_gofa_egm.py`. xacrodoc emits absolute `file://` URIs (yourdfpy can't resolve those); strip the `file://.../abb_desc/` prefix down to `package://`.
 
 ---
 
@@ -143,90 +144,90 @@ route get 192.168.125.1 | grep interface   # should be en* (Ethernet), NOT utun*
 
 OmniCore C30 has **no physical Auto/Manual key switch** (unlike larger ABB controllers). Mode selection is on the FlexPendant touchscreen — usually a small mode-icon in the top status bar. Tap it → Automatic → confirm. There may be a separate white motors-on button on the front of the controller cabinet that needs to be pressed once.
 
-### Push the RAPID supervisor
+### Push the EGM supervisor
+
+EGM is a **licensed** controller option — confirm it's enabled (pendant: Settings → System → installed options) before this will work.
 
 Run the installer:
 
 ```bash
-./robot_control/bin/python install_gofa_rapid.py
+./robot_control/bin/python install_gofa_egm.py
 ```
 
 What it does:
 1. Connects to RWS over HTTPS at `ROBOT_IP` (default `192.168.125.1`).
 2. Probes controller state, opmode, exec state.
-3. Grabs RAPID mastership.
-4. Stops any running program (skipped if already stopped).
-5. **Unloads `MainModule`** — it ships with a `PROC main()` that collides with ours.
-6. Uploads `PyExec.mod` to `$HOME/` on the controller.
-7. Loads `PyExec.mod` into task `T_ROB1`.
-8. Turns motors on (if off).
-9. Tries `resetpp` + `start_program` over RWS. **These fail** on OmniCore for us (the exact RWS shape eluded me — see [OmniCore RWS gotchas](#omnicore-rws-gotchas)). When they fail, the script prompts:
-   - On the pendant, tap **PP to Main** (now possible since mastership was released for the prompt).
-   - Press the green **Play** button.
-10. Confirms the program is running, then exits.
+3. Grabs RAPID mastership and stops any running program.
+4. **Unloads `MainModule`** — it ships with a `PROC main()` that collides with ours.
+5. Uploads `EGM_COMM.cfg` + `EGM_MOC.cfg` and `PyEgm.mod` to `$HOME/` on the controller.
+6. Loads `PyEgm.mod` into task `T_ROB1` and turns motors on (if off).
+7. Tries `resetpp` + `start_program` over RWS; when that fails (see [OmniCore RWS gotchas](#omnicore-rws-gotchas)) it prompts you to tap **PP to Main** + green **Play** on the pendant.
 
-After this, `PyExec` is parked at `WaitUntil py_go = TRUE` and will execute MoveAbsJ to `py_target` whenever Python sets `py_go = TRUE`. The module persists across reboots (saved in `$HOME/PyExec.mod`); you only re-run the installer if you change the module text.
+⚠️ The `.cfg` files define the EGM UDP peer (`UCdevice` → your PC). `EGM_COMM.cfg` `RemoteAddress` must equal your PC's IP (default assumes `192.168.125.50`; edit it and `PC_IP` in the installer to match) and `RemotePortNumber` must equal `EGM_LOCAL_PORT` (6510) in `teleop_gofa_egm.py`. Applying the `.cfg` may need a controller restart from the pendant.
 
-### PyExec.mod — the supervisor
+After this, `PyEgm` is parked at `WaitUntil egm_go = TRUE`. Setting `egm_go = TRUE` (which `teleop_gofa_egm.py` does via RWS) makes it enter `EGMRunJoint` and follow the UDP joint stream until convergence, then clear `egm_go` and re-park.
+
+### PyEgm.mod — the supervisor
 
 ```RAPID
-MODULE PyExec
-  VAR jointtarget py_target := [[0,0,0,0,0,0],[9E9,9E9,9E9,9E9,9E9,9E9]];
-  PERS bool       py_go     := FALSE;
-  CONST speeddata v_tcp     := v200;
+MODULE PyEgm
+  PERS bool egm_go := FALSE;
+  CONST string EGM_EXT_NAME := "default";
+  CONST string EGM_UC_NAME  := "UCdevice";
+  VAR egmident egm_id;
 
   PROC main()
-    AccSet 50, 50;  ! 50% accel, 50% ramp = smooth start/stop
+    AccSet 50, 50;
     WHILE TRUE DO
-      WaitUntil py_go = TRUE;
-      MoveAbsJ py_target, v_tcp, fine, tool0;
-      py_go := FALSE;
+      WaitUntil egm_go = TRUE;
+      EGMReset egm_id;
+      EGMGetId egm_id;
+      EGMSetupUC ROB_1, egm_id, EGM_EXT_NAME, EGM_UC_NAME \Joint;
+      EGMActJoint egm_id \LpFilter := 20 \MaxSpeedDeviation := 20;
+      EGMRunJoint egm_id, EGM_STOP_HOLD \J1 \J2 \J3 \J4 \J5 \J6
+        \CondTime := 1 \RampInTime := 0.1 \RampOutTime := 0.2;
+      EGMReset egm_id;
+      egm_go := FALSE;
     ENDWHILE
   ENDPROC
 ENDMODULE
 ```
 
-Three knobs live here, not in Python:
+Knobs (edit in `install_gofa_egm.py`, then rerun the installer — Ctrl+C any running teleop first so mastership is free):
 
-- `v_tcp = v200` — TCP speed during MoveAbsJ. Swap for `v50`, `v100`, `v500` etc.
-- `AccSet 50, 50` — first arg is acceleration % of max, second is ramp %. `30, 50` very smooth, `80, 80` snappy.
-- `fine` — exact stop at each waypoint. Swap for `z10`, `z50`, `z100` for blend zones (curves through waypoints, less precise).
+- `\MaxSpeedDeviation := 20` — controller-side per-joint speed cap (deg/s). Backstop to the Python `MAX_TCP_SPEED` cap; raise both together if you raise speed.
+- `\LpFilter := 20` — low-pass cutoff (Hz); lower = smoother but laggier following.
+- `\CondTime := 1` — seconds of convergence before `EGMRunJoint` returns (how the session ends after the final target is held).
 
-After editing the template in `install_gofa_rapid.py`, rerun the installer. (Ctrl+C any running teleop first so mastership is free.)
+## Architecture of `teleop_gofa_egm.py`
 
-## Architecture of `teleop_gofa.py`
+Same shape as `teleop_ur15.py`, with EGM in place of servoJ:
 
-Same shape as `teleop_ur15.py` with two substitutions:
+- **State polling** uses `rws.get_joints()` at ~10 Hz (idle viz only). During an Execute play, the play loop drives the URDF directly from the streamed target.
+- **Execute mode** streams joint targets over EGM (UDP) at `STREAM_HZ`. The same `q` from the trapezoidal alpha profile goes to BOTH viser and the EGM stream every tick, so viz and robot move in lockstep — like UR15 servoJ. A play:
+  1. Sets `egm_go = TRUE` (via RWS) and waits for the first EGM feedback packet (controller has entered `EGMRunJoint`).
+  2. Streams targets segment by segment, holding each waypoint for a short dwell between segments.
+  3. Holds the final target for `HOLD_AFTER_PLAY_S` so RAPID's `\CondTime` convergence fires and `EGMRunJoint` exits, clearing `egm_go`.
 
-- **State polling** uses `rws.get_joints()` at ~10 Hz instead of RTDE at 500 Hz. The browser viz lags slightly more behind the real arm; for visual preview-only this is fine.
-- **Execute mode** is sequential commit-and-wait, not streaming:
-  1. Viser plays out the segment preview at the slider speed (lockstep with the URDF — same code path as UR15).
-  2. After the preview finishes, `_execute_segment` fires:
-     ```
-     set py_target = q_goal
-     set py_go = TRUE
-     wait until RAPID clears py_go to FALSE
-     ```
-     RAPID picks up `py_go = TRUE`, executes MoveAbsJ, and resets `py_go := FALSE`. Python polls `py_go` until it's FALSE again — that's how we know the move finished.
-  3. Loop to the next segment.
+**Speed is unified and TCP-capped.** The slider scales playback, but `_cap_seg_duration()` stretches each segment so the real TCP speed never exceeds `MAX_TCP_SPEED` (measured against the URDF kinematics per segment). The slider can only scale *below* that cap.
 
-Important consequence: **the speed slider only changes the viser preview speed, not the robot's MoveAbsJ speed**. Real speed is `v_tcp` in RAPID.
+Startup safety: the script sets `egm_go = FALSE` on connect so a stray TRUE doesn't fire EGM.
 
-Startup safety: after grabbing mastership, the script pre-loads `py_target` with the current joints and sets `py_go = FALSE`. That way a stray external `py_go = TRUE` triggers a no-op move-to-self.
-
-## Tunables — `teleop_gofa.py`
+## Tunables — `teleop_gofa_egm.py`
 
 | Constant | Default | Effect |
 |---|---|---|
-| `ROBOT_IP` | `192.168.125.1` | GoFa MGMT IP (direct cable). For WAN/lab use, set to whatever Public IP you assigned. |
+| `ROBOT_IP` | `192.168.125.1` | GoFa MGMT IP (direct cable). For WAN/lab use, set to the Public IP you assigned. |
 | `RWS_USER` / `RWS_PASSWORD` | `Default User` / `robotics` | OmniCore defaults |
-| `MAX_JOINT_SPEED` | `1.0` rad/s | Peak viz speed at slider=1.0 |
-| `MIN_SEG_DURATION_S` | `0.5` s | Floor on per-segment viz time |
-| `RAMP_FRAC` | `0.25` | Trapezoidal viz profile ramp fraction |
-| `DWELL_S` | `0.2` s | Pause between segments (viz only) |
-| `EXECUTE_SETTLE_S` | `0.5` s | Extra wait after RAPID clears py_go |
+| `EGM_LOCAL_PORT` | `6510` | UDP port; must match `RemotePortNumber` in `EGM_COMM.cfg` |
+| `MAX_TCP_SPEED` | `0.25` m/s | Hard cap on real tool speed (collaborative limit) |
+| `MAX_JOINT_SPEED` | `1.0` rad/s | Per-joint pacing before the TCP cap is applied |
+| `MIN_SEG_DURATION_S` | `0.5` s | Floor on per-segment time |
+| `RAMP_FRAC` | `0.25` | Trapezoidal profile ramp fraction |
+| `DWELL_S` | `0.2` s | Pause between segments |
+| `HOLD_AFTER_PLAY_S` | `1.5` s | Hold final target so RAPID's `\CondTime` fires |
 | `POLL_HZ` | `10` | RWS state polling rate |
-| `STREAM_HZ` | `50` | Viz preview frame rate |
+| `STREAM_HZ` | `100` | EGM target stream + viz frame rate |
 | `rest_weight` (Plan handler) | `2.0` | IK pull toward current joints |
 
 ## OmniCore RWS gotchas
@@ -245,25 +246,13 @@ These bit us during the GoFa bring-up. Captured here so future-us doesn't relear
 
 - **Mastership orphans easily.** If a process holding mastership crashes, the controller still thinks it's held until the session times out. Symptom: subsequent `request` calls 403. Fix: reboot the controller from the pendant, or wait ~30s for session timeout. `abb_rws.RWSClient.__post_init__` registers an `atexit` hook to release on clean exit.
 
-- **`MainModule` collision.** The GoFa ships with a `MainModule.mod` that has its own `PROC main()`. RAPID won't compile two `main`s — when we load PyExec the controller logs "Errors in RAPID program" event 40160. The installer unloads `MainModule` before loading PyExec via `POST /rw/rapid/tasks/T_ROB1/unloadmod` body `module=MainModule`.
+- **`MainModule` collision.** The GoFa ships with a `MainModule.mod` that has its own `PROC main()`. RAPID won't compile two `main`s — when we load `PyEgm` the controller logs "Errors in RAPID program" event 40160. The installer unloads `MainModule` before loading `PyEgm` via `POST /rw/rapid/tasks/T_ROB1/unloadmod` body `module=MainModule`.
 
 - **Build errors are visible at `/rw/rapid/tasks/T_ROB1/program/builderror`.** Useful for diagnosing semantic errors after a module load — it returns module name, row, column, error type. Way more useful than the generic "errors in RAPID program" event log entry.
 
 - **`resetpp` (PP-to-Main) and `start_program` via RWS** — we couldn't find the right shape on OmniCore. Every variation returned 400 "semantic error" or 403. The installer falls back to telling the user to press PP-to-Main + Play on the pendant. If you crack the right URL, it would tighten the install flow.
 
 - **OmniCore C30 has no physical Auto/Manual key switch.** Mode is selected on the FlexPendant touchscreen (top status bar icon). Larger ABB controllers do have a key switch — don't assume.
-
-## Future: EGM swap
-
-The speed slider unification on UR15 works because `servoJ` is a streaming primitive — Python sends 50 Hz updates and the controller follows. GoFa can do the equivalent via **Externally Guided Motion (EGM)** — UDP at 250 Hz — but EGM is a paid licensed option on the controller and requires its own RAPID program (`EGMActJoint` / `EGMRunJoint`).
-
-To swap GoFa to EGM:
-1. Confirm EGM option is licensed on the controller (Settings → System → Software Resources).
-2. Write a RAPID module that calls `EGMActJoint` then `EGMRunJoint` in a loop. Replace `PyExec.mod`.
-3. Replace the body of `_execute_segment` in `teleop_gofa.py` with a UDP socket that streams joint targets at 250 Hz, identical in shape to the UR15 servoJ loop.
-4. Drop the per-segment commit-and-wait. Speed slider becomes unified.
-
-The viser/pyroki layer stays the same — only `_execute_segment` and the RAPID module change.
 
 ---
 
@@ -275,7 +264,7 @@ PyRoki's stock `solve_ik` snippet has no seed and no posture cost, so it returns
 
 Trade-off: at `rest_weight=2.0` the pose error is ~0.5 mm. Raise to 5–10 if the IK still picks wrong branches; the gizmo target then drifts more but stays in the same kinematic family.
 
-Used by both `teleop_ur15.py` and `teleop_gofa.py`.
+Used by both `teleop_ur15.py` and `teleop_gofa_egm.py`.
 
 ---
 

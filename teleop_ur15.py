@@ -321,6 +321,6 @@ def viz_loop() -> None:
 
 threading.Thread(target=viz_loop, daemon=True).start()
 
-print(f"viser running. Open the URL printed above in a browser.")
+print("viser running. Open the URL printed above in a browser.")
 while True:
     time.sleep(1.0)

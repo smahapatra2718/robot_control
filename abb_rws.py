@@ -4,17 +4,16 @@ Minimal Robot Web Services (RWS) client for ABB OmniCore controllers
 
 Just the endpoints we need for the teleop scaffold:
   - get_joints()        : read current joint positions (rad)
-  - request_mastership(): grab/release RAPID + motion mastership
-  - set_jointtarget()   : write a RAPID jointtarget data slot
+  - request_mastership(): grab/release RAPID mastership
+  - set_rapid_bool() / get_rapid_data() : write/read RAPID variables
   - start_program() / stop_program() / get_execution_state()
   - get_controller_state() / set_motors_on()
 
-Not a complete RWS wrapper. Uses requests + HTTP Digest auth (default credentials
+Not a complete RWS wrapper. Uses requests + HTTP Basic auth (default credentials
 "Default User"/"robotics" — change via constructor).
 
-The execute-on-robot path assumes you have a small RAPID program loaded on
-the controller that reads a jointtarget variable and issues MoveAbsJ to it.
-See teleop_gofa.py for the RAPID skeleton.
+The execute path drives a small RAPID supervisor (PyEgm.mod, loaded by
+install_gofa_egm.py) by flipping a bool flag; see teleop_gofa_egm.py.
 """
 
 from __future__ import annotations
@@ -55,10 +54,6 @@ class RWSClient:
     def _best_effort_release(self) -> None:
         try:
             self.release_mastership()
-        except Exception:
-            pass
-        try:
-            self.release_motion_mastership()
         except Exception:
             pass
 
@@ -113,12 +108,6 @@ class RWSClient:
     def release_mastership(self) -> None:
         self._post("/rw/mastership/edit/release")
 
-    def request_motion_mastership(self) -> None:
-        self._post("/rw/mastership/motion/request")
-
-    def release_motion_mastership(self) -> None:
-        self._post("/rw/mastership/motion/release")
-
     def set_motors_on(self) -> None:
         self._post("/rw/panel/ctrl-state", data={"ctrl-state": "motoron"})
 
@@ -131,14 +120,6 @@ class RWSClient:
             self._post(f"/rw/rapid/tasks/{task}/unloadmod", data={"module": module_name})
         except requests.HTTPError:
             pass
-
-    def list_modules(self, task: str = "T_ROB1") -> list[str]:
-        data = self._get(f"/rw/rapid/tasks/{task}/modules")
-        return [
-            s.get("name", "")
-            for s in data.get("state", [])
-            if s.get("name")
-        ]
 
     def start_program(self) -> None:
         self._post(
@@ -159,18 +140,6 @@ class RWSClient:
     # ---- RAPID data (OmniCore RWS 2.0 URL form requires module in path) ----
     def _symbol_data_url(self, var: str, task: str, module: str) -> str:
         return f"/rw/rapid/symbol/RAPID/{task}/{module}/{var}/data"
-
-    def set_jointtarget(
-        self, var: str, joints_rad: list[float], task: str = "T_ROB1", module: str = "PyExec"
-    ) -> None:
-        """Write a RAPID jointtarget variable. External axes default to 9E9 (inactive)."""
-        assert len(joints_rad) == 6
-        deg = [math.degrees(q) for q in joints_rad]
-        value = (
-            f"[[{deg[0]},{deg[1]},{deg[2]},{deg[3]},{deg[4]},{deg[5]}],"
-            f"[9E9,9E9,9E9,9E9,9E9,9E9]]"
-        )
-        self._post(self._symbol_data_url(var, task, module), data={"value": value})
 
     def set_rapid_bool(
         self, var: str, value: bool, task: str = "T_ROB1", module: str = "PyExec"

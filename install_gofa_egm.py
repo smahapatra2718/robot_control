@@ -18,8 +18,7 @@ What it does:
  10. Reset PP + start, fall back to pendant Play if RWS can't.
 
 Prerequisites:
-  A. install_gofa_rapid.py has been run before, OR controller is otherwise in
-     a known-good state. (We're going to override the supervisor regardless.)
+  A. Controller in a known-good state (we override the supervisor regardless).
   B. Your Mac's IP is what's in EGM_COMM.cfg under RemoteAddress. Default
      assumes 192.168.125.50; edit EGM_COMM.cfg and PC_IP below to match.
   C. Controller in AUTO, motors on (or we'll turn them on), robot in Normal.
