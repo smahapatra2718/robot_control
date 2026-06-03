@@ -70,6 +70,7 @@ GRIPPER_FINGER_OPEN = 0.025     # per-side finger travel (m) = URDF upper limit 
 GRIPPER_TWEEN_S = 0.8           # viz finger animation duration to match the real move
 GRIPPER_MASS = 1.0              # Hand-E payload (kg) told to the UR so it compensates gravity at the loaded wrist
 GRIPPER_COG = (0.0, 0.0, 0.06)  # payload center of gravity in the tool-flange frame (m); raise if you add a workpiece
+GRIP_PREDELAY_S = 0.5           # hold/settle the arm this long before actuating the gripper
 TRAJ_DIR = os.path.join(_HERE, "trajectories")  # saved teach trajectories (<name>.json)
 
 
@@ -116,7 +117,9 @@ current_q = np.zeros(NUM_JOINTS)
 waypoints: list[dict] = []
 waypoint_frames: list = []                            # corresponding viser frame handles
 plan_segments: list[tuple[np.ndarray, np.ndarray, str | None]] | None = None  # (q_start, q_goal, grip)
-gripper_finger = GRIPPER_FINGER_OPEN   # displayed per-side finger opening (m); start open
+gripper_finger = GRIPPER_FINGER_OPEN   # displayed per-side finger opening (m); rendered value
+gripper_state = "open"                 # single source of truth: "open" | "close". Known because
+                                       # we command open at startup and only we change it after.
 playing = threading.Event()
 live = threading.Event()               # live gizmo-follow (continuous IK + servoJ) active
 freedrive = threading.Event()          # hand-guiding (teachMode) active
@@ -141,7 +144,8 @@ try:
     )
     gripper.connect()
     gripper.activate()
-    print("Hand-E gripper connected + activated.")
+    gripper.open()   # known initial state: open => gripper_state ("open") matches reality
+    print("Hand-E gripper connected + activated + opened.")
 except Exception as e:
     gripper = None
     print(f"Hand-E gripper unavailable ({e}); running viz-only gripper.")
