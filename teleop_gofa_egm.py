@@ -131,6 +131,8 @@ def poll_loop() -> None:
     target, so this loop's writes are skipped via `playing.is_set()` in viz_loop."""
     global current_q, last_poll_ok
     period = 1.0 / POLL_HZ
+    last_state = None
+    tick = 0
     while True:
         try:
             q = np.array(rws.get_joints(), dtype=np.float64)
@@ -140,6 +142,22 @@ def poll_loop() -> None:
         except Exception:
             with state_lock:
                 last_poll_ok = False
+        # ~1 Hz controller-state check; print only on a transition. guardstop
+        # covers collision / joint-limit / safeguard; emergencystop = e-stop.
+        tick += 1
+        if tick % max(1, POLL_HZ) == 0:
+            try:
+                st = rws.get_controller_state()
+            except Exception:
+                st = last_state
+            if st != last_state:
+                if st in ("guardstop", "emergencystop", "sysfail"):
+                    print(f"[safety] *** controller state: {st.upper()} *** "
+                          "— guardstop = collision / joint limit / safeguard; "
+                          "clear it on the pendant")
+                elif last_state is not None:
+                    print(f"[safety] controller state -> {st}")
+                last_state = st
         time.sleep(period)
 
 

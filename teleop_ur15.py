@@ -151,13 +151,41 @@ except Exception as e:
     print(f"Hand-E gripper unavailable ({e}); running viz-only gripper.")
 
 
+# UR safety modes (rtde_r.getSafetyMode()). Anything but NORMAL means the
+# controller has stopped the arm — e-stop, protective stop (collision / force
+# limit / joint out of range), or safeguard.
+_UR_SAFETY_MODES = {
+    1: "NORMAL", 2: "REDUCED", 3: "PROTECTIVE_STOP", 4: "RECOVERY",
+    5: "SAFEGUARD_STOP", 6: "SYSTEM_EMERGENCY_STOP", 7: "ROBOT_EMERGENCY_STOP",
+    8: "VIOLATION", 9: "FAULT", 10: "VALIDATE_JOINT_ID", 11: "UNDEFINED",
+}
+
+
 def poll_loop() -> None:
     global current_q
     period = 1.0 / POLL_HZ
+    last_safety = None
+    tick = 0
     while True:
         q = np.asarray(rtde_r.getActualQ(), dtype=np.float64)
         with state_lock:
             current_q = q
+        # ~3 Hz safety-state check; print only on a transition.
+        tick += 1
+        if tick % max(1, POLL_HZ // 3) == 0:
+            try:
+                mode = rtde_r.getSafetyMode()
+            except Exception:
+                mode = last_safety
+            if mode != last_safety:
+                name = _UR_SAFETY_MODES.get(mode, f"mode {mode}")
+                if mode == 1:
+                    if last_safety is not None:
+                        print("[safety] cleared -> NORMAL")
+                elif last_safety is not None or mode != 1:
+                    print(f"[safety] *** {name} *** "
+                          "— robot stopped; clear it on the pendant")
+                last_safety = mode
         time.sleep(period)
 
 
