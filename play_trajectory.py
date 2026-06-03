@@ -145,7 +145,82 @@ def main() -> None:
 
 
 def play_ur15(data, speed, no_confirm):
-    raise SystemExit("play_ur15 not implemented yet")  # Task 5
+    import hande_gripper
+    from rtde_control import RTDEControlInterface
+    from rtde_receive import RTDEReceiveInterface
+
+    rtde_r = RTDEReceiveInterface(UR_ROBOT_IP)
+    rtde_c = RTDEControlInterface(UR_ROBOT_IP)
+    try:
+        rtde_c.setPayload(UR_GRIPPER_MASS, list(UR_GRIPPER_COG))
+    except Exception as e:
+        print(f"setPayload failed ({e}); end-of-play droop may be larger.")
+
+    # gripper best-effort + known-open startup state (mirrors teleop_ur15.py)
+    try:
+        gripper = hande_gripper.HandEGripper(UR_ROBOT_IP, hande_gripper.DEFAULT_PORT)
+        gripper.connect()
+        gripper.activate()
+        gripper.open()
+        print("Hand-E connected + opened.")
+    except Exception as e:
+        gripper = None
+        print(f"Hand-E unavailable ({e}); motion-only (grip actions skipped).")
+    cur_grip = "open"
+
+    q_now = np.array(rtde_r.getActualQ(), dtype=np.float64)
+    segments = build_segments(q_now, data["waypoints"])
+    print_plan("ur15", segments, speed)
+    if not no_confirm and input("Execute on the real UR15? [y/N] ").strip().lower() != "y":
+        print("Aborted."); return
+
+    dt = 1.0 / UR_STREAM_HZ
+    try:
+        for seg_idx, (q_start, q_goal, grip) in enumerate(segments):
+            delta = q_goal - q_start
+            seg_duration = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / UR_MAX_JOINT_SPEED)
+            print(f"Segment {seg_idx + 1}/{len(segments)}")
+            alpha = 0.0
+            while alpha < 1.0:
+                q = q_start + delta * alpha_to_s(alpha)
+                rtde_c.servoJ(q.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN)
+                time.sleep(dt)
+                alpha = min(1.0, alpha + dt * speed / seg_duration)
+
+            if grip in ("open", "close") and grip != cur_grip:
+                for _ in range(int(GRIP_PREDELAY_S * UR_STREAM_HZ)):  # settle before actuating
+                    rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN)
+                    time.sleep(dt)
+                if gripper is not None:
+                    print(f"Gripper: {grip}")
+                    getattr(gripper, "open" if grip == "open" else "close_gripper")()
+                    time.sleep(0.8)  # let the fingers move
+                cur_grip = grip
+
+            if seg_idx < len(segments) - 1:  # inter-waypoint dwell
+                for _ in range(int(max(0.0, DWELL_S / max(0.1, speed)) * UR_STREAM_HZ)):
+                    rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN)
+                    time.sleep(dt)
+
+        # final settle: hold the last target until the measured joints arrive
+        q_final = segments[-1][1]
+        deadline = time.monotonic() + UR_SETTLE_MAX_S
+        best, stalls = float("inf"), 0
+        while True:
+            rtde_c.servoJ(q_final.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SETTLE_GAIN)
+            time.sleep(dt)
+            err = float(np.max(np.abs(np.array(rtde_r.getActualQ()) - q_final)))
+            if err < best - UR_SETTLE_EPS_RAD:
+                best, stalls = err, 0
+            else:
+                stalls += 1
+            if stalls >= UR_SETTLE_STALL_TICKS or time.monotonic() > deadline:
+                print(f"[settle] final joint error {np.degrees(err):.3f} deg")
+                break
+    finally:
+        rtde_c.servoStop(UR_SERVO_STOP_DECEL)
+        rtde_c.stopScript()
+    print("Done.")
 
 
 def play_gofa(data, speed, no_confirm):
