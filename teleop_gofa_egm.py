@@ -15,6 +15,7 @@ Run:
   ./robot_control/bin/python teleop_gofa_egm.py
 """
 
+import atexit
 import datetime
 import itertools
 import json
@@ -47,6 +48,7 @@ URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")
 TARGET_LINK = "tool0"
 
 RAPID_GO_FLAG_VAR = "egm_go"        # bool in PyEgm.mod
+RAPID_LEAD_FLAG_VAR = "lead_go"     # bool in PyEgm.mod — TRUE = software lead-through (hand-guide)
 RAPID_MODULE = "PyEgm"
 
 EGM_LOCAL_PORT = 6510                # must match RemotePortNumber in EGM_COMM.cfg
@@ -101,6 +103,7 @@ waypoint_frames: list = []
 plan_segments: list[tuple[np.ndarray, np.ndarray]] | None = None
 playing = threading.Event()
 live = threading.Event()             # live gizmo-follow (continuous IK + EGM stream) active
+freedrive = threading.Event()        # software lead-through (hand-guiding) active
 stop_flag = threading.Event()
 shutdown = threading.Event()         # set on Ctrl-C so daemon loops stop and EGM is closed
 
@@ -115,12 +118,25 @@ except Exception as e:
     print("  Execute-on-robot will fail. Resolve by releasing mastership from")
     print("  any other RWS client or rebooting the controller.")
 
-# Safety: ensure egm_go is FALSE at startup so a stray TRUE doesn't fire EGM.
+# Safety: ensure egm_go AND lead_go are FALSE at startup so a stray TRUE doesn't
+# fire EGM or leave the arm compliant.
 try:
-    rws.set_rapid_bool("egm_go", False, module=RAPID_MODULE)
-    print("Safety init: egm_go = FALSE.")
+    rws.set_rapid_bool(RAPID_GO_FLAG_VAR, False, module=RAPID_MODULE)
+    rws.set_rapid_bool(RAPID_LEAD_FLAG_VAR, False, module=RAPID_MODULE)
+    print("Safety init: egm_go = FALSE, lead_go = FALSE.")
 except Exception as e:
     print(f"Safety init failed: {e}")
+
+
+def _release_leadthrough() -> None:
+    """Best-effort: drop software lead-through so Ctrl-C never leaves the arm loose."""
+    try:
+        rws.set_rapid_bool(RAPID_LEAD_FLAG_VAR, False, module=RAPID_MODULE)
+    except Exception:
+        pass
+
+
+atexit.register(_release_leadthrough)
 
 # ---------- EGM (always listening; only active when RAPID enters EGMRunJoint) ----------
 egm = abb_egm.EGMSession(local_port=EGM_LOCAL_PORT)
@@ -253,6 +269,7 @@ gui_snap = server.gui.add_button("Snap gizmo to nearest axis")
 gui_speed = server.gui.add_slider("Speed (unified)", min=0.1, max=1.0, step=0.05, initial_value=1.0)
 gui_execute = server.gui.add_checkbox("Execute on robot (EGM stream)", initial_value=False)
 gui_live = server.gui.add_checkbox("Live (drive robot)", initial_value=False)
+gui_freedrive = server.gui.add_checkbox("Free-drive (lead-through)", initial_value=False)
 gui_traj_name = server.gui.add_text("Trajectory name", initial_value="traj1")
 gui_save = server.gui.add_button("Save trajectory")
 gui_load = server.gui.add_button("Load trajectory")
@@ -482,6 +499,7 @@ def _play() -> None:
     stop_flag.clear()
     gui_play.disabled = True
     gui_live.disabled = True
+    gui_freedrive.disabled = True
     gui_stop.disabled = False
     gui_status.value = "Starting..."
 
@@ -551,6 +569,7 @@ def _play() -> None:
         playing.clear()
         gui_stop.disabled = True
         gui_live.disabled = False
+        gui_freedrive.disabled = False
         gui_status.value = "Stopped" if stop_flag.is_set() else "Done"
 
     if execute and completed:
@@ -573,6 +592,15 @@ def _(_):
     live.clear()
     if gui_live.value:
         gui_live.value = False
+    if freedrive.is_set() or gui_freedrive.value:
+        freedrive.clear()
+        try:
+            rws.set_rapid_bool(RAPID_LEAD_FLAG_VAR, False, module=RAPID_MODULE)
+        except Exception:
+            pass
+        gui_freedrive.value = False
+        gui_live.disabled = False
+        gui_execute.disabled = False
     gui_plan.disabled = False
 
 
@@ -630,6 +658,7 @@ def _live_loop() -> None:
         gui_status.value = "Live off"
         gui_plan.disabled = False
         gui_play.disabled = plan_segments is None
+        gui_freedrive.disabled = False
         gui_stop.disabled = True
 
 
@@ -646,11 +675,47 @@ def _(_):
         live.set()
         gui_plan.disabled = True
         gui_play.disabled = True
+        gui_freedrive.disabled = True
         gui_stop.disabled = False
         gui_status.value = "LIVE: GoFa follows gizmo"
         threading.Thread(target=_live_loop, daemon=True).start()
     else:
         live.clear()
+
+
+@gui_freedrive.on_update
+def _(_):
+    """Software lead-through: set lead_go over RWS so PyEgm calls SetLeadThrough.
+    Mutually exclusive with Plan/Play/Live. Capture still works (RWS polling tracks
+    the hand-moved joints)."""
+    if gui_freedrive.value:
+        if playing.is_set() or live.is_set():
+            gui_freedrive.value = False
+            return
+        try:
+            rws.set_rapid_bool(RAPID_GO_FLAG_VAR, False, module=RAPID_MODULE)
+            rws.set_rapid_bool(RAPID_LEAD_FLAG_VAR, True, module=RAPID_MODULE)
+        except Exception as e:
+            gui_freedrive.value = False
+            gui_status.value = f"Lead-through failed: {e}"
+            return
+        freedrive.set()
+        gui_plan.disabled = True
+        gui_play.disabled = True
+        gui_live.disabled = True
+        gui_execute.disabled = True
+        gui_status.value = "Free-drive (lead-through) ON — hand-guide, then Capture"
+    else:
+        freedrive.clear()
+        try:
+            rws.set_rapid_bool(RAPID_LEAD_FLAG_VAR, False, module=RAPID_MODULE)
+        except Exception as e:
+            gui_status.value = f"Lead-through release failed: {e}"
+        gui_plan.disabled = False
+        gui_play.disabled = plan_segments is None
+        gui_live.disabled = False
+        gui_execute.disabled = False
+        gui_status.value = "Free-drive off"
 
 
 @gui_save.on_click

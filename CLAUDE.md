@@ -149,7 +149,7 @@ Teach-by-demonstration: hand-guide the arm, capture poses, save/replay. UR15 has
 - **Capture waypoint** snapshots the live joints + FK grasp pose; **Add waypoint** still captures the gizmo pose. Both record the current tracked `gripper_state` (`open`/`close`) automatically — there is no dropdown (see the Hand-E "Gripper state is one tracked value" note).
 - **Waypoint model:** `{"q": [6]|None, "pos", "wxyz", "grip"}` where `grip` is the absolute gripper state at that waypoint. Capture fills `q` (taught joints); gizmo-add leaves `q=None` and Plan backfills it from IK. At Plan, a waypoint **with `q` replays those joints exactly** (no IK); without `q` it IKs from the Cartesian pose (sequential seed, as before). `plan_segments` is `(q_start, q_goal, grip)`; `_play` actuates the gripper at a waypoint **only when its state differs** from the running state — settling `GRIP_PREDELAY_S` (0.5 s) first, holding the arm with `servoJ` (real gripper only on an executed play, viz tweens either way).
 - **Save/Load:** `trajectories/<name>.json` = `{robot, created, waypoints}`. Load clears + repopulates the waypoint list and frames; then Plan to replay. (Saved trajectories are tracked, not gitignored — they sync across machines via the repo.)
-- **GoFa:** same Capture + Save/Load (waypoints store joints+Cartesian; taught joints replay exactly). **No software free-drive toggle** — press the GoFa's **physical lead-through button** to hand-guide, then Capture (RWS polling tracks the hand-moved joints). No gripper actions. A software lead-through toggle would need a RAPID-supervisor addition + installer re-run — deferred.
+- **GoFa:** same Capture + Save/Load (waypoints store joints+Cartesian; taught joints replay exactly). **Software free-drive toggle:** the **"Free-drive (lead-through)"** checkbox flips a `lead_go` flag over RWS; `PyEgm.mod` then calls `SetLeadThrough \On` (RAPID hand-guiding) and holds the arm compliant until you untick it (`SetLeadThrough \Off`). Mutually exclusive with Plan/Play/Live; Stop and untick both release it; the controller also auto-clears lead-through on motors-off. The GoFa's **physical lead-through button** still works too. Either way, Capture reads the hand-moved joints via RWS polling. No gripper actions. **Requires re-running `install_gofa_egm.py`** to push the updated supervisor (see the PyEgm.mod section + its lead-through caveats).
 
 ## Headless replay — `play_trajectory.py`
 
@@ -231,13 +231,14 @@ What it does:
 
 ⚠️ The `.cfg` files define the EGM UDP peer (`UCdevice` → your PC). `EGM_COMM.cfg` `RemoteAddress` must equal your PC's IP (default assumes `192.168.125.50`; edit it and `PC_IP` in the installer to match) and `RemotePortNumber` must equal `EGM_LOCAL_PORT` (6510) in `teleop_gofa_egm.py`. Applying the `.cfg` may need a controller restart from the pendant.
 
-After this, `PyEgm` is parked at `WaitUntil egm_go = TRUE`. Setting `egm_go = TRUE` (which `teleop_gofa_egm.py` does via RWS) makes it enter `EGMRunJoint` and follow the UDP joint stream until convergence, then clear `egm_go` and re-park.
+After this, `PyEgm` is parked at `WaitUntil egm_go = TRUE OR lead_go = TRUE`. Setting `egm_go = TRUE` (which `teleop_gofa_egm.py` does via RWS) makes it enter `EGMRunJoint` and follow the UDP joint stream until convergence, then clear `egm_go` and re-park. Setting `lead_go = TRUE` instead makes it call `SetLeadThrough \On` (hand-guiding) and hold until `lead_go` clears, then `SetLeadThrough \Off`.
 
 ### PyEgm.mod — the supervisor
 
 ```RAPID
 MODULE PyEgm
   PERS bool egm_go := FALSE;
+  PERS bool lead_go := FALSE;          ! TRUE = software lead-through (hand-guide)
   CONST string EGM_EXT_NAME := "default";
   CONST string EGM_UC_NAME  := "UCdevice";
   VAR egmident egm_id;
@@ -245,15 +246,21 @@ MODULE PyEgm
   PROC main()
     AccSet 50, 50;
     WHILE TRUE DO
-      WaitUntil egm_go = TRUE;
-      EGMReset egm_id;
-      EGMGetId egm_id;
-      EGMSetupUC ROB_1, egm_id, EGM_EXT_NAME, EGM_UC_NAME \Joint;
-      EGMActJoint egm_id \LpFilter := 20 \MaxSpeedDeviation := 20;
-      EGMRunJoint egm_id, EGM_STOP_HOLD \J1 \J2 \J3 \J4 \J5 \J6
-        \CondTime := 1 \RampInTime := 0.1 \RampOutTime := 0.2;
-      EGMReset egm_id;
-      egm_go := FALSE;
+      WaitUntil egm_go = TRUE OR lead_go = TRUE;
+      IF lead_go = TRUE THEN
+        SetLeadThrough \On;            ! default StopMove -> arm compliant
+        WaitUntil lead_go = FALSE;
+        SetLeadThrough \Off;           ! default ClearPath + StartMove -> resume
+      ELSE
+        EGMReset egm_id;
+        EGMGetId egm_id;
+        EGMSetupUC ROB_1, egm_id, EGM_EXT_NAME, EGM_UC_NAME \Joint;
+        EGMActJoint egm_id \LpFilter := 20 \MaxSpeedDeviation := 20;
+        EGMRunJoint egm_id, EGM_STOP_HOLD \J1 \J2 \J3 \J4 \J5 \J6
+          \CondTime := 1 \RampInTime := 0.1 \RampOutTime := 0.2;
+        EGMReset egm_id;
+        egm_go := FALSE;
+      ENDIF
     ENDWHILE
   ENDPROC
 ENDMODULE
@@ -264,6 +271,8 @@ Knobs (edit in `install_gofa_egm.py`, then rerun the installer — Ctrl+C any ru
 - `\MaxSpeedDeviation := 20` — controller-side per-joint speed cap (deg/s). Backstop to the Python `MAX_TCP_SPEED` cap; raise both together if you raise speed.
 - `\LpFilter := 20` — low-pass cutoff (Hz); lower = smoother but laggier following.
 - `\CondTime := 1` — seconds of convergence before `EGMRunJoint` returns (how the session ends after the final target is held).
+
+**Lead-through (`SetLeadThrough`) caveats — verify on hardware.** `SetLeadThrough \On`/`\Off` is the RAPID hand-guiding instruction (3HAC050917-001 / RW7 3HAC065038). Two unknowns to confirm on the actual GoFa: (1) the **RW6** manual documents it as YuMi-only — RW7/OmniCore reportedly extends it to GoFa, but if the controller rejects it, the build error shows at `/rw/rapid/tasks/T_ROB1/program/builderror` (check it after the installer loads `PyEgm`); (2) whether it engages in **Auto** (EGM needs Auto) or requires Manual + the enabling device — the physical lead-through button working in your current Auto setup is a good sign. If lead-through can't run in Auto, teach in Manual and switch to Auto to replay. On failure, the physical button path is unaffected (no regression).
 
 ## Architecture of `teleop_gofa_egm.py`
 

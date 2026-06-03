@@ -58,6 +58,10 @@ MODULE PyEgm
   ! After the session ends (1s of convergence) RAPID clears it back to FALSE.
   PERS bool egm_go := FALSE;
 
+  ! Flipped TRUE by Python (via RWS) to engage software lead-through (hand-guiding).
+  ! Cleared back to FALSE to release. Mutually exclusive with egm_go.
+  PERS bool lead_go := FALSE;
+
   ! Config name referenced by EGMSetupUC. MUST match the Name of a UDPUC_HOST
   ! entry on the controller. UCdevice's RemoteAddress is set via RobotStudio
   ! (Configuration -> Communication -> UDP Unicast Communication Host) to
@@ -71,25 +75,34 @@ MODULE PyEgm
     AccSet 50, 50;
 
     WHILE TRUE DO
-      WaitUntil egm_go = TRUE;
+      WaitUntil egm_go = TRUE OR lead_go = TRUE;
 
-      EGMReset egm_id;
-      EGMGetId egm_id;
-      EGMSetupUC ROB_1, egm_id, EGM_EXT_NAME, EGM_UC_NAME \\Joint;
+      IF lead_go = TRUE THEN
+        ! Software lead-through (hand-guiding). SetLeadThrough \\On orders a
+        ! StopMove by default, so the arm goes compliant even though this task
+        ! keeps executing; \\Off resumes (default ClearPath + StartMove).
+        SetLeadThrough \\On;
+        WaitUntil lead_go = FALSE;
+        SetLeadThrough \\Off;
+      ELSE
+        EGMReset egm_id;
+        EGMGetId egm_id;
+        EGMSetupUC ROB_1, egm_id, EGM_EXT_NAME, EGM_UC_NAME \\Joint;
 
-      !   \\LpFilter         : low-pass cutoff in Hz (lower = more smoothing)
-      !   \\MaxSpeedDeviation: cap on per-joint speed during EGM, deg/s.
-      !     20 deg/s ~= 0.35 rad/s; at the 0.95 m reach that bounds the TCP
-      !     near the 250 mm/s collaborative limit as a controller-side backstop
-      !     to the Python MAX_TCP_SPEED cap. Raise both together if you raise speed.
-      EGMActJoint egm_id \\LpFilter := 20 \\MaxSpeedDeviation := 20;
+        !   \\LpFilter         : low-pass cutoff in Hz (lower = more smoothing)
+        !   \\MaxSpeedDeviation: cap on per-joint speed during EGM, deg/s.
+        !     20 deg/s ~= 0.35 rad/s; at the 0.95 m reach that bounds the TCP
+        !     near the 250 mm/s collaborative limit as a controller-side backstop
+        !     to the Python MAX_TCP_SPEED cap. Raise both together if you raise speed.
+        EGMActJoint egm_id \\LpFilter := 20 \\MaxSpeedDeviation := 20;
 
-      EGMRunJoint egm_id, EGM_STOP_HOLD
-        \\J1 \\J2 \\J3 \\J4 \\J5 \\J6
-        \\CondTime := 1 \\RampInTime := 0.1 \\RampOutTime := 0.2;
+        EGMRunJoint egm_id, EGM_STOP_HOLD
+          \\J1 \\J2 \\J3 \\J4 \\J5 \\J6
+          \\CondTime := 1 \\RampInTime := 0.1 \\RampOutTime := 0.2;
 
-      EGMReset egm_id;
-      egm_go := FALSE;
+        EGMReset egm_id;
+        egm_go := FALSE;
+      ENDIF
     ENDWHILE
   ENDPROC
 ENDMODULE
