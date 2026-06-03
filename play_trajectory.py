@@ -24,6 +24,19 @@ RAMP_FRAC = 0.25
 MIN_SEG_DURATION_S = 0.5
 DWELL_S = 0.2
 GRIP_PREDELAY_S = 0.5
+GRIP_EPS = 0.02                 # min change in gripper fraction (2%) before a waypoint re-actuates
+
+
+def norm_grip(g):
+    """Waypoint grip: legacy 'open'/'close'/None or a numeric fraction -> float or None.
+    Fraction is 0.0=open .. 1.0=fully closed (matches teleop_ur15.py)."""
+    if g is None:
+        return None
+    if g == "open":
+        return 0.0
+    if g == "close":
+        return 1.0
+    return float(g)
 
 # ---- UR15 ----
 UR_ROBOT_IP = "192.168.125.2"
@@ -88,7 +101,7 @@ def build_segments(q_start: np.ndarray, waypoints: list[dict]):
     q = np.asarray(q_start, dtype=np.float64)
     for wp in waypoints:
         q_next = np.asarray(wp["q"], dtype=np.float64)
-        segments.append((q.copy(), q_next, wp.get("grip")))
+        segments.append((q.copy(), q_next, norm_grip(wp.get("grip"))))
         q = q_next
     return segments
 
@@ -99,7 +112,7 @@ def estimate_duration(segments, max_joint_speed: float, speed: float) -> float:
         delta = q_goal - q_start
         seg = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / max_joint_speed)
         total += seg / max(0.1, speed) + DWELL_S
-        if grip in ("open", "close"):
+        if grip is not None:
             total += GRIP_PREDELAY_S
     return total
 
@@ -110,7 +123,7 @@ def print_plan(robot: str, segments, speed: float) -> None:
     print(f"Segments: {len(segments)} (first = current pose -> waypoint 1)")
     for i, (a, b, grip) in enumerate(segments):
         dmax = float(np.max(np.abs(b - a)))
-        tag = f"  grip->{grip}" if grip in ("open", "close") else ""
+        tag = f"  grip->{int(round(grip * 100))}% closed" if grip is not None else ""
         print(f"  seg {i + 1}: max|dq|={np.degrees(dmax):6.1f} deg{tag}")
     print(f"Estimated duration: {estimate_duration(segments, mjs, speed):.1f} s "
           f"(speed={speed})")
@@ -156,17 +169,30 @@ def play_ur15(data, speed, no_confirm):
     except Exception as e:
         print(f"setPayload failed ({e}); end-of-play droop may be larger.")
 
-    # gripper best-effort + known-open startup state (mirrors teleop_ur15.py)
+    # gripper best-effort: only fall back to motion-only if it's unreachable. If it
+    # IS reachable, WAIT for activation calibration (it auto-references its full
+    # open/close range) and the initial open to finish before any motion runs --
+    # the trajectory's grip actions assume a calibrated gripper.
     try:
         gripper = hande_gripper.HandEGripper(UR_ROBOT_IP, hande_gripper.DEFAULT_PORT)
         gripper.connect()
-        gripper.activate()
-        gripper.open()
-        print("Hand-E connected + opened.")
     except Exception as e:
         gripper = None
-        print(f"Hand-E unavailable ({e}); motion-only (grip actions skipped).")
-    cur_grip = "open"
+        print(f"Hand-E unreachable ({e}); motion-only (grip actions skipped).")
+
+    if gripper is not None:
+        print("Activating Hand-E; waiting for calibration to finish...")
+        try:
+            gripper.activate(timeout=20.0)   # blocks until STA==3 (calibration done)
+            gripper.open()
+            gripper.wait_until_idle(timeout=10.0)   # wait out the open move
+            print("Hand-E calibrated + open.")
+        except Exception as e:
+            raise SystemExit(
+                f"Hand-E activation/calibration failed: {e}. Power-cycle the gripper "
+                f"or run verify_hande.py, then retry (or unplug it to run motion-only)."
+            )
+    cur_grip = 0.0   # fraction closed (0=open), matches the known-open startup state
 
     q_now = np.array(rtde_r.getActualQ(), dtype=np.float64)
     segments = build_segments(q_now, data["waypoints"])
@@ -187,13 +213,13 @@ def play_ur15(data, speed, no_confirm):
                 time.sleep(dt)
                 alpha = min(1.0, alpha + dt * speed / seg_duration)
 
-            if grip in ("open", "close") and grip != cur_grip:
+            if grip is not None and abs(grip - cur_grip) > GRIP_EPS:
                 for _ in range(int(GRIP_PREDELAY_S * UR_STREAM_HZ)):  # settle before actuating
                     rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN)
                     time.sleep(dt)
                 if gripper is not None:
-                    print(f"Gripper: {grip}")
-                    getattr(gripper, "open" if grip == "open" else "close_gripper")()
+                    print(f"Gripper: {int(round(grip * 100))}% closed")
+                    gripper.move(grip)
                     time.sleep(0.8)  # let the fingers move
                 cur_grip = grip
 

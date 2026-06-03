@@ -97,6 +97,17 @@ class HandEGripper:
     def close_gripper(self, speed: int = DEFAULT_SPEED, force: int = DEFAULT_FORCE) -> None:
         self._move(255, speed, force)
 
+    def wait_until_idle(self, timeout: float = 10.0) -> None:
+        """Block until the gripper stops moving (OBJ != 0: reached the requested
+        position or stopped on an object). Use after activate()/open() to wait out
+        the activation calibration + initial move before relying on the gripper."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._get("OBJ") != 0:   # 0 = still in motion
+                return
+            time.sleep(0.1)
+        raise TimeoutError("Hand-E move did not complete (OBJ stayed 0)")
+
     def status(self) -> dict[str, int | bool]:
         return {
             "activated": self._get("STA") == 3,
