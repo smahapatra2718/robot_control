@@ -440,7 +440,7 @@ def _post_execute_cleanup() -> None:
 
 
 def _play() -> None:
-    global gripper_finger
+    global gripper_finger, gripper_state
     assert plan_segments is not None
     execute = gui_execute.value   # latched at play-start
     if execute:
@@ -456,6 +456,7 @@ def _play() -> None:
     gui_stop.disabled = False
 
     try:
+        cur_grip = gripper_state   # running gripper state; only actuate when a waypoint differs
         for seg_idx, (q_start, q_goal, grip) in enumerate(plan_segments):
             if stop_flag.is_set():
                 break
@@ -477,9 +478,18 @@ def _play() -> None:
                 time.sleep(dt)
                 alpha = min(1.0, alpha + dt * speed / seg_duration)
 
-            # gripper action recorded at this waypoint (hold the arm with servoJ
-            # while the fingers tween; real command only on an executed play)
-            if not stop_flag.is_set() and grip in ("open", "close"):
+            # gripper action: only when this waypoint's state differs from the
+            # running state. Settle the arm GRIP_PREDELAY_S first (keep streaming
+            # the pose), then actuate. Real command only on an executed play.
+            if not stop_flag.is_set() and grip in ("open", "close") and grip != cur_grip:
+                gui_status.value = f"Settling before gripper: {grip}"
+                for _ in range(int(GRIP_PREDELAY_S * STREAM_HZ)):
+                    if stop_flag.is_set():
+                        break
+                    if execute:
+                        rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
+                    time.sleep(dt)
+
                 gui_status.value = f"Gripper: {grip}"
                 target_f = GRIPPER_FINGER_OPEN if grip == "open" else 0.0
                 if execute and gripper is not None:
@@ -499,6 +509,8 @@ def _play() -> None:
                     _update_gripper_viz(q_goal)
                     time.sleep(dt)
                 gripper_finger = target_f
+                gripper_state = grip   # keep the global in sync with what we just commanded
+                cur_grip = grip
 
             # dwell at the waypoint (still streaming to hold pose firmly)
             if not stop_flag.is_set() and seg_idx < len(plan_segments) - 1:
