@@ -224,7 +224,94 @@ def play_ur15(data, speed, no_confirm):
 
 
 def play_gofa(data, speed, no_confirm):
-    raise SystemExit("play_gofa not implemented yet")  # Task 6
+    import jax.numpy as jnp
+    import jaxlie
+    import pyroki as pk
+    import yourdfpy
+
+    import abb_egm
+    import abb_rws
+
+    def _resolve_mesh(fname):
+        if fname.startswith("package://"):
+            pkg, rest = fname[len("package://"):].split("/", 1)
+            return os.path.join(GOFA_MESH_DIR_PREFIX, pkg, rest)
+        return fname
+
+    urdf = yourdfpy.URDF.load(GOFA_URDF_PATH, filename_handler=_resolve_mesh)
+    robot = pk.Robot.from_urdf(urdf)
+    tcp_idx = robot.links.names.index("tool0")
+
+    def tcp_xyz(q):
+        Ts = robot.forward_kinematics(cfg=jnp.array(q))
+        return np.asarray(jaxlie.SE3(Ts[tcp_idx]).translation())
+
+    def cap_seg_duration(q_start, delta, seg_duration, dt):
+        """Stretch seg_duration so peak TCP speed stays <= GOFA_MAX_TCP_SPEED."""
+        alpha, prev_p, peak = 0.0, tcp_xyz(q_start), 0.0
+        while alpha < 1.0:
+            alpha = min(1.0, alpha + dt / seg_duration)
+            p = tcp_xyz(q_start + delta * alpha_to_s(alpha))
+            peak = max(peak, float(np.linalg.norm(p - prev_p)) / dt)
+            prev_p = p
+        if peak > GOFA_MAX_TCP_SPEED:
+            seg_duration *= peak / GOFA_MAX_TCP_SPEED
+        return seg_duration
+
+    rws = abb_rws.RWSClient(host=GOFA_ROBOT_IP, user=GOFA_RWS_USER, password=GOFA_RWS_PASSWORD)
+    rws.request_mastership()
+    rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, False, module=GOFA_RAPID_MODULE)
+    egm = abb_egm.EGMSession(local_port=GOFA_EGM_LOCAL_PORT)
+    egm.start()
+
+    q_now = np.array(rws.get_joints(), dtype=np.float64)
+    segments = build_segments(q_now, data["waypoints"])
+    print_plan("gofa", segments, speed)
+    if not no_confirm and input("Execute on the real GoFa? [y/N] ").strip().lower() != "y":
+        print("Aborted."); return
+
+    dt = 1.0 / GOFA_STREAM_HZ
+
+    def start_egm():
+        egm.set_target_rad(q_now.tolist())
+        rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, True, module=GOFA_RAPID_MODULE)
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if egm.is_fresh(max_age_s=0.1):
+                return True
+            time.sleep(0.05)
+        return False
+
+    if not start_egm():
+        print("EGM did not start (no packets in 3s). Is PyEgm parked at WaitUntil egm_go?")
+        return
+    try:
+        for seg_idx, (q_start, q_goal, _grip) in enumerate(segments):
+            delta = q_goal - q_start
+            seg_duration = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / GOFA_MAX_JOINT_SPEED)
+            seg_duration = cap_seg_duration(q_start, delta, seg_duration, dt)
+            print(f"Segment {seg_idx + 1}/{len(segments)}")
+            alpha = 0.0
+            while alpha < 1.0:
+                q = q_start + delta * alpha_to_s(alpha)
+                egm.set_target_rad(q.tolist())
+                time.sleep(dt)
+                alpha = min(1.0, alpha + dt * speed / seg_duration)
+            if seg_idx < len(segments) - 1:
+                for _ in range(int(max(0.0, DWELL_S / max(0.1, speed)) * GOFA_STREAM_HZ)):
+                    egm.set_target_rad(q_goal.tolist())
+                    time.sleep(dt)
+
+        hold = segments[-1][1]
+        for _ in range(int(GOFA_HOLD_AFTER_PLAY_S * GOFA_STREAM_HZ)):  # let \CondTime fire
+            egm.set_target_rad(hold.tolist())
+            time.sleep(dt)
+    finally:
+        try:
+            rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, False, module=GOFA_RAPID_MODULE)
+        except Exception:
+            pass
+    print("Done.")
 
 
 if __name__ == "__main__":
