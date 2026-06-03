@@ -251,7 +251,6 @@ gui_wp_count = server.gui.add_text("Waypoints", initial_value="0", disabled=True
 gui_freedrive = server.gui.add_checkbox("Free-drive (hand-guide)", initial_value=False)
 gui_add_wp = server.gui.add_button("Add waypoint (from gizmo)")
 gui_capture = server.gui.add_button("Capture waypoint (current pose)")
-gui_grip_action = server.gui.add_dropdown("Gripper @ waypoint", ("none", "open", "close"))
 gui_pop_wp = server.gui.add_button("Remove last waypoint")
 gui_clear_wp = server.gui.add_button("Clear waypoints")
 gui_plan = server.gui.add_button("Plan")
@@ -275,10 +274,6 @@ def _refresh_wp_count() -> None:
     gui_wp_count.value = str(len(waypoints))
 
 
-def _grip_choice() -> str | None:
-    return None if gui_grip_action.value == "none" else gui_grip_action.value
-
-
 def _add_waypoint(wp: dict) -> None:
     """Append a waypoint dict and draw its frame (label includes the grip action)."""
     i = len(waypoints)
@@ -300,7 +295,7 @@ def _(_):
         "q": None,  # filled by IK at Plan
         "pos": np.asarray(gizmo.position).tolist(),
         "wxyz": np.asarray(gizmo.wxyz).tolist(),
-        "grip": _grip_choice(),
+        "grip": gripper_state,
     })
     gui_status.value = f"Added waypoint {len(waypoints)} (gizmo)"
 
@@ -314,7 +309,7 @@ def _(_):
         "q": q.tolist(),  # taught joints — replayed exactly, no IK
         "pos": np.asarray(T.translation()).tolist(),
         "wxyz": np.asarray(T.rotation().wxyz).tolist(),
-        "grip": _grip_choice(),
+        "grip": gripper_state,
     })
     gui_status.value = f"Captured waypoint {len(waypoints)} (joints)"
 
@@ -347,7 +342,7 @@ def _(_):
         targets = waypoints
     else:
         targets = [{"q": None, "pos": np.asarray(gizmo.position).tolist(),
-                    "wxyz": np.asarray(gizmo.wxyz).tolist(), "grip": None}]
+                    "wxyz": np.asarray(gizmo.wxyz).tolist(), "grip": gripper_state}]
     with state_lock:
         q = current_q.copy()
     segments: list[tuple[np.ndarray, np.ndarray, str | None]] = []
@@ -410,6 +405,8 @@ def _actuate_gripper(target_finger: float, action: str) -> None:
 
 @gui_grip_open.on_click
 def _(_):
+    global gripper_state
+    gripper_state = "open"
     threading.Thread(
         target=_actuate_gripper, args=(GRIPPER_FINGER_OPEN, "open"), daemon=True
     ).start()
@@ -417,6 +414,8 @@ def _(_):
 
 @gui_grip_close.on_click
 def _(_):
+    global gripper_state
+    gripper_state = "close"
     threading.Thread(
         target=_actuate_gripper, args=(0.0, "close_gripper"), daemon=True
     ).start()
