@@ -160,6 +160,10 @@ _UR_SAFETY_MODES = {
     8: "VIOLATION", 9: "FAULT", 10: "VALIDATE_JOINT_ID", 11: "UNDEFINED",
 }
 
+# Set once the GUI is built; the poll thread starts before then, so it stays
+# None until assigned and the poller skips it until then.
+gui_safety = None
+
 
 def poll_loop() -> None:
     global current_q
@@ -182,9 +186,13 @@ def poll_loop() -> None:
                 if mode == 1:
                     if last_safety is not None:
                         print("[safety] cleared -> NORMAL")
-                elif last_safety is not None or mode != 1:
+                    box = "NORMAL"
+                else:
                     print(f"[safety] *** {name} *** "
                           "— robot stopped; clear it on the pendant")
+                    box = f"{name} — clear on pendant"
+                if gui_safety is not None:
+                    gui_safety.value = box
                 last_safety = mode
         time.sleep(period)
 
@@ -275,6 +283,7 @@ def _update_gripper_viz(q: np.ndarray) -> None:
 
 # ---------- GUI ----------
 gui_status = server.gui.add_text("Status", initial_value="Idle", disabled=True)
+gui_safety = server.gui.add_text("Safety", initial_value="NORMAL", disabled=True)
 gui_wp_count = server.gui.add_text("Waypoints", initial_value="0", disabled=True)
 gui_freedrive = server.gui.add_checkbox("Free-drive (hand-guide)", initial_value=False)
 gui_add_wp = server.gui.add_button("Add waypoint (from gizmo)")

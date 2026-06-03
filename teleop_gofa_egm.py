@@ -125,6 +125,11 @@ egm.start()
 print(f"EGM listening on UDP {EGM_LOCAL_PORT}.")
 
 
+# Set once the GUI is built; the poll thread starts before then, so it stays
+# None until assigned and the poller skips it until then.
+gui_safety = None
+
+
 def poll_loop() -> None:
     """RWS state polling at POLL_HZ. Used for idle visualization only — during
     an Execute Play, the play loop drives the URDF directly from the streamed
@@ -155,8 +160,13 @@ def poll_loop() -> None:
                     print(f"[safety] *** controller state: {st.upper()} *** "
                           "— guardstop = collision / joint limit / safeguard; "
                           "clear it on the pendant")
-                elif last_state is not None:
-                    print(f"[safety] controller state -> {st}")
+                    box = f"{st.upper()} — clear on pendant"
+                else:
+                    if last_state is not None:
+                        print(f"[safety] controller state -> {st}")
+                    box = st
+                if gui_safety is not None:
+                    gui_safety.value = box
                 last_state = st
         time.sleep(period)
 
@@ -224,6 +234,7 @@ gizmo = server.scene.add_transform_controls(
 
 # ---------- GUI ----------
 gui_status = server.gui.add_text("Status", initial_value="Idle", disabled=True)
+gui_safety = server.gui.add_text("Safety", initial_value="motoron", disabled=True)
 gui_rws_status = server.gui.add_text("RWS", initial_value="?", disabled=True)
 gui_egm_status = server.gui.add_text("EGM", initial_value="idle", disabled=True)
 gui_wp_count = server.gui.add_text("Waypoints", initial_value="0", disabled=True)
