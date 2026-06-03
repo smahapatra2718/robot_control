@@ -83,6 +83,18 @@ class HandEGripper:
             time.sleep(0.2)
         raise TimeoutError("Hand-E activation did not complete (STA != 3)")
 
+    def reset(self, timeout: float = 5.0) -> None:
+        """Deactivate (clear activation) and wait until the gripper reports reset
+        (STA==0). Pair with activate() to FORCE a fresh calibration cycle, so a
+        stale STA==3 from a prior session can't make activate() return early."""
+        self._set(ACT=0)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._get("STA") == 0:
+                return
+            time.sleep(0.2)
+        raise TimeoutError("Hand-E did not reset (STA != 0)")
+
     def _move(self, position: int, speed: int, force: int) -> None:
         position = max(0, min(255, position))
         self._set(POS=position, SPE=speed, FOR=force, GTO=1)

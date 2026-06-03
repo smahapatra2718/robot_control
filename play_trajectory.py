@@ -27,6 +27,19 @@ GRIP_PREDELAY_S = 0.5
 GRIP_EPS = 0.02                 # min change in gripper fraction (2%) before a waypoint re-actuates
 
 
+def confirm(prompt: str) -> bool:
+    """Ask a y/N question, but first discard any type-ahead so a 'y' pressed
+    DURING the (slow) gripper calibration can't auto-answer the prompt — you must
+    press y after the prompt actually appears."""
+    try:
+        import sys
+        import termios
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+    except Exception:
+        pass   # non-tty / non-POSIX: nothing buffered to flush
+    return input(prompt).strip().lower() == "y"
+
+
 def norm_grip(g):
     """Waypoint grip: legacy 'open'/'close'/None or a numeric fraction -> float or None.
     Fraction is 0.0=open .. 1.0=fully closed (matches teleop_ur15.py)."""
@@ -181,11 +194,15 @@ def play_ur15(data, speed, no_confirm):
         print(f"Hand-E unreachable ({e}); motion-only (grip actions skipped).")
 
     if gripper is not None:
-        print("Activating Hand-E; waiting for calibration to finish...")
+        print("Resetting + activating Hand-E; waiting for full calibration...")
         try:
-            gripper.activate(timeout=20.0)   # blocks until STA==3 (calibration done)
+            # Force a clean ACT 0->1 cycle so we actually observe the auto-
+            # calibration (STA 0->3), not a stale STA==3 from a prior session that
+            # would let activate() return while the fingers are still referencing.
+            gripper.reset(timeout=5.0)               # ACT=0 -> STA==0
+            gripper.activate(timeout=20.0)           # ACT=1 -> STA==3 (calibration done)
             gripper.open()
-            gripper.wait_until_idle(timeout=10.0)   # wait out the open move
+            gripper.wait_until_idle(timeout=10.0)    # wait out the open move
             print("Hand-E calibrated + open.")
         except Exception as e:
             raise SystemExit(
@@ -197,7 +214,7 @@ def play_ur15(data, speed, no_confirm):
     q_now = np.array(rtde_r.getActualQ(), dtype=np.float64)
     segments = build_segments(q_now, data["waypoints"])
     print_plan("ur15", segments, speed)
-    if not no_confirm and input("Execute on the real UR15? [y/N] ").strip().lower() != "y":
+    if not no_confirm and not confirm("Execute on the real UR15? [y/N] "):
         print("Aborted."); return
 
     dt = 1.0 / UR_STREAM_HZ
