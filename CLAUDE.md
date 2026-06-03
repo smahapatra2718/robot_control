@@ -113,6 +113,8 @@ A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V th
 
 **URCap socket protocol** (port 63352): `SET <VAR> <val> …` → `ack`, `GET <VAR>` → `<VAR> <val>`. Vars: `ACT` activate, `GTO` go-to, `POS` request (0 open … 255 closed), `SPE` speed, `FOR` force (all 0–255), `STA` status (==3 ⇒ activated), `OBJ` object detection (1/2 ⇒ stopped on an object), `FLT` fault.
 
+**Gripper state is one tracked value.** `gripper_state` (`"open"`/`"close"`) is the single source of truth; the viz fingers always render it. At startup the script sends the real gripper an `open` command, so `gripper_state` is known without polling — only the Open/Close buttons and trajectory replay change it after that. **Capture/Add records the current `gripper_state` into the waypoint automatically** (the old "Gripper @ waypoint" dropdown is gone). On replay, the gripper actuates only when a waypoint's state differs from the running state, and the arm settles `GRIP_PREDELAY_S` (0.5 s) before each actuation.
+
 ### Tunables — Hand-E (`teleop_ur15.py` / `hande_gripper.py`)
 
 | Constant | Default | Effect |
@@ -123,6 +125,7 @@ A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V th
 | `GRIPPER_TWEEN_S` | `0.8` s | Viz finger animation duration (match the real move) |
 | `GRIPPER_MASS` / `GRIPPER_COG` | `1.0` kg / `(0,0,0.06)` m | Payload told to the UR via `setPayload` so it compensates gravity at the loaded wrist (bump if you add a workpiece) |
 | `DEFAULT_SPEED` / `DEFAULT_FORCE` | `255` / `150` | Robotiq `SPE` / `FOR` (0–255); force kept collaborative |
+| `GRIP_PREDELAY_S` | `0.5` s | Settle hold before the gripper actuates at a waypoint |
 
 **End-of-play precision & the payload.** With the ~1 kg gripper on the wrist, an *undeclared* payload makes `servoJ` hold the loaded joints slightly below target (gravity droop) — which is why end-of-play undershoot felt worse after mounting it. `setPayload(GRIPPER_MASS, GRIPPER_COG)` at startup fixes that. Separately, the gizmo now targets the grasp point (~156 mm past `tool0`), so the *same* joint error shows up as a larger Cartesian shift — geometric, not a regression. The end-of-play settle (`SETTLE_*`) drives joint error to the `servoJ` floor regardless.
 
@@ -143,10 +146,20 @@ Per-arm:
 Teach-by-demonstration: hand-guide the arm, capture poses, save/replay. UR15 has the full version (software free-drive + gripper actions); the GoFa has capture + save/load with hand-guiding via its hardware button.
 
 - **Free-drive** checkbox → `ur_rtde` `teachMode()` (zero-gravity hand-guiding); unticking / Stop calls `endTeachMode()`. Mutually exclusive with Plan/Play/Live. **`teachMode` must be ended before any `servoJ`** or the control mode conflicts — every exit path does this.
-- **Capture waypoint** snapshots the live joints + FK grasp pose; **Add waypoint** still captures the gizmo pose. Both tag the **Gripper @ waypoint** dropdown value (`none`/`open`/`close`).
-- **Waypoint model:** `{"q": [6]|None, "pos", "wxyz", "grip"}`. Capture fills `q` (taught joints); gizmo-add leaves `q=None` and Plan backfills it from IK. At Plan, a waypoint **with `q` replays those joints exactly** (no IK); without `q` it IKs from the Cartesian pose (sequential seed, as before). `plan_segments` is now `(q_start, q_goal, grip)`; `_play` fires the grip action at each waypoint (real gripper only on an executed play, viz tweens either way) while holding the arm with `servoJ`.
+- **Capture waypoint** snapshots the live joints + FK grasp pose; **Add waypoint** still captures the gizmo pose. Both record the current tracked `gripper_state` (`open`/`close`) automatically — there is no dropdown (see the Hand-E "Gripper state is one tracked value" note).
+- **Waypoint model:** `{"q": [6]|None, "pos", "wxyz", "grip"}` where `grip` is the absolute gripper state at that waypoint. Capture fills `q` (taught joints); gizmo-add leaves `q=None` and Plan backfills it from IK. At Plan, a waypoint **with `q` replays those joints exactly** (no IK); without `q` it IKs from the Cartesian pose (sequential seed, as before). `plan_segments` is `(q_start, q_goal, grip)`; `_play` actuates the gripper at a waypoint **only when its state differs** from the running state — settling `GRIP_PREDELAY_S` (0.5 s) first, holding the arm with `servoJ` (real gripper only on an executed play, viz tweens either way).
 - **Save/Load:** `trajectories/<name>.json` = `{robot, created, waypoints}`. Load clears + repopulates the waypoint list and frames; then Plan to replay. (Saved trajectories are tracked, not gitignored — they sync across machines via the repo.)
 - **GoFa:** same Capture + Save/Load (waypoints store joints+Cartesian; taught joints replay exactly). **No software free-drive toggle** — press the GoFa's **physical lead-through button** to hand-guide, then Capture (RWS polling tracks the hand-moved joints). No gripper actions. A software lead-through toggle would need a RAPID-supervisor addition + installer re-run — deferred.
+
+## Headless replay — `play_trajectory.py`
+
+Replay a saved trajectory on either arm without viser:
+
+```bash
+./robot_control/bin/python play_trajectory.py <name> [--speed S] [--dry-run] [--no-confirm]
+```
+
+Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, and executes on the real arm after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits without touching hardware. It is **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. The first segment moves the arm from its current pose to waypoint 1 (same as viser). The UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). The GoFa path imports pyroki for forward kinematics **only** to enforce the `MAX_TCP_SPEED` collaborative cap, then streams over the existing EGM supervisor (PyEgm must be parked at `WaitUntil egm_go`). The profile constants are mirrored from the teleop scripts (the `UR_`/`GOFA_` prefixed block at the top of `play_trajectory.py`) — keep them in sync if you retune a teleop script.
 
 ---
 
