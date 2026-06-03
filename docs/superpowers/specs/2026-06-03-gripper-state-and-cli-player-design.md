@@ -73,8 +73,12 @@ covers GoFa replay.
 ```
 
 - Loads `trajectories/<name>.json`; reads the `"robot"` field (`"ur15"` | `"gofa"`).
-- **IK-free:** replays stored joint configs only. If any waypoint has `q is None`,
-  abort with: *"waypoint N has no joints — open <name> in viser, Plan, and re-save."*
+- **IK-solver-free:** replays stored joint configs only. If any waypoint has
+  `q is None`, abort with: *"waypoint N has no joints — open <name> in viser, Plan,
+  and re-save."* The UR15 path needs no robot model at all. The **GoFa path imports
+  pyroki for forward kinematics only** — its `MAX_TCP_SPEED` collaborative cap is
+  enforced by walking the path through FK (`_cap_seg_duration`), so dropping it would
+  weaken the safety guarantee. No IK solve and no viser either way.
 - **Plan:** same shape as the teleop scripts — first segment is `(current measured
   joints -> waypoint 1)`, then waypoint-to-waypoint. So it moves the arm to the start
   of the trajectory from wherever it currently is, at capped speed.
