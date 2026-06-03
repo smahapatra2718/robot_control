@@ -93,6 +93,7 @@ Safety:
 |---|---|---|
 | `ROBOT_IP` | `192.168.0.100` | UR15 controller address |
 | `MAX_JOINT_SPEED` | `1.0` rad/s | Peak per-joint speed at slider=1.0 |
+| `MAX_JOINT_ACCEL` | `8.0` rad/s² | Accel limit for Live following (lower = smoother, laggier) |
 | `MIN_SEG_DURATION_S` | `0.5` s | Floor on per-segment time |
 | `RAMP_FRAC` | `0.25` | Trapezoidal ramp fraction. `0.5` = triangle, `0.1` = sharper |
 | `DWELL_S` | `0.2` s | Pause at each intermediate waypoint |
@@ -135,7 +136,7 @@ Both scripts have a **"Live (drive robot)"** checkbox: a single toggle that make
 
 Safety, shared:
 - **Snap-on-enable:** the gizmo jumps to the current EE first, so the arm never lurches toward a stale gizmo pose.
-- **Per-tick clamp:** `|Δq|` per tick is capped at `MAX_JOINT_SPEED · dt`, so a fast drag or an IK branch-flip rate-limits toward the target instead of jumping.
+- **Acceleration-limited follower (UR):** the live loop tracks the IK target through a per-joint motion profile that bounds **both** speed (`MAX_JOINT_SPEED`) and the rate speed can change (`MAX_JOINT_ACCEL`), with the desired speed tapered to `√(2·a·|err|)` so it decelerates to rest at the target without overshoot and a one-tick `|err|/dt` cap that kills dither at rest. This bounds jerk (smooth stops / IK branch-flips) and low-passes IK jitter — the UR has no controller-side filter like the GoFa's EGM `LpFilter`. Runs at `LIVE_HZ` (125) on an exact `initPeriod`/`waitPeriod` cadence (`servoJ` is jitter-sensitive). The GoFa live loop still uses the simpler per-tick step clamp since EGM filters controller-side.
 
 Per-arm:
 - **UR15:** `servoJ` each tick; `servoStop` on exit.

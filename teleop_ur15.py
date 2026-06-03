@@ -53,6 +53,7 @@ STREAM_HZ = 50                  # shared rate for viz playback and servoJ
 LIVE_HZ = 125                   # live gizmo-follow: IK + servoJ rate (UR servoJ wants a fast, steady cadence)
 GIZMO_SNAP_TWEEN_S = 0.8        # slew the gizmo orientation when snapping in Live (in-place reorient)
 MAX_JOINT_SPEED = 1.0           # rad/s peak per joint at slider=1.0
+MAX_JOINT_ACCEL = 8.0           # rad/s^2 — accel limit for Live following (lower = smoother, laggier)
 MIN_SEG_DURATION_S = 0.5        # floor on segment time so tiny moves are still smooth
 DWELL_S = 0.2                   # pause at each intermediate waypoint
 RAMP_FRAC = 0.25                # fraction of segment spent ramping up (same for ramp-down)
@@ -688,13 +689,14 @@ def _(_):
 
 def _live_loop() -> None:
     """Continuously chase the gizmo: solve IK each tick and servoJ there, with a
-    per-tick joint-step clamp so a fast drag or IK branch-flip can't make the arm
-    lurch — it just rate-limits toward the target."""
+    acceleration-limited follower so a fast drag or IK branch-flip can't make the
+    arm lurch — speed AND the rate speed can change are both bounded."""
     dt = 1.0 / LIVE_HZ
-    max_step = MAX_JOINT_SPEED * dt
+    max_dv = MAX_JOINT_ACCEL * dt        # max change in joint velocity per tick (rad/s)
     viz_every = max(1, LIVE_HZ // 50)   # throttle browser viz to ~50 Hz; servoJ still runs every tick
     with state_lock:
         q_cmd = current_q.copy()
+    v_cmd = np.zeros(NUM_JOINTS)         # per-joint velocity (rad/s), ramped for smoothness
     tick = 0
     try:
         while live.is_set() and not stop_flag.is_set():
@@ -714,7 +716,19 @@ def _live_loop() -> None:
             except Exception:
                 rtde_c.waitPeriod(t_start)
                 continue
-            q_cmd = q_cmd + np.clip(q_target - q_cmd, -max_step, max_step)
+            # Acceleration-limited tracking: desired speed is capped at MAX_JOINT_SPEED
+            # but also tapered to sqrt(2*a*|err|) so it can always decelerate to rest at
+            # the target without overshoot; v_cmd then ramps toward v_des within max_dv.
+            # This bounds jerk (smooth stops/branch-flips) and low-passes IK jitter — the
+            # UR has no controller-side filter like the GoFa's EGM LpFilter.
+            err = q_target - q_cmd
+            v_des = np.sign(err) * np.minimum.reduce([
+                np.full_like(err, MAX_JOINT_SPEED),         # speed cap
+                np.sqrt(2.0 * MAX_JOINT_ACCEL * np.abs(err)),  # decel-to-rest taper (no overshoot)
+                np.abs(err) / dt,                           # one-tick landing cap (kills dither at rest)
+            ])
+            v_cmd = v_cmd + np.clip(v_des - v_cmd, -max_dv, max_dv)
+            q_cmd = q_cmd + v_cmd * dt
             tick += 1
             if tick % viz_every == 0:
                 viser_urdf.update_cfg(q_cmd)
