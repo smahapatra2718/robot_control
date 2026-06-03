@@ -124,6 +124,7 @@ playing = threading.Event()
 live = threading.Event()               # live gizmo-follow (continuous IK + servoJ) active
 freedrive = threading.Event()          # hand-guiding (teachMode) active
 stop_flag = threading.Event()
+shutdown = threading.Event()           # set on Ctrl-C so daemon loops stop touching RTDE
 
 # ---------- UR15 RTDE ----------
 rtde_r = RTDEReceiveInterface(ROBOT_IP)
@@ -170,7 +171,7 @@ def poll_loop() -> None:
     period = 1.0 / POLL_HZ
     last_safety = None
     tick = 0
-    while True:
+    while not shutdown.is_set():
         q = np.asarray(rtde_r.getActualQ(), dtype=np.float64)
         with state_lock:
             current_q = q
@@ -743,7 +744,7 @@ def _(_):
 
 def viz_loop() -> None:
     period = 1.0 / PLAY_HZ
-    while True:
+    while not shutdown.is_set():
         if not playing.is_set() and not live.is_set():
             with state_lock:
                 q = current_q.copy()
@@ -758,5 +759,28 @@ print("Warming up IK solver (JAX JIT compile)...")
 _warmup_ik()
 
 print("viser running. Open the URL printed above in a browser.")
-while True:
-    time.sleep(1.0)
+try:
+    while True:
+        time.sleep(1.0)
+except KeyboardInterrupt:
+    print("\nShutting down — disconnecting RTDE cleanly...")
+    # Stop any active play/live and tell the daemon loops to stop touching RTDE,
+    # then disconnect so ur_rtde joins its boost threads gracefully (otherwise
+    # they get force-unwound at teardown -> "FATAL: exception not rethrown").
+    shutdown.set()
+    stop_flag.set()
+    time.sleep(0.2)
+    for fn in (
+        lambda: rtde_c.endTeachMode() if freedrive.is_set() else None,
+        lambda: rtde_c.servoStop(SERVO_STOP_DECEL),
+        rtde_c.stopScript,
+        rtde_c.disconnect,
+        rtde_r.disconnect,
+        (gripper.close if gripper is not None else (lambda: None)),
+    ):
+        try:
+            fn()
+        except Exception:
+            pass
+    print("Disconnected.")
+    os._exit(0)
