@@ -100,6 +100,7 @@ plan_segments: list[tuple[np.ndarray, np.ndarray]] | None = None
 playing = threading.Event()
 live = threading.Event()             # live gizmo-follow (continuous IK + EGM stream) active
 stop_flag = threading.Event()
+shutdown = threading.Event()         # set on Ctrl-C so daemon loops stop and EGM is closed
 
 # ---------- RWS (for state + RAPID flag control) ----------
 rws = abb_rws.RWSClient(host=ROBOT_IP, user=RWS_USER, password=RWS_PASSWORD)
@@ -138,7 +139,7 @@ def poll_loop() -> None:
     period = 1.0 / POLL_HZ
     last_state = None
     tick = 0
-    while True:
+    while not shutdown.is_set():
         try:
             q = np.array(rws.get_joints(), dtype=np.float64)
             with state_lock:
@@ -632,7 +633,7 @@ def _(_):
 
 def viz_loop() -> None:
     period = 1.0 / PLAY_HZ
-    while True:
+    while not shutdown.is_set():
         if not playing.is_set() and not live.is_set():
             with state_lock:
                 q = current_q.copy()
@@ -654,5 +655,26 @@ _warmup_ik()
 print("viser running. Open the URL printed above in a browser.")
 print(f"RWS target: https://{ROBOT_IP}  user={RWS_USER!r}")
 print(f"EGM local port: {EGM_LOCAL_PORT}")
-while True:
-    time.sleep(1.0)
+try:
+    while True:
+        time.sleep(1.0)
+except KeyboardInterrupt:
+    print("\nShutting down — stopping EGM and releasing mastership...")
+    # Stop any active play/live, tell the daemon loops to quit, then deliberately
+    # clear egm_go so the robot stops chasing the dead UDP stream (instead of
+    # waiting out RAPID's \CondTime), and close the EGM socket. Mastership is
+    # also released by abb_rws' atexit hook.
+    shutdown.set()
+    stop_flag.set()
+    time.sleep(0.2)
+    for fn in (
+        lambda: rws.set_rapid_bool(RAPID_GO_FLAG_VAR, False, module=RAPID_MODULE),
+        egm.stop,
+        rws.release_mastership,
+    ):
+        try:
+            fn()
+        except Exception:
+            pass
+    print("EGM stopped.")
+    os._exit(0)
