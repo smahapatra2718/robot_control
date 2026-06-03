@@ -87,6 +87,10 @@ class HandEGripper:
         position = max(0, min(255, position))
         self._set(POS=position, SPE=speed, FOR=force, GTO=1)
 
+    def move(self, fraction: float, speed: int = DEFAULT_SPEED, force: int = DEFAULT_FORCE) -> None:
+        """Move to a fraction closed: 0.0 = fully open, 1.0 = fully closed."""
+        self._move(round(max(0.0, min(1.0, fraction)) * 255), speed, force)
+
     def open(self, speed: int = DEFAULT_SPEED, force: int = DEFAULT_FORCE) -> None:
         self._move(0, speed, force)
 

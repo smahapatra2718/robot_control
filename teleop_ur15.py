@@ -11,8 +11,9 @@ Flow:
 
 A Robotiq Hand-E gripper is mounted on the wrist: its mesh rides tool0 in viser,
 the gizmo/IK target sits at the grasp point (a fixed tool0 offset, so IK is
-unchanged), and Open/Close buttons drive the real gripper over the Robotiq
-URCap socket (see hande_gripper.py) plus a matching viz animation.
+unchanged), and a "Gripper close %" slider drives the real gripper to any
+opening over the Robotiq URCap socket (see hande_gripper.py) plus a matching
+viz animation. Each waypoint stores the gripper fraction, replayed on Play.
 
 Run from project root so `pyroki_snippets/` is on the path:
   ./robot_control/bin/python teleop_ur15.py
@@ -73,6 +74,7 @@ GRIPPER_TWEEN_S = 0.8           # viz finger animation duration to match the rea
 GRIPPER_MASS = 1.0              # Hand-E payload (kg) told to the UR so it compensates gravity at the loaded wrist
 GRIPPER_COG = (0.0, 0.0, 0.06)  # payload center of gravity in the tool-flange frame (m); raise if you add a workpiece
 GRIP_PREDELAY_S = 0.5           # hold/settle the arm this long before actuating the gripper
+GRIP_EPS = 0.02                 # min change in gripper fraction (2%) before a waypoint re-actuates
 TRAJ_DIR = os.path.join(_HERE, "trajectories")  # saved teach trajectories (<name>.json)
 
 
@@ -114,14 +116,31 @@ TOOL0_T_GRASP = jaxlie.SE3.from_matrix(
 # ---------- shared state ----------
 state_lock = threading.Lock()
 current_q = np.zeros(NUM_JOINTS)
-# Each waypoint: {"q": [6 joints]|None, "pos": [x,y,z], "wxyz": [w,x,y,z], "grip": "open"|"close"|None}
+# Each waypoint: {"q": [6 joints]|None, "pos": [x,y,z], "wxyz": [w,x,y,z], "grip": 0.0..1.0|None}
+# grip is the gripper "fraction closed" to set at this waypoint (0=open, 1=closed); None = no action.
 # q is filled by free-drive capture (real joints) or backfilled by IK at Plan.
 waypoints: list[dict] = []
 waypoint_frames: list = []                            # corresponding viser frame handles
-plan_segments: list[tuple[np.ndarray, np.ndarray, str | None]] | None = None  # (q_start, q_goal, grip)
-gripper_finger = GRIPPER_FINGER_OPEN   # displayed per-side finger opening (m); rendered value
-gripper_state = "open"                 # single source of truth: "open" | "close". Known because
-                                       # we command open at startup and only we change it after.
+plan_segments: list[tuple[np.ndarray, np.ndarray, float | None]] | None = None  # (q_start, q_goal, grip)
+gripper_frac = 0.0                     # single source of truth: fraction closed (0=open, 1=closed).
+                                       # Known because we command open at startup and only we change it.
+gripper_finger = GRIPPER_FINGER_OPEN   # displayed per-side finger opening (m); derived from gripper_frac
+
+
+def _frac_to_finger(frac: float) -> float:
+    """Map a gripper fraction-closed (0..1) to the viz per-side finger opening (m)."""
+    return GRIPPER_FINGER_OPEN * (1.0 - frac)
+
+
+def _norm_grip(g) -> float | None:
+    """Accept legacy 'open'/'close'/None or a numeric fraction; return a float or None."""
+    if g is None:
+        return None
+    if g == "open":
+        return 0.0
+    if g == "close":
+        return 1.0
+    return float(g)
 playing = threading.Event()
 live = threading.Event()               # live gizmo-follow (continuous IK + servoJ) active
 freedrive = threading.Event()          # hand-guiding (teachMode) active
@@ -147,7 +166,7 @@ try:
     )
     gripper.connect()
     gripper.activate()
-    gripper.open()   # known initial state: open => gripper_state ("open") matches reality
+    gripper.open()   # known initial state: open => gripper_frac (0.0) matches reality
     print("Hand-E gripper connected + activated + opened.")
 except Exception as e:
     gripper = None
@@ -301,8 +320,7 @@ gui_snap = server.gui.add_button("Snap gizmo to nearest axis")
 gui_speed = server.gui.add_slider("Speed", min=0.1, max=2.0, step=0.05, initial_value=1.0)
 gui_execute = server.gui.add_checkbox("Execute on robot", initial_value=False)
 gui_live = server.gui.add_checkbox("Live (drive robot)", initial_value=False)
-gui_grip_open = server.gui.add_button("Open gripper")
-gui_grip_close = server.gui.add_button("Close gripper")
+gui_grip = server.gui.add_slider("Gripper close %", min=0, max=100, step=1, initial_value=0)
 gui_grip_status = server.gui.add_text(
     "Gripper", initial_value=("ready" if gripper is not None else "viz-only"), disabled=True
 )
@@ -336,7 +354,7 @@ def _(_):
         "q": None,  # filled by IK at Plan
         "pos": np.asarray(gizmo.position).tolist(),
         "wxyz": np.asarray(gizmo.wxyz).tolist(),
-        "grip": gripper_state,
+        "grip": gripper_frac,
     })
     gui_status.value = f"Added waypoint {len(waypoints)} (gizmo)"
 
@@ -350,7 +368,7 @@ def _(_):
         "q": q.tolist(),  # taught joints — replayed exactly, no IK
         "pos": np.asarray(T.translation()).tolist(),
         "wxyz": np.asarray(T.rotation().wxyz).tolist(),
-        "grip": gripper_state,
+        "grip": gripper_frac,
     })
     gui_status.value = f"Captured waypoint {len(waypoints)} (joints)"
 
@@ -383,10 +401,10 @@ def _(_):
         targets = waypoints
     else:
         targets = [{"q": None, "pos": np.asarray(gizmo.position).tolist(),
-                    "wxyz": np.asarray(gizmo.wxyz).tolist(), "grip": gripper_state}]
+                    "wxyz": np.asarray(gizmo.wxyz).tolist(), "grip": gripper_frac}]
     with state_lock:
         q = current_q.copy()
-    segments: list[tuple[np.ndarray, np.ndarray, str | None]] = []
+    segments: list[tuple[np.ndarray, np.ndarray, float | None]] = []
     for i, wp in enumerate(targets):
         if wp.get("q") is not None:
             q_next = np.asarray(wp["q"], dtype=np.float64)  # taught joints, replay exactly
@@ -405,7 +423,7 @@ def _(_):
                 gui_status.value = f"IK failed at waypoint {i + 1}: {e}"
                 return
             wp["q"] = q_next.tolist()  # backfill so a save-after-plan carries joints too
-        segments.append((q.copy(), q_next, wp.get("grip")))
+        segments.append((q.copy(), q_next, _norm_grip(wp.get("grip"))))
         q = q_next
     plan_segments = segments
     total = sum(np.linalg.norm(b - a) for a, b, _ in segments)
@@ -486,43 +504,26 @@ def _(_):
     gui_status.value = "Gizmo snapped to nearest axis-aligned orientation"
 
 
-def _actuate_gripper(target_finger: float, action: str) -> None:
-    """Command the real gripper (if connected), then tween the viz fingers to match."""
-    global gripper_finger
+def _command_grip(frac: float) -> None:
+    """Set the gripper to a fraction closed (0=open, 1=closed): command the real
+    gripper if connected, and snap the viz finger opening (viz_loop renders it).
+    The gripper moves at its own speed; the slider is the live control."""
+    global gripper_frac, gripper_finger
+    frac = max(0.0, min(1.0, frac))
+    gripper_frac = frac
+    gripper_finger = _frac_to_finger(frac)
     if gripper is not None:
         try:
-            getattr(gripper, action)()
+            gripper.move(frac)
         except Exception as e:
             gui_grip_status.value = f"cmd failed: {e}"
             return
-    start = gripper_finger
-    steps = max(1, int(GRIPPER_TWEEN_S * PLAY_HZ))
-    for i in range(1, steps + 1):
-        gripper_finger = start + (target_finger - start) * i / steps
-        time.sleep(1.0 / PLAY_HZ)
-    gripper_finger = target_finger
-    if gripper is not None:
-        gui_grip_status.value = "object grasped" if gripper.status()["object"] else (
-            "open" if target_finger > 0 else "closed"
-        )
+    gui_grip_status.value = f"{int(round(frac * 100))}% closed"
 
 
-@gui_grip_open.on_click
+@gui_grip.on_update
 def _(_):
-    global gripper_state
-    gripper_state = "open"
-    threading.Thread(
-        target=_actuate_gripper, args=(GRIPPER_FINGER_OPEN, "open"), daemon=True
-    ).start()
-
-
-@gui_grip_close.on_click
-def _(_):
-    global gripper_state
-    gripper_state = "close"
-    threading.Thread(
-        target=_actuate_gripper, args=(0.0, "close_gripper"), daemon=True
-    ).start()
+    _command_grip(gui_grip.value / 100.0)
 
 
 def _post_execute_cleanup() -> None:
@@ -544,7 +545,7 @@ def _post_execute_cleanup() -> None:
 
 
 def _play() -> None:
-    global gripper_finger, gripper_state
+    global gripper_finger, gripper_frac
     assert plan_segments is not None
     execute = gui_execute.value   # latched at play-start
     if execute:
@@ -560,7 +561,7 @@ def _play() -> None:
     gui_stop.disabled = False
 
     try:
-        cur_grip = gripper_state   # running gripper state; only actuate when a waypoint differs
+        cur_grip = gripper_frac   # running gripper fraction; only actuate when a waypoint differs
         for seg_idx, (q_start, q_goal, grip) in enumerate(plan_segments):
             if stop_flag.is_set():
                 break
@@ -585,8 +586,9 @@ def _play() -> None:
             # gripper action: only when this waypoint's state differs from the
             # running state. Settle the arm GRIP_PREDELAY_S first (keep streaming
             # the pose), then actuate. Real command only on an executed play.
-            if not stop_flag.is_set() and grip in ("open", "close") and grip != cur_grip:
-                gui_status.value = f"Settling before gripper: {grip}"
+            if not stop_flag.is_set() and grip is not None and abs(grip - cur_grip) > GRIP_EPS:
+                grip_pct = int(round(grip * 100))
+                gui_status.value = f"Settling before gripper: {grip_pct}% closed"
                 for _ in range(int(GRIP_PREDELAY_S * STREAM_HZ)):
                     if stop_flag.is_set():
                         break
@@ -594,11 +596,11 @@ def _play() -> None:
                         rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
                     time.sleep(dt)
 
-                gui_status.value = f"Gripper: {grip}"
-                target_f = GRIPPER_FINGER_OPEN if grip == "open" else 0.0
+                gui_status.value = f"Gripper: {grip_pct}% closed"
+                target_f = _frac_to_finger(grip)
                 if execute and gripper is not None:
                     try:
-                        getattr(gripper, "open" if grip == "open" else "close_gripper")()
+                        gripper.move(grip)
                     except Exception as e:
                         gui_grip_status.value = f"cmd failed: {e}"
                 start_f = gripper_finger
@@ -613,7 +615,7 @@ def _play() -> None:
                     _update_gripper_viz(q_goal)
                     time.sleep(dt)
                 gripper_finger = target_f
-                gripper_state = grip   # keep the global in sync with what we just commanded
+                gripper_frac = grip   # keep the global in sync with what we just commanded
                 cur_grip = grip
 
             # dwell at the waypoint (still streaming to hold pose firmly)
