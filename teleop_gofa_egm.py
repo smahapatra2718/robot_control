@@ -368,6 +368,15 @@ def _set_gizmo_orientation(target_wxyz: np.ndarray) -> None:
 
 @gui_snap.on_click
 def _(_):
+    # In Live, re-anchor the gizmo to the robot's actual current EE first. While
+    # dragging, the arm lags the gizmo (joint + TCP-speed clamp), so gizmo.position
+    # sits ahead of the real EE; snapping would then reorient AND chase that stale
+    # position, which reads as a Cartesian jump. Re-anchoring leaves a pure in-place
+    # reorient. (Outside Live the robot isn't moving, so leave position as dragged.)
+    if live.is_set():
+        with state_lock:
+            q = current_q.copy()
+        gizmo.position = np.asarray(ee_pose(q).translation())
     _set_gizmo_orientation(_nearest_axis_aligned_wxyz(np.asarray(gizmo.wxyz)))
     gui_status.value = "Gizmo snapped to nearest axis-aligned orientation"
 
