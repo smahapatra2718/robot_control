@@ -50,6 +50,7 @@ POLL_HZ = 30
 PLAY_HZ = 60                    # viz refresh when idle
 STREAM_HZ = 50                  # shared rate for viz playback and servoJ
 LIVE_HZ = 30                    # live gizmo-follow: IK + servoJ update rate
+GIZMO_SNAP_TWEEN_S = 0.8        # slew the gizmo orientation when snapping in Live (in-place reorient)
 MAX_JOINT_SPEED = 1.0           # rad/s peak per joint at slider=1.0
 MIN_SEG_DURATION_S = 0.5        # floor on segment time so tiny moves are still smooth
 DWELL_S = 0.2                   # pause at each intermediate waypoint
@@ -441,6 +442,28 @@ def _nearest_axis_aligned_wxyz(wxyz: np.ndarray) -> np.ndarray:
     return np.asarray(jaxlie.SO3.from_matrix(jnp.asarray(best_M)).wxyz)
 
 
+def _set_gizmo_orientation(target_wxyz: np.ndarray) -> None:
+    """Set the gizmo orientation, keeping position. Outside Live this is instant.
+    In Live, slerp to the target so the live loop tracks a gradual orientation
+    change (which holds the grasp point fixed) instead of chasing a jump — a jump
+    slews in joint space and arcs the point out and back."""
+    if not live.is_set():
+        gizmo.wxyz = np.asarray(target_wxyz)
+        return
+    R0 = jaxlie.SO3(jnp.asarray(gizmo.wxyz))
+    delta = jaxlie.SO3(jnp.asarray(target_wxyz)).multiply(R0.inverse()).log()
+    steps = max(1, int(GIZMO_SNAP_TWEEN_S * LIVE_HZ))
+
+    def _run() -> None:
+        for i in range(1, steps + 1):
+            if not live.is_set():
+                break
+            gizmo.wxyz = np.asarray(jaxlie.SO3.exp(delta * (i / steps)).multiply(R0).wxyz)
+            time.sleep(1.0 / LIVE_HZ)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 @gui_snap.on_click
 def _(_):
     # gizmo.wxyz is stored in the base frame, but the scene is *drawn* under a
@@ -450,7 +473,7 @@ def _(_):
     R_yaw = jaxlie.SO3(jnp.array([np.cos(_half_yaw), 0.0, 0.0, np.sin(_half_yaw)]))
     disp = R_yaw @ jaxlie.SO3(jnp.asarray(gizmo.wxyz))
     snapped = jaxlie.SO3(jnp.asarray(_nearest_axis_aligned_wxyz(np.asarray(disp.wxyz))))
-    gizmo.wxyz = np.asarray((R_yaw.inverse() @ snapped).wxyz)
+    _set_gizmo_orientation(np.asarray((R_yaw.inverse() @ snapped).wxyz))
     gui_status.value = "Gizmo snapped to nearest axis-aligned orientation"
 
 

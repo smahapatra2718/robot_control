@@ -56,6 +56,7 @@ POLL_HZ = 10                         # RWS state polling (idle viz only)
 PLAY_HZ = 60                         # viz refresh when idle
 STREAM_HZ = 100                      # EGM target stream rate (controller side runs ~250Hz)
 LIVE_HZ = 30                         # live gizmo-follow: IK + EGM target update rate
+GIZMO_SNAP_TWEEN_S = 0.8             # slew the gizmo orientation when snapping in Live (in-place reorient)
 MAX_JOINT_SPEED = 1.0                # rad/s peak per joint at slider=1.0
 MAX_TCP_SPEED = 0.25                 # m/s — hard cap on real tool speed (ISO/TS 15066
                                      # collaborative limit). Enforced against the actual
@@ -343,9 +344,31 @@ def _nearest_axis_aligned_wxyz(wxyz: np.ndarray) -> np.ndarray:
     return np.asarray(jaxlie.SO3.from_matrix(jnp.asarray(best_M)).wxyz)
 
 
+def _set_gizmo_orientation(target_wxyz: np.ndarray) -> None:
+    """Set the gizmo orientation, keeping position. Outside Live this is instant.
+    In Live, slerp to the target so the live loop tracks a gradual orientation
+    change (which holds the EE point fixed) instead of chasing a jump — a jump
+    slews in joint space and arcs the point out and back."""
+    if not live.is_set():
+        gizmo.wxyz = np.asarray(target_wxyz)
+        return
+    R0 = jaxlie.SO3(jnp.asarray(gizmo.wxyz))
+    delta = jaxlie.SO3(jnp.asarray(target_wxyz)).multiply(R0.inverse()).log()
+    steps = max(1, int(GIZMO_SNAP_TWEEN_S * LIVE_HZ))
+
+    def _run() -> None:
+        for i in range(1, steps + 1):
+            if not live.is_set():
+                break
+            gizmo.wxyz = np.asarray(jaxlie.SO3.exp(delta * (i / steps)).multiply(R0).wxyz)
+            time.sleep(1.0 / LIVE_HZ)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 @gui_snap.on_click
 def _(_):
-    gizmo.wxyz = _nearest_axis_aligned_wxyz(np.asarray(gizmo.wxyz))
+    _set_gizmo_orientation(_nearest_axis_aligned_wxyz(np.asarray(gizmo.wxyz)))
     gui_status.value = "Gizmo snapped to nearest axis-aligned orientation"
 
 
