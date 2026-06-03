@@ -16,6 +16,7 @@ Run:
 """
 
 import datetime
+import itertools
 import json
 import os
 import sys
@@ -247,6 +248,7 @@ gui_plan = server.gui.add_button("Plan")
 gui_play = server.gui.add_button("Play", disabled=True)
 gui_stop = server.gui.add_button("Stop", disabled=True)
 gui_reset = server.gui.add_button("Reset gizmo to current EE")
+gui_snap = server.gui.add_button("Snap gizmo to nearest axis")
 gui_speed = server.gui.add_slider("Speed (unified)", min=0.1, max=1.0, step=0.05, initial_value=1.0)
 gui_execute = server.gui.add_checkbox("Execute on robot (EGM stream)", initial_value=False)
 gui_live = server.gui.add_checkbox("Live (drive robot)", initial_value=False)
@@ -320,6 +322,31 @@ def _(_):
     gizmo.position = np.asarray(T.translation())
     gizmo.wxyz = np.asarray(T.rotation().wxyz)
     gui_status.value = "Gizmo reset to current EE"
+
+
+def _nearest_axis_aligned_wxyz(wxyz: np.ndarray) -> np.ndarray:
+    """Snap an orientation to the nearest of the 24 rotations whose axes are each
+    parallel to a base-frame axis (each local axis -> +/- a world axis). Picks the
+    one with the largest trace(R^T M), i.e. the smallest rotation away from R."""
+    R = np.asarray(jaxlie.SO3(jnp.asarray(wxyz)).as_matrix())
+    best_M, best_score = None, -np.inf
+    for perm in itertools.permutations(range(3)):
+        for signs in itertools.product((1.0, -1.0), repeat=3):
+            M = np.zeros((3, 3))
+            for col, (row, s) in enumerate(zip(perm, signs)):
+                M[row, col] = s
+            if np.linalg.det(M) < 0:  # keep proper (right-handed) rotations only
+                continue
+            score = float(np.sum(R * M))
+            if score > best_score:
+                best_M, best_score = M, score
+    return np.asarray(jaxlie.SO3.from_matrix(jnp.asarray(best_M)).wxyz)
+
+
+@gui_snap.on_click
+def _(_):
+    gizmo.wxyz = _nearest_axis_aligned_wxyz(np.asarray(gizmo.wxyz))
+    gui_status.value = "Gizmo snapped to nearest axis-aligned orientation"
 
 
 @gui_plan.on_click
