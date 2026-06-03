@@ -49,7 +49,7 @@ TARGET_LINK = "tool0"
 POLL_HZ = 30
 PLAY_HZ = 60                    # viz refresh when idle
 STREAM_HZ = 50                  # shared rate for viz playback and servoJ
-LIVE_HZ = 30                    # live gizmo-follow: IK + servoJ update rate
+LIVE_HZ = 125                   # live gizmo-follow: IK + servoJ rate (UR servoJ wants a fast, steady cadence)
 GIZMO_SNAP_TWEEN_S = 0.8        # slew the gizmo orientation when snapping in Live (in-place reorient)
 MAX_JOINT_SPEED = 1.0           # rad/s peak per joint at slider=1.0
 MIN_SEG_DURATION_S = 0.5        # floor on segment time so tiny moves are still smooth
@@ -690,10 +690,15 @@ def _live_loop() -> None:
     lurch — it just rate-limits toward the target."""
     dt = 1.0 / LIVE_HZ
     max_step = MAX_JOINT_SPEED * dt
+    viz_every = max(1, LIVE_HZ // 50)   # throttle browser viz to ~50 Hz; servoJ still runs every tick
     with state_lock:
         q_cmd = current_q.copy()
+    tick = 0
     try:
         while live.is_set() and not stop_flag.is_set():
+            # initPeriod/waitPeriod hold an exact dt cadence; servoJ is sensitive to
+            # jitter (time.sleep drifts by the IK compute time, which made it stutter).
+            t_start = rtde_c.initPeriod()
             pos_t, wxyz_t = _grasp_to_tool0(np.asarray(gizmo.position), np.asarray(gizmo.wxyz))
             try:
                 q_target = np.asarray(pks.solve_ik_seeded(
@@ -705,13 +710,15 @@ def _live_loop() -> None:
                     rest_weight=2.0,
                 ))
             except Exception:
-                time.sleep(dt)
+                rtde_c.waitPeriod(t_start)
                 continue
             q_cmd = q_cmd + np.clip(q_target - q_cmd, -max_step, max_step)
-            viser_urdf.update_cfg(q_cmd)
-            _update_gripper_viz(q_cmd)
+            tick += 1
+            if tick % viz_every == 0:
+                viser_urdf.update_cfg(q_cmd)
+                _update_gripper_viz(q_cmd)
             rtde_c.servoJ(q_cmd.tolist(), 0.0, 0.0, dt, SERVO_LOOKAHEAD, SERVO_GAIN)
-            time.sleep(dt)
+            rtde_c.waitPeriod(t_start)
     finally:
         rtde_c.servoStop(SERVO_STOP_DECEL)
         gui_status.value = "Live off"

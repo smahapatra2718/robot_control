@@ -98,7 +98,7 @@ Safety:
 | `DWELL_S` | `0.2` s | Pause at each intermediate waypoint |
 | `SERVO_STOP_DECEL` | `2.0` rad/s² | Final settle deceleration |
 | `STREAM_HZ` | `50` | servoJ + viz frame rate |
-| `LIVE_HZ` | `30` | Live gizmo-follow IK + servoJ update rate |
+| `LIVE_HZ` | `125` | Live gizmo-follow IK + servoJ rate (fast steady cadence via initPeriod/waitPeriod keeps servoJ smooth) |
 | `rest_weight` (in Plan handler) | `2.0` | IK pull toward current joints |
 
 ## Hand-E gripper
