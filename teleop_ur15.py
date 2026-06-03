@@ -443,7 +443,14 @@ def _nearest_axis_aligned_wxyz(wxyz: np.ndarray) -> np.ndarray:
 
 @gui_snap.on_click
 def _(_):
-    gizmo.wxyz = _nearest_axis_aligned_wxyz(np.asarray(gizmo.wxyz))
+    # gizmo.wxyz is stored in the base frame, but the scene is *drawn* under a
+    # VIZ_YAW_DEG display yaw, so snapping in the base frame looks tilted on
+    # screen. Compose into the displayed (ground-grid) frame, snap there, then
+    # compose back — so the gizmo lands parallel to the grid axes you eyeball.
+    R_yaw = jaxlie.SO3(jnp.array([np.cos(_half_yaw), 0.0, 0.0, np.sin(_half_yaw)]))
+    disp = R_yaw @ jaxlie.SO3(jnp.asarray(gizmo.wxyz))
+    snapped = jaxlie.SO3(jnp.asarray(_nearest_axis_aligned_wxyz(np.asarray(disp.wxyz))))
+    gizmo.wxyz = np.asarray((R_yaw.inverse() @ snapped).wxyz)
     gui_status.value = "Gizmo snapped to nearest axis-aligned orientation"
 
 
