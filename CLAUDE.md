@@ -5,7 +5,7 @@ Browser-based teleop for two arms, sharing the same viser + pyroki stack:
 - **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`). Speed slider is unified: the same `q` is sent to both the viser preview and `rtde_c.servoJ()` each tick, so viz and robot move in lockstep.
 - **`teleop_gofa_egm.py`** — ABB GoFa CRB 15000 (variant `crb15000_5_95`) over Externally Guided Motion (EGM), with RWS (`abb_rws.py`) for mastership and the start/stop flag. Joint targets stream over UDP at `STREAM_HZ` to a RAPID supervisor (`PyEgm.mod`) running `EGMRunJoint`, so the slider is unified like the UR15 — the same `q` drives both the viser preview and the robot. Real tool speed is held under `MAX_TCP_SPEED` regardless of slider/pose. EGM is a licensed controller option.
 
-Both scripts share: the same UI (viser scene + gizmo + waypoints), the same IK (`pyroki_snippets._solve_ik_seeded`), the same trapezoidal-time alpha profile in the play loop, and the same auto-cleanup after a successful executed Play.
+Both scripts share: the same UI (viser scene + gizmo + waypoints), the same IK (`pyroki_snippets._solve_ik_seeded`), the same trapezoidal-time alpha profile in the play loop, and the same auto-cleanup after a successful executed Play. All four entry points (`teleop_ur15.py`, `teleop_gofa_egm.py`, `play_trajectory.py`, `teleop.py`) pull their shared config + pure helpers from **`robot_common.py`** (single source of truth — see [Shared config](#shared-config--robot_commonpy)).
 
 Run:
 
@@ -17,26 +17,44 @@ Open the printed `http://localhost:8080`. Each script connects to its controller
 
 ## Project layout
 
+All first-party Python lives flat at the repo root (each entry script does
+`sys.path.insert(0, _HERE)` then imports its siblings by bare name — don't move
+them into a package without rewiring that). Assets and vendored trees are grouped
+into folders.
+
 ```
 abb_foga/
-├── robot_control/             # Python venv (3.13)
-├── pyroki_src/                # git clone of chungmin99/pyroki, installed -e
-├── pyroki_snippets/           # copied from pyroki_src/examples/ + our _solve_ik_seeded.py
-├── abb_desc/                  # clone of ros-industrial/abb (GoFa URDF + meshes)
-├── crb15000_5_95.urdf         # generated from abb_desc/.../crb15000_5_95.xacro
-├── robotiq_hande_description/ # vendored macmacal/robotiq_hande_description (Hand-E URDF + meshes)
-├── hande.urdf                 # generated from robotiq_hande_description/.../robotiq_hande_gripper.urdf.xacro
-├── hande_gripper.py           # minimal Hand-E Modbus-RTU-over-socket client
-├── verify_hande.py            # one-shot gripper comms probe (run before trusting control)
-├── teleop_ur15.py             # UR15 script (RTDE / servoJ) + Hand-E gripper
-├── teleop_gofa_egm.py         # GoFa script (EGM joint streaming)
+│
+│   # ── entry points (run with ./robot_control/bin/python <script>) ──
+├── teleop_ur15.py             # UR15 teleop: viser + RTDE/servoJ + Hand-E gripper
+├── teleop_gofa_egm.py         # GoFa teleop: viser + EGM joint streaming
+├── teleop.py                  # headless CLI trajectory recorder (free-drive + keypress capture)
+├── play_trajectory.py         # headless replay of a saved trajectory (UR15 / GoFa)
+├── install_gofa_egm.py        # one-shot GoFa bring-up: generates+loads PyEgm.mod, sets the UDP peer
+├── verify_hande.py            # one-shot Hand-E gripper comms probe (run before trusting control)
+│
+│   # ── shared library modules (imported by the entry points) ──
+├── robot_common.py            # shared config (UR_*/GOFA_* constants) + pure helpers
 ├── abb_rws.py                 # minimal RWS client for OmniCore (RobotWare 7+)
 ├── abb_egm.py                 # minimal EGM UDP client (protobuf wire format)
-├── egm.proto / egm_pb2.py     # EGM protobuf schema + generated bindings
-├── EGM_COMM.cfg / EGM_MOC.cfg # controller EGM config (uploaded by installer)
-├── install_gofa_egm.py        # one-shot: uploads PyEgm.mod + .cfg, gets it running
-├── play_trajectory.py         # headless replay of a saved trajectory (UR15 / GoFa)
-├── teleop.py                  # headless CLI trajectory recorder (free-drive + keypress capture)
+├── egm_pb2.py / egm.proto     # EGM protobuf bindings + the schema they're generated from
+├── hande_gripper.py           # minimal Hand-E URCap-socket client
+│
+│   # ── assets ──
+├── urdf/                      # generated robot models (crb15000_5_95.urdf, hande.urdf)
+├── egm/                       # GoFa controller EGM config (EGM_COMM.cfg, EGM_MOC.cfg) — reference
+├── trajectories/             # saved teach trajectories (<name>.json)
+│
+│   # ── vendored third-party (see README "Vendored third-party sources") ──
+├── pyroki_src/                # git clone of chungmin99/pyroki, installed -e (don't move: editable install)
+├── pyroki_snippets/           # copy of pyroki_src/examples/ + our _solve_ik_seeded.py
+├── abb_desc/                  # clone of ros-industrial/abb (GoFa meshes; package://abb_crb15000_support)
+├── robotiq_hande_description/ # vendored macmacal/robotiq_hande_description (Hand-E meshes)
+│
+│   # ── runtime / docs ──
+├── robot_control/             # Python venv (3.13), gitignored
+├── docs/                      # design specs + plans
+├── README.md
 └── CLAUDE.md                  # this file
 ```
 
@@ -48,8 +66,20 @@ System (brew): cmake, **boost@1.85** (keg-only, for ur_rtde build only).
 
 URDFs:
 - **UR15**: loaded at runtime via `robot_descriptions.loaders.yourdfpy.load_robot_description("ur15_description")`. No local file.
-- **Hand-E**: local `hande.urdf`, generated via `xacrodoc` from the vendored `robotiq_hande_description` (`xacrodoc.packages.look_in(["."]); XacroDoc.from_file(".../robotiq_hande_gripper.urdf.xacro").to_urdf_file("hande.urdf")`). Same `file://` → `package://` strip as the GoFa; resolved by a `filename_handler` in `teleop_ur15.py` with prefix `_HERE`. The `<ros2_control>` block (irrelevant to us) was stripped after generation. Rendered as a *second* `ViserUrdf` whose root frame is slaved to the live `tool0` pose — the UR IK model is untouched.
-- **GoFa**: local `crb15000_5_95.urdf` (the 5 kg / 0.95 m reach variant — match this to your actual hardware nameplate), generated via `xacrodoc` from the ros-industrial repo: `xacrodoc.packages.look_in(["abb_desc"]); XacroDoc.from_file(".../crb15000_5_95.xacro").to_urdf_file(...)`. Mesh paths are rewritten to `package://abb_crb15000_support/...`; resolved via `URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")` and a custom `filename_handler` in `teleop_gofa_egm.py`. xacrodoc emits absolute `file://` URIs (yourdfpy can't resolve those); strip the `file://.../abb_desc/` prefix down to `package://`.
+- **Hand-E**: local `urdf/hande.urdf`, generated via `xacrodoc` from the vendored `robotiq_hande_description` (`xacrodoc.packages.look_in(["."]); XacroDoc.from_file(".../robotiq_hande_gripper.urdf.xacro").to_urdf_file("urdf/hande.urdf")`). Same `file://` → `package://` strip as the GoFa; resolved via `robot_common.make_mesh_resolver(UR_MESH_DIR_PREFIX)` (prefix = project root). The `<ros2_control>` block (irrelevant to us) was stripped after generation. Rendered as a *second* `ViserUrdf` whose root frame is slaved to the live `tool0` pose — the UR IK model is untouched.
+- **GoFa**: local `urdf/crb15000_5_95.urdf` (the 5 kg / 0.95 m reach variant — match this to your actual hardware nameplate), generated via `xacrodoc` from the ros-industrial repo: `xacrodoc.packages.look_in(["abb_desc"]); XacroDoc.from_file(".../crb15000_5_95.xacro").to_urdf_file(...)`. Mesh paths are rewritten to `package://abb_crb15000_support/...`; resolved via `GOFA_MESH_DIR_PREFIX` (= `abb_desc/`) through `robot_common.make_mesh_resolver()`. xacrodoc emits absolute `file://` URIs (yourdfpy can't resolve those); strip the `file://.../abb_desc/` prefix down to `package://`.
+
+## Shared config — `robot_common.py`
+
+The four entry points used to each carry their own copy of the connection details, motion-profile constants, and a handful of tiny functions, with "keep in sync" comments warning you to update them together. That duplication now lives in **one stdlib-only module, `robot_common.py`** — retune a value there and every script picks it up.
+
+What it holds:
+- **Config constants:** `UR_*` (IP, servoJ/settle params, Hand-E geometry + payload) and `GOFA_*` (IP, RWS creds, RAPID module/flags, EGM port, TCP-speed cap, hold time), plus the shared trapezoidal-profile knobs (`RAMP_FRAC`, `MIN_SEG_DURATION_S`, `DWELL_S`, `GRIP_PREDELAY_S`, `GRIP_EPS`) and `TRAJ_DIR` / `TARGET_LINK`.
+- **Pure helpers:** `alpha_to_s` (trapezoidal velocity profile), `norm_grip` (legacy `"open"`/`"close"` → fraction), `make_mesh_resolver` (the `package://` → local-path `filename_handler` factory), and `load_trajectory` / `save_trajectory` (the `trajectories/<name>.json` read/write).
+
+How the scripts consume it: the teleop scripts keep their short local names (`ROBOT_IP = rc.UR_ROBOT_IP`, `_alpha_to_s = rc.alpha_to_s`, …) so the large hardware-loop bodies are unchanged; `play_trajectory.py` / `teleop.py` `from robot_common import` the `UR_*`/`GOFA_*` names directly (same spelling). **Script-specific tunables stay local** (e.g. UR-only `MAX_JOINT_ACCEL`, `LIVE_HZ`, `POLL_HZ`).
+
+**Forward kinematics is deliberately NOT shared.** It needs jax/jaxlie/pyroki, and `teleop.py` / `play_trajectory.py` import those *lazily* to defer the ~800 ms JIT cost; a shared FK helper would force that cost at import. The few `ee_pose` / `grasp_pose` / `_grasp_to_tool0` blocks stay per-script (they're ~3 lines each). `robot_common.py` is kept stdlib-only on purpose so importing it never drags in the heavy stack.
 
 ---
 
@@ -66,7 +96,7 @@ UR15 ships with Polyscope X, which firewalls external services by default. On th
 Quick diagnostic from your Mac:
 
 ```bash
-for p in 29999 30001 30002 30004; do nc -zv -G 2 192.168.0.100 $p; done
+for p in 29999 30001 30002 30004; do nc -zv -G 2 192.168.125.2 $p; done
 ```
 
 All four should report "succeeded".
@@ -91,9 +121,11 @@ Safety:
 
 ## Tunables — `teleop_ur15.py`
 
+The shared ones (`ROBOT_IP`, speeds, settle, gripper geometry, profile knobs) live in `robot_common.py` as `UR_*` / unprefixed names; the script binds them to these local names. UR-only knobs (`MAX_JOINT_ACCEL`, `LIVE_HZ`, `POLL_HZ`, …) are defined locally in `teleop_ur15.py`.
+
 | Constant | Default | Effect |
 |---|---|---|
-| `ROBOT_IP` | `192.168.0.100` | UR15 controller address |
+| `ROBOT_IP` | `192.168.125.2` | UR15 controller address |
 | `MAX_JOINT_SPEED` | `1.0` rad/s | Peak per-joint speed at slider=1.0 |
 | `MAX_JOINT_ACCEL` | `8.0` rad/s² | Accel limit for Live following (lower = smoother, laggier) |
 | `MIN_SEG_DURATION_S` | `0.5` s | Floor on per-segment time |
@@ -162,7 +194,7 @@ Replay a saved trajectory on either arm without viser:
 ./robot_control/bin/python play_trajectory.py <name> [--speed S] [--dry-run] [--no-confirm]
 ```
 
-Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, and executes on the real arm after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits without touching hardware. It is **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. The first segment moves the arm from its current pose to waypoint 1 (same as viser). The UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). The GoFa path imports pyroki for forward kinematics **only** to enforce the `MAX_TCP_SPEED` collaborative cap, then streams over the existing EGM supervisor (PyEgm must be parked at `WaitUntil egm_go`). The profile constants are mirrored from the teleop scripts (the `UR_`/`GOFA_` prefixed block at the top of `play_trajectory.py`) — keep them in sync if you retune a teleop script.
+Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, and executes on the real arm after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits without touching hardware. It is **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. The first segment moves the arm from its current pose to waypoint 1 (same as viser). The UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). The GoFa path imports pyroki for forward kinematics **only** to enforce the `MAX_TCP_SPEED` collaborative cap, then streams over the existing EGM supervisor (PyEgm must be parked at `WaitUntil egm_go`). The profile + connection constants come from `robot_common.py` (`from robot_common import UR_* / GOFA_*`), so retuning a teleop script updates this one too — no manual mirroring.
 
 ## Headless recording — `teleop.py`
 
@@ -184,7 +216,7 @@ Missing `name`/`--robot` are prompted for (name first, then `[1] UR / [2] GoFa`)
 
 While recording, a **live terminal dashboard** redraws in place at `DASH_HZ` (10 Hz): grasp pose (XYZ mm + RPY deg), the six joint angles (deg), gripper %, and the captured-waypoint count, plus a status line for the last action. It's a single `key_loop` that polls `stdin` non-blocking via `select` each tick (no arrow-key escape sequences — that earlier `ESC [` parsing was dropped, which is why stop is `w` not `Esc`); cursor-up + clear-to-EOL keeps it flicker-free, and the cursor is hidden during the loop.
 
-A **blank name + Enter** at the name prompt exits. Implementation notes: terminal uses `tty.setcbreak` (raw mode only during the key loop; prompts run cooked), restored on every exit path. FK reuses the jaxlie + pyroki path (UR multiplies by `TOOL0_T_GRASP`; GoFa uses `tool0`), warmed at startup. Two backend classes (`URBackend`, `GoFaBackend`) sit behind one recording loop; config constants are mirrored from `play_trajectory.py` (`UR_*` / `GOFA_*`) — keep them in sync. `q`-carrying waypoints replay exactly in `play_trajectory.py` (no IK), which is why recording stores joints directly. GoFa software lead-through carries the same caveats as `teleop_gofa_egm.py` (needs the EGM supervisor installed/parked; verify `SetLeadThrough` engages in your mode). Design spec: `docs/superpowers/specs/2026-06-04-cli-trajectory-recorder-design.md`.
+A **blank name + Enter** at the name prompt exits. Implementation notes: terminal uses `tty.setcbreak` (raw mode only during the key loop; prompts run cooked), restored on every exit path. FK reuses the jaxlie + pyroki path (UR multiplies by `TOOL0_T_GRASP`; GoFa uses `tool0`), warmed at startup. Two backend classes (`URBackend`, `GoFaBackend`) sit behind one recording loop; config constants and the trajectory read/write come from `robot_common.py` (`from robot_common import …`, `rc.save_trajectory`). `q`-carrying waypoints replay exactly in `play_trajectory.py` (no IK), which is why recording stores joints directly. GoFa software lead-through carries the same caveats as `teleop_gofa_egm.py` (needs the EGM supervisor installed/parked; verify `SetLeadThrough` engages in your mode). Design spec: `docs/superpowers/specs/2026-06-04-cli-trajectory-recorder-design.md`.
 
 ---
 
@@ -254,7 +286,7 @@ What it does:
 6. Loads `PyEgm.mod` into task `T_ROB1` and turns motors on (if off).
 7. Tries `resetpp` + `start_program` over RWS; when that fails (see [OmniCore RWS gotchas](#omnicore-rws-gotchas)) it prompts you to tap **PP to Main** + green **Play** on the pendant.
 
-⚠️ The `.cfg` files define the EGM UDP peer (`UCdevice` → your PC). `EGM_COMM.cfg` `RemoteAddress` must equal your PC's IP (default assumes `192.168.125.50`; edit it and `PC_IP` in the installer to match) and `RemotePortNumber` must equal `EGM_LOCAL_PORT` (6510) in `teleop_gofa_egm.py`. Applying the `.cfg` may need a controller restart from the pendant.
+⚠️ The `.cfg` files (in `egm/`) define the EGM UDP peer (`UCdevice` → your PC). `egm/EGM_COMM.cfg` `RemoteAddress` must equal your PC's IP (default assumes `192.168.125.50`; edit it and `PC_IP` in the installer to match) and `RemotePortNumber` must equal `EGM_LOCAL_PORT` (6510) in `teleop_gofa_egm.py`. Applying the `.cfg` may need a controller restart from the pendant.
 
 After this, `PyEgm` is parked at `WaitUntil egm_go = TRUE OR lead_go = TRUE`. Setting `egm_go = TRUE` (which `teleop_gofa_egm.py` does via RWS) makes it enter `EGMRunJoint` and follow the UDP joint stream until convergence, then clear `egm_go` and re-park. Setting `lead_go = TRUE` instead makes it call `SetLeadThrough \On` (hand-guiding) and hold until `lead_go` clears, then `SetLeadThrough \Off`.
 
@@ -314,6 +346,8 @@ Same shape as `teleop_ur15.py`, with EGM in place of servoJ:
 Startup safety: the script sets `egm_go = FALSE` on connect so a stray TRUE doesn't fire EGM.
 
 ## Tunables — `teleop_gofa_egm.py`
+
+The shared ones (`ROBOT_IP`, RWS creds, RAPID flags, EGM port, speed caps, profile knobs) live in `robot_common.py` as `GOFA_*` / unprefixed names; the script binds them to these local names. GoFa-only knobs (`LIVE_HZ`, `POLL_HZ`, …) are defined locally in `teleop_gofa_egm.py`.
 
 | Constant | Default | Effect |
 |---|---|---|

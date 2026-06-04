@@ -20,8 +20,6 @@ recording. A blank name + Enter at the name prompt exits the script.
 """
 
 import argparse
-import datetime
-import json
 import os
 import select
 import sys
@@ -33,26 +31,18 @@ import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-TRAJ_DIR = os.path.join(_HERE, "trajectories")
+
+import robot_common as rc  # noqa: E402
+from robot_common import (  # noqa: E402
+    TRAJ_DIR, TARGET_LINK,
+    UR_ROBOT_IP, UR_ROBOT_DESCRIPTION, UR_GRASP_LINK, UR_GRIPPER_URDF_PATH,
+    UR_MESH_DIR_PREFIX, UR_GRIPPER_FINGER_OPEN, UR_GRIPPER_MASS, UR_GRIPPER_COG,
+    GOFA_ROBOT_IP, GOFA_RWS_USER, GOFA_RWS_PASSWORD, GOFA_RAPID_MODULE,
+    GOFA_RAPID_LEAD_FLAG, GOFA_RAPID_GO_FLAG, GOFA_URDF_PATH, GOFA_MESH_DIR_PREFIX,
+)
 
 GRIP_STEP = 0.10                # gripper fraction change per o/p press (UR)
 DASH_HZ = 10                    # live dashboard refresh + key-poll rate
-
-# ---- UR15 (mirror play_trajectory.py / teleop_ur15.py) ----
-UR_ROBOT_IP = "192.168.125.2"
-UR_GRIPPER_FINGER_OPEN = 0.025  # per-side finger travel (m) = URDF "open" limit
-UR_GRIPPER_MASS = 1.0
-UR_GRIPPER_COG = (0.0, 0.0, 0.06)
-
-# ---- GoFa (mirror play_trajectory.py / teleop_gofa_egm.py) ----
-GOFA_ROBOT_IP = "192.168.125.1"
-GOFA_RWS_USER = "Default User"
-GOFA_RWS_PASSWORD = "robotics"
-GOFA_RAPID_MODULE = "PyEgm"
-GOFA_RAPID_LEAD_FLAG = "lead_go"
-GOFA_RAPID_GO_FLAG = "egm_go"
-GOFA_URDF_PATH = os.path.join(_HERE, "crb15000_5_95.urdf")
-GOFA_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")
 
 
 # ---------------- keyboard (raw single-key) ----------------
@@ -126,21 +116,17 @@ class URBackend:
 
         self._jnp, self._jaxlie = jnp, jaxlie
 
-        urdf = load_robot_description("ur15_description")
+        urdf = load_robot_description(UR_ROBOT_DESCRIPTION)
         self._robot = pk.Robot.from_urdf(urdf)
-        self._tcp = self._robot.links.names.index("tool0")
+        self._tcp = self._robot.links.names.index(TARGET_LINK)
 
         # Fixed tool0 -> grasp-point offset, read from the Hand-E URDF (gripper rigid).
-        def _resolve(fname):
-            if fname.startswith("package://"):
-                pkg, rest = fname[len("package://"):].split("/", 1)
-                return os.path.join(_HERE, pkg, rest)
-            return fname
-
-        g_urdf = yourdfpy.URDF.load(os.path.join(_HERE, "hande.urdf"), filename_handler=_resolve)
+        g_urdf = yourdfpy.URDF.load(
+            UR_GRIPPER_URDF_PATH, filename_handler=rc.make_mesh_resolver(UR_MESH_DIR_PREFIX)
+        )
         g_urdf.update_cfg(np.array([UR_GRIPPER_FINGER_OPEN]))
         self._tool0_T_grasp = jaxlie.SE3.from_matrix(
-            jnp.asarray(g_urdf.get_transform("robotiq_hande_end", "tool0"))
+            jnp.asarray(g_urdf.get_transform(UR_GRASP_LINK, TARGET_LINK))
         )
 
         print(f"Connecting to UR15 at {UR_ROBOT_IP} ...")
@@ -246,15 +232,11 @@ class GoFaBackend:
 
         self._jnp, self._jaxlie = jnp, jaxlie
 
-        def _resolve(fname):
-            if fname.startswith("package://"):
-                pkg, rest = fname[len("package://"):].split("/", 1)
-                return os.path.join(GOFA_MESH_DIR_PREFIX, pkg, rest)
-            return fname
-
-        urdf = yourdfpy.URDF.load(GOFA_URDF_PATH, filename_handler=_resolve)
+        urdf = yourdfpy.URDF.load(
+            GOFA_URDF_PATH, filename_handler=rc.make_mesh_resolver(GOFA_MESH_DIR_PREFIX)
+        )
         self._robot = pk.Robot.from_urdf(urdf)
-        self._tcp = self._robot.links.names.index("tool0")
+        self._tcp = self._robot.links.names.index(TARGET_LINK)
 
         print(f"Connecting to GoFa RWS at {GOFA_ROBOT_IP} ...")
         self._rws = abb_rws.RWSClient(
@@ -346,15 +328,7 @@ def prompt_robot() -> str | None:
 
 
 def save_traj(name: str, robot: str, waypoints: list) -> None:
-    os.makedirs(TRAJ_DIR, exist_ok=True)
-    path = os.path.join(TRAJ_DIR, f"{name}.json")
-    data = {
-        "robot": robot,
-        "created": datetime.datetime.now().isoformat(timespec="seconds"),
-        "waypoints": waypoints,
-    }
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    rc.save_trajectory(name, robot, waypoints)
     print(f"  saved {len(waypoints)} waypoint(s) -> trajectories/{name}.json")
 
 

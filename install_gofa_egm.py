@@ -19,8 +19,8 @@ What it does:
 
 Prerequisites:
   A. Controller in a known-good state (we override the supervisor regardless).
-  B. Your Mac's IP is what's in EGM_COMM.cfg under RemoteAddress. Default
-     assumes 192.168.125.50; edit EGM_COMM.cfg and PC_IP below to match.
+  B. Your Mac's IP is what's in egm/EGM_COMM.cfg under RemoteAddress. Default
+     assumes 192.168.125.50; edit egm/EGM_COMM.cfg and PC_IP below to match.
   C. Controller in AUTO, motors on (or we'll turn them on), robot in Normal.
 """
 

@@ -16,9 +16,7 @@ Run:
 """
 
 import atexit
-import datetime
 import itertools
-import json
 import os
 import sys
 import threading
@@ -38,55 +36,39 @@ import abb_rws
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import pyroki_snippets as pks  # noqa: E402
+import robot_common as rc  # noqa: E402
 
-# ---------- config ----------
-ROBOT_IP = "192.168.125.1"
-RWS_USER = "Default User"
-RWS_PASSWORD = "robotics"
-URDF_PATH = os.path.join(_HERE, "crb15000_5_95.urdf")
-URDF_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")
-TARGET_LINK = "tool0"
+# ---------- config (shared values live in robot_common.py) ----------
+ROBOT_IP = rc.GOFA_ROBOT_IP
+RWS_USER = rc.GOFA_RWS_USER
+RWS_PASSWORD = rc.GOFA_RWS_PASSWORD
+URDF_PATH = rc.GOFA_URDF_PATH
+URDF_MESH_DIR_PREFIX = rc.GOFA_MESH_DIR_PREFIX
+TARGET_LINK = rc.TARGET_LINK
+RAPID_GO_FLAG_VAR = rc.GOFA_RAPID_GO_FLAG
+RAPID_LEAD_FLAG_VAR = rc.GOFA_RAPID_LEAD_FLAG
+RAPID_MODULE = rc.GOFA_RAPID_MODULE
+EGM_LOCAL_PORT = rc.GOFA_EGM_LOCAL_PORT
+STREAM_HZ = rc.GOFA_STREAM_HZ        # EGM target stream rate (controller side runs ~250Hz)
+MAX_JOINT_SPEED = rc.GOFA_MAX_JOINT_SPEED
+MAX_TCP_SPEED = rc.GOFA_MAX_TCP_SPEED
+MIN_SEG_DURATION_S = rc.MIN_SEG_DURATION_S
+DWELL_S = rc.DWELL_S
+RAMP_FRAC = rc.RAMP_FRAC
+HOLD_AFTER_PLAY_S = rc.GOFA_HOLD_AFTER_PLAY_S
+TRAJ_DIR = rc.TRAJ_DIR
 
-RAPID_GO_FLAG_VAR = "egm_go"        # bool in PyEgm.mod
-RAPID_LEAD_FLAG_VAR = "lead_go"     # bool in PyEgm.mod — TRUE = software lead-through (hand-guide)
-RAPID_MODULE = "PyEgm"
-
-EGM_LOCAL_PORT = 6510                # must match RemotePortNumber in EGM_COMM.cfg
-
-TRAJ_DIR = os.path.join(_HERE, "trajectories")  # saved teach trajectories (<name>.json)
+# ---- GoFa-only tunables ----
 POLL_HZ = 10                         # RWS state polling (idle viz only)
 PLAY_HZ = 60                         # viz refresh when idle
-STREAM_HZ = 100                      # EGM target stream rate (controller side runs ~250Hz)
 LIVE_HZ = 30                         # live gizmo-follow: IK + EGM target update rate
 GIZMO_SNAP_TWEEN_S = 0.8             # slew the gizmo orientation when snapping in Live (in-place reorient)
-MAX_JOINT_SPEED = 1.0                # rad/s peak per joint at slider=1.0
-MAX_TCP_SPEED = 0.25                 # m/s — hard cap on real tool speed (ISO/TS 15066
-                                     # collaborative limit). Enforced against the actual
-                                     # kinematics per segment; slider can only slow below it.
-MIN_SEG_DURATION_S = 0.5
-DWELL_S = 0.2
-RAMP_FRAC = 0.25
-HOLD_AFTER_PLAY_S = 1.5              # hold final target this long so RAPID's CondTime triggers
 
-
-def _alpha_to_s(alpha: float, r: float = RAMP_FRAC) -> float:
-    """Trapezoidal velocity profile: alpha in [0,1] -> traversed fraction in [0,1]."""
-    v_peak = 1.0 / (1.0 - r)
-    if alpha < r:
-        return 0.5 * v_peak * alpha * alpha / r
-    if alpha < 1.0 - r:
-        return 0.5 * v_peak * r + v_peak * (alpha - r)
-    return 1.0 - 0.5 * v_peak * (1.0 - alpha) ** 2 / r
+_alpha_to_s = rc.alpha_to_s
 
 
 # ---------- robot model ----------
-def _resolve_mesh(fname: str) -> str:
-    if fname.startswith("package://"):
-        pkg, rest = fname[len("package://") :].split("/", 1)
-        return os.path.join(URDF_MESH_DIR_PREFIX, pkg, rest)
-    return fname
-
-
+_resolve_mesh = rc.make_mesh_resolver(URDF_MESH_DIR_PREFIX)
 urdf = yourdfpy.URDF.load(URDF_PATH, filename_handler=_resolve_mesh)
 robot = pk.Robot.from_urdf(urdf)
 TARGET_LINK_IDX = robot.links.names.index(TARGET_LINK)
@@ -720,26 +702,16 @@ def _(_):
 
 @gui_save.on_click
 def _(_):
-    os.makedirs(TRAJ_DIR, exist_ok=True)
     name = (gui_traj_name.value or "traj").strip()
-    path = os.path.join(TRAJ_DIR, f"{name}.json")
-    data = {
-        "robot": "gofa",
-        "created": datetime.datetime.now().isoformat(timespec="seconds"),
-        "waypoints": waypoints,
-    }
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    rc.save_trajectory(name, "gofa", waypoints)
     gui_status.value = f"Saved {len(waypoints)} waypoint(s) -> {name}.json"
 
 
 @gui_load.on_click
 def _(_):
     name = (gui_traj_name.value or "traj").strip()
-    path = os.path.join(TRAJ_DIR, f"{name}.json")
     try:
-        with open(path) as f:
-            data = json.load(f)
+        data = rc.load_trajectory(name)
     except Exception as e:
         gui_status.value = f"Load failed: {e}"
         return

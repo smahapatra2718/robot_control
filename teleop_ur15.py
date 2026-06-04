@@ -19,9 +19,7 @@ Run from project root so `pyroki_snippets/` is on the path:
   ./robot_control/bin/python teleop_ur15.py
 """
 
-import datetime
 import itertools
-import json
 import os
 import sys
 import threading
@@ -42,54 +40,45 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import hande_gripper  # noqa: E402
 import pyroki_snippets as pks  # noqa: E402
+import robot_common as rc  # noqa: E402
 
-# ---------- config ----------
-ROBOT_IP = "192.168.125.2"
-ROBOT_DESCRIPTION = "ur15_description"
-TARGET_LINK = "tool0"
+# ---------- config (shared values live in robot_common.py) ----------
+ROBOT_IP = rc.UR_ROBOT_IP
+ROBOT_DESCRIPTION = rc.UR_ROBOT_DESCRIPTION
+TARGET_LINK = rc.TARGET_LINK
+STREAM_HZ = rc.UR_STREAM_HZ     # shared rate for viz playback and servoJ
+MAX_JOINT_SPEED = rc.UR_MAX_JOINT_SPEED
+MIN_SEG_DURATION_S = rc.MIN_SEG_DURATION_S
+DWELL_S = rc.DWELL_S
+RAMP_FRAC = rc.RAMP_FRAC
+SERVO_LOOKAHEAD = rc.UR_SERVO_LOOKAHEAD
+SERVO_GAIN = rc.UR_SERVO_GAIN
+SERVO_STOP_DECEL = rc.UR_SERVO_STOP_DECEL
+SETTLE_GAIN = rc.UR_SETTLE_GAIN
+SETTLE_EPS_RAD = rc.UR_SETTLE_EPS_RAD
+SETTLE_STALL_TICKS = rc.UR_SETTLE_STALL_TICKS
+SETTLE_MAX_S = rc.UR_SETTLE_MAX_S
+GRIPPER_URDF_PATH = rc.UR_GRIPPER_URDF_PATH
+GRIPPER_FINGER_OPEN = rc.UR_GRIPPER_FINGER_OPEN   # per-side finger travel (m) = URDF upper limit (open)
+GRIPPER_MASS = rc.UR_GRIPPER_MASS
+GRIPPER_COG = rc.UR_GRIPPER_COG
+GRIP_PREDELAY_S = rc.GRIP_PREDELAY_S
+GRIP_EPS = rc.GRIP_EPS
+TRAJ_DIR = rc.TRAJ_DIR
+
+# ---- UR15-only tunables ----
 POLL_HZ = 30
 PLAY_HZ = 60                    # viz refresh when idle
-STREAM_HZ = 50                  # shared rate for viz playback and servoJ
 LIVE_HZ = 125                   # live gizmo-follow: IK + servoJ rate (UR servoJ wants a fast, steady cadence)
 GIZMO_SNAP_TWEEN_S = 0.8        # slew the gizmo orientation when snapping in Live (in-place reorient)
-MAX_JOINT_SPEED = 1.0           # rad/s peak per joint at slider=1.0
 MAX_JOINT_ACCEL = 8.0           # rad/s^2 — accel limit for Live following (lower = smoother, laggier)
-MIN_SEG_DURATION_S = 0.5        # floor on segment time so tiny moves are still smooth
-DWELL_S = 0.2                   # pause at each intermediate waypoint
-RAMP_FRAC = 0.25                # fraction of segment spent ramping up (same for ramp-down)
-SERVO_LOOKAHEAD = 0.1           # servoJ lookahead_time (s)
-SERVO_GAIN = 300                # servoJ gain during motion
-SERVO_STOP_DECEL = 2.0          # rad/s^2 at end-of-trajectory servoStop (default 10 is harsh)
-SETTLE_GAIN = 600               # stiffer servoJ gain for the static end-of-play hold (tighter convergence)
 SETTLE_TOL_RAD = 0.0            # 0 = no "good enough" early-out; converge to the servoJ floor (plateau) or the cap
-SETTLE_EPS_RAD = 0.00002        # min per-check improvement to count as "still converging"
-SETTLE_STALL_TICKS = 10         # consecutive non-improving checks => at the servoJ floor, stop
-SETTLE_MAX_S = 3.0              # hard cap on the final convergence hold
-
-# ---- Hand-E gripper ----
-GRIPPER_URDF_PATH = os.path.join(_HERE, "hande.urdf")
 GRIPPER_HOST = ROBOT_IP         # Robotiq Grippers URCap socket server (on the UR controller)
 GRIPPER_PORT = hande_gripper.DEFAULT_PORT
-GRIPPER_FINGER_OPEN = 0.025     # per-side finger travel (m) = URDF upper limit (open)
 GRIPPER_TWEEN_S = 0.8           # viz finger animation duration to match the real move
-GRIPPER_MASS = 1.0              # Hand-E payload (kg) told to the UR so it compensates gravity at the loaded wrist
-GRIPPER_COG = (0.0, 0.0, 0.06)  # payload center of gravity in the tool-flange frame (m); raise if you add a workpiece
-GRIP_PREDELAY_S = 0.5           # hold/settle the arm this long before actuating the gripper
-GRIP_EPS = 0.02                 # min change in gripper fraction (2%) before a waypoint re-actuates
-TRAJ_DIR = os.path.join(_HERE, "trajectories")  # saved teach trajectories (<name>.json)
 
-
-def _alpha_to_s(alpha: float, r: float = RAMP_FRAC) -> float:
-    """Trapezoidal velocity profile: parabolic accel, linear cruise, parabolic decel.
-    Maps alpha in [0,1] to traversed fraction s in [0,1] with s'(0)=s'(1)=0.
-    r is the ramp fraction (0 < r <= 0.5).
-    """
-    v_peak = 1.0 / (1.0 - r)  # cruise speed making total area = 1
-    if alpha < r:
-        return 0.5 * v_peak * alpha * alpha / r
-    if alpha < 1.0 - r:
-        return 0.5 * v_peak * r + v_peak * (alpha - r)
-    return 1.0 - 0.5 * v_peak * (1.0 - alpha) ** 2 / r
+_alpha_to_s = rc.alpha_to_s
+_norm_grip = rc.norm_grip
 
 # ---------- robot model ----------
 urdf = load_robot_description(ROBOT_DESCRIPTION)
@@ -99,13 +88,7 @@ NUM_JOINTS = robot.joints.num_actuated_joints
 
 
 # ---------- gripper model ----------
-def _resolve_gripper_mesh(fname: str) -> str:
-    if fname.startswith("package://"):
-        pkg, rest = fname[len("package://") :].split("/", 1)
-        return os.path.join(_HERE, pkg, rest)
-    return fname
-
-
+_resolve_gripper_mesh = rc.make_mesh_resolver(rc.UR_MESH_DIR_PREFIX)
 gripper_urdf = yourdfpy.URDF.load(GRIPPER_URDF_PATH, filename_handler=_resolve_gripper_mesh)
 # Fixed tool0 -> grasp-point (hande_end) offset, read straight from the URDF.
 # The gripper is rigid, so this is a constant; IK keeps targeting tool0.
@@ -133,15 +116,6 @@ def _frac_to_finger(frac: float) -> float:
     return GRIPPER_FINGER_OPEN * (1.0 - frac)
 
 
-def _norm_grip(g) -> float | None:
-    """Accept legacy 'open'/'close'/None or a numeric fraction; return a float or None."""
-    if g is None:
-        return None
-    if g == "open":
-        return 0.0
-    if g == "close":
-        return 1.0
-    return float(g)
 playing = threading.Event()
 live = threading.Event()               # live gizmo-follow (continuous IK + servoJ) active
 freedrive = threading.Event()          # hand-guiding (teachMode) active
@@ -796,26 +770,16 @@ def _(_):
 
 @gui_save.on_click
 def _(_):
-    os.makedirs(TRAJ_DIR, exist_ok=True)
     name = (gui_traj_name.value or "traj").strip()
-    path = os.path.join(TRAJ_DIR, f"{name}.json")
-    data = {
-        "robot": "ur15",
-        "created": datetime.datetime.now().isoformat(timespec="seconds"),
-        "waypoints": waypoints,
-    }
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    rc.save_trajectory(name, "ur15", waypoints)
     gui_status.value = f"Saved {len(waypoints)} waypoint(s) -> {name}.json"
 
 
 @gui_load.on_click
 def _(_):
     name = (gui_traj_name.value or "traj").strip()
-    path = os.path.join(TRAJ_DIR, f"{name}.json")
     try:
-        with open(path) as f:
-            data = json.load(f)
+        data = rc.load_trajectory(name)
     except Exception as e:
         gui_status.value = f"Load failed: {e}"
         return

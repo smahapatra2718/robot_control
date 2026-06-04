@@ -10,21 +10,21 @@ only, to enforce the MAX_TCP_SPEED collaborative cap.
 """
 
 import argparse
-import json
-import os
 import time
 
 import numpy as np
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-TRAJ_DIR = os.path.join(_HERE, "trajectories")
-
-# ---- profile (mirrors the teleop scripts) ----
-RAMP_FRAC = 0.25
-MIN_SEG_DURATION_S = 0.5
-DWELL_S = 0.2
-GRIP_PREDELAY_S = 0.5
-GRIP_EPS = 0.02                 # min change in gripper fraction (2%) before a waypoint re-actuates
+import robot_common as rc
+from robot_common import (
+    RAMP_FRAC, MIN_SEG_DURATION_S, DWELL_S, GRIP_PREDELAY_S, GRIP_EPS,
+    alpha_to_s, norm_grip,
+    UR_ROBOT_IP, UR_MAX_JOINT_SPEED, UR_STREAM_HZ, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN,
+    UR_SERVO_STOP_DECEL, UR_SETTLE_GAIN, UR_SETTLE_EPS_RAD, UR_SETTLE_STALL_TICKS,
+    UR_SETTLE_MAX_S, UR_GRIPPER_MASS, UR_GRIPPER_COG,
+    GOFA_ROBOT_IP, GOFA_RWS_USER, GOFA_RWS_PASSWORD, GOFA_RAPID_MODULE,
+    GOFA_RAPID_GO_FLAG, GOFA_EGM_LOCAL_PORT, GOFA_MAX_JOINT_SPEED, GOFA_MAX_TCP_SPEED,
+    GOFA_STREAM_HZ, GOFA_HOLD_AFTER_PLAY_S, GOFA_URDF_PATH, GOFA_MESH_DIR_PREFIX,
+)
 
 
 def confirm(prompt: str) -> bool:
@@ -40,61 +40,8 @@ def confirm(prompt: str) -> bool:
     return input(prompt).strip().lower() == "y"
 
 
-def norm_grip(g):
-    """Waypoint grip: legacy 'open'/'close'/None or a numeric fraction -> float or None.
-    Fraction is 0.0=open .. 1.0=fully closed (matches teleop_ur15.py)."""
-    if g is None:
-        return None
-    if g == "open":
-        return 0.0
-    if g == "close":
-        return 1.0
-    return float(g)
-
-# ---- UR15 ----
-UR_ROBOT_IP = "192.168.125.2"
-UR_MAX_JOINT_SPEED = 1.0
-UR_STREAM_HZ = 50
-UR_SERVO_LOOKAHEAD = 0.1
-UR_SERVO_GAIN = 300
-UR_SERVO_STOP_DECEL = 2.0
-UR_SETTLE_GAIN = 600
-UR_SETTLE_EPS_RAD = 0.00002
-UR_SETTLE_STALL_TICKS = 10
-UR_SETTLE_MAX_S = 3.0
-UR_GRIPPER_FINGER_OPEN = 0.025
-UR_GRIPPER_MASS = 1.0
-UR_GRIPPER_COG = (0.0, 0.0, 0.06)
-
-# ---- GoFa ----
-GOFA_ROBOT_IP = "192.168.125.1"
-GOFA_RWS_USER = "Default User"
-GOFA_RWS_PASSWORD = "robotics"
-GOFA_RAPID_MODULE = "PyEgm"
-GOFA_RAPID_GO_FLAG = "egm_go"
-GOFA_EGM_LOCAL_PORT = 6510
-GOFA_MAX_JOINT_SPEED = 1.0
-GOFA_MAX_TCP_SPEED = 0.25
-GOFA_STREAM_HZ = 100
-GOFA_HOLD_AFTER_PLAY_S = 1.5
-GOFA_URDF_PATH = os.path.join(_HERE, "crb15000_5_95.urdf")
-GOFA_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")
-
-
-def alpha_to_s(alpha: float, r: float = RAMP_FRAC) -> float:
-    """Trapezoidal velocity profile: alpha in [0,1] -> traversed fraction in [0,1]."""
-    v_peak = 1.0 / (1.0 - r)
-    if alpha < r:
-        return 0.5 * v_peak * alpha * alpha / r
-    if alpha < 1.0 - r:
-        return 0.5 * v_peak * r + v_peak * (alpha - r)
-    return 1.0 - 0.5 * v_peak * (1.0 - alpha) ** 2 / r
-
-
 def load_trajectory(name: str) -> dict:
-    path = os.path.join(TRAJ_DIR, f"{name}.json")
-    with open(path) as f:
-        data = json.load(f)
+    data = rc.load_trajectory(name)
     wps = data.get("waypoints", [])
     if not wps:
         raise SystemExit(f"{name}.json has no waypoints.")
@@ -275,13 +222,7 @@ def play_gofa(data, speed, no_confirm):
     import abb_egm
     import abb_rws
 
-    def _resolve_mesh(fname):
-        if fname.startswith("package://"):
-            pkg, rest = fname[len("package://"):].split("/", 1)
-            return os.path.join(GOFA_MESH_DIR_PREFIX, pkg, rest)
-        return fname
-
-    urdf = yourdfpy.URDF.load(GOFA_URDF_PATH, filename_handler=_resolve_mesh)
+    urdf = yourdfpy.URDF.load(GOFA_URDF_PATH, filename_handler=rc.make_mesh_resolver(GOFA_MESH_DIR_PREFIX))
     robot = pk.Robot.from_urdf(urdf)
     tcp_idx = robot.links.names.index("tool0")
 
