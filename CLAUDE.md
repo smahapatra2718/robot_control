@@ -10,15 +10,15 @@ Both scripts share: the same UI (viser scene + gizmo + waypoints), the same IK (
 Run:
 
 ```bash
-./robot_control/bin/python apps/teleop_ur15.py   # or apps/teleop_gofa_egm.py
+./robot_control/bin/python scripts/teleop_ur15.py   # or scripts/teleop_gofa_egm.py
 ```
 
 Open the printed `http://localhost:8080`. Each script connects to its controller at startup and aborts if it can't reach.
 
 ## Project layout
 
-Runnable scripts live in `apps/`, importable modules in `lib/`, assets and
-vendored trees in their own folders. Each `apps/` script starts with a small
+Runnable scripts live in `scripts/`, importable modules in `lib/`, assets and
+vendored trees in their own folders. Each `scripts/` script starts with a small
 bootstrap that puts the repo root (for `pyroki_snippets`) and `lib/` (for our
 modules) on `sys.path`, so it can `import robot_common` / `abb_rws` / … by bare
 name from anywhere. Asset paths resolve from `robot_common._ROOT` (= parent of
@@ -26,7 +26,7 @@ name from anywhere. Asset paths resolve from `robot_common._ROOT` (= parent of
 
 ```
 abb_foga/
-├── apps/                       # entry points — run with ./robot_control/bin/python apps/<script>
+├── scripts/                    # entry points — run with ./robot_control/bin/python scripts/<script>
 │   ├── teleop_ur15.py          #   UR15 teleop: viser + RTDE/servoJ + Hand-E gripper
 │   ├── teleop_gofa_egm.py      #   GoFa teleop: viser + EGM joint streaming
 │   ├── teleop.py               #   headless CLI trajectory recorder (free-drive + keypress capture)
@@ -34,7 +34,7 @@ abb_foga/
 │   ├── install_gofa_egm.py     #   one-shot GoFa bring-up: generates+loads PyEgm.mod, sets the UDP peer
 │   └── verify_hande.py         #   one-shot Hand-E gripper comms probe (run before trusting control)
 │
-├── lib/                        # importable modules (on sys.path via the apps/ bootstrap)
+├── lib/                        # importable modules (on sys.path via the scripts/ bootstrap)
 │   ├── robot_common.py         #   shared config (UR_*/GOFA_* constants) + pure helpers
 │   ├── abb_rws.py              #   minimal RWS client for OmniCore (RobotWare 7+)
 │   ├── abb_egm.py              #   minimal EGM UDP client (protobuf wire format)
@@ -145,7 +145,7 @@ A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V th
 
 **Control path — the URCap socket.** ur_rtde keeps its control script resident for the whole session, so a Robotiq gripper *program* can't run concurrently. But the **Grippers URCap also runs a background daemon** that owns the wrist RS-485 and serves a socket at **`<robot_ip>:63352`** — independent of whatever program is playing, so it coexists with ur_rtde, and the pendant buttons keep working (both route through the same daemon). No URCap swap. `hande_gripper.py` speaks the URCap's newline-terminated ASCII protocol over that socket (`SET POS 255 SPE 255 FOR 150 GTO 1` → `ack`; `GET STA` → `STA 3`); stdlib `socket` only, no deps. This is the same channel the standalone `robotiq_gripper.py` driver uses.
 
-⚠️ **PolyScope X firewall.** Like RTDE/Dashboard, port 63352 is likely blocked by the Services firewall by default — allow it under **Settings → Security → Services**. **Run `apps/verify_hande.py` first** (connect → activate → open/close standalone); only once it passes is gripper control in `teleop_ur15.py` trustworthy. If 63352 isn't reachable on X even after opening it, the fallbacks are a USB-RS485 adapter (talk Modbus straight to the gripper) or the RS485 URCap socket bridge — both absorbed by swapping `HandEGripper`'s transport. The gripper connect in `teleop_ur15.py` is best-effort: if the socket is absent it logs and runs viz-only (the slider still animates the meshes).
+⚠️ **PolyScope X firewall.** Like RTDE/Dashboard, port 63352 is likely blocked by the Services firewall by default — allow it under **Settings → Security → Services**. **Run `scripts/verify_hande.py` first** (connect → activate → open/close standalone); only once it passes is gripper control in `teleop_ur15.py` trustworthy. If 63352 isn't reachable on X even after opening it, the fallbacks are a USB-RS485 adapter (talk Modbus straight to the gripper) or the RS485 URCap socket bridge — both absorbed by swapping `HandEGripper`'s transport. The gripper connect in `teleop_ur15.py` is best-effort: if the socket is absent it logs and runs viz-only (the slider still animates the meshes).
 
 **URCap socket protocol** (port 63352): `SET <VAR> <val> …` → `ack`, `GET <VAR>` → `<VAR> <val>`. Vars: `ACT` activate, `GTO` go-to, `POS` request (0 open … 255 closed), `SPE` speed, `FOR` force (all 0–255), `STA` status (==3 ⇒ activated), `OBJ` object detection (1/2 ⇒ stopped on an object), `FLT` fault.
 
@@ -192,7 +192,7 @@ Teach-by-demonstration: hand-guide the arm, capture poses, save/replay. UR15 has
 Replay a saved trajectory on either arm without viser:
 
 ```bash
-./robot_control/bin/python apps/play_trajectory.py <name> [--speed S] [--dry-run] [--no-confirm]
+./robot_control/bin/python scripts/play_trajectory.py <name> [--speed S] [--dry-run] [--no-confirm]
 ```
 
 Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, and executes on the real arm after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits without touching hardware. It is **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. The first segment moves the arm from its current pose to waypoint 1 (same as viser). The UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). The GoFa path imports pyroki for forward kinematics **only** to enforce the `MAX_TCP_SPEED` collaborative cap, then streams over the existing EGM supervisor (PyEgm must be parked at `WaitUntil egm_go`). The profile + connection constants come from `robot_common.py` (`from robot_common import UR_* / GOFA_*`), so retuning a teleop script updates this one too — no manual mirroring.
@@ -202,7 +202,7 @@ Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` fiel
 Record a trajectory by hand-guiding the arm, no viser — the record-side counterpart to `play_trajectory.py`. Output is the **same `trajectories/<name>.json` format**, so it replays unchanged.
 
 ```bash
-./robot_control/bin/python apps/teleop.py [name] [--robot ur|gofa]
+./robot_control/bin/python scripts/teleop.py [name] [--robot ur|gofa]
 ```
 
 Missing `name`/`--robot` are prompted for (name first, then `[1] UR / [2] GoFa`). The robot connects once and is reused for the whole session. Then the arm enters free-drive (UR `teachMode()`; GoFa `lead_go=TRUE` → `SetLeadThrough`) and a **raw-keypress loop** runs:
@@ -275,7 +275,7 @@ EGM is a **licensed** controller option — confirm it's enabled (pendant: Setti
 Run the installer:
 
 ```bash
-./robot_control/bin/python apps/install_gofa_egm.py
+./robot_control/bin/python scripts/install_gofa_egm.py
 ```
 
 What it does:
@@ -410,7 +410,7 @@ Used by both `teleop_ur15.py` and `teleop_gofa_egm.py`.
 
 - **`pip install pyroki` doesn't exist.** Install from source: `git clone https://github.com/chungmin99/pyroki.git pyroki_src && ./robot_control/bin/pip install -e ./pyroki_src`. Already done.
 
-- **PyRoki's `solve_ik` lives in `examples/pyroki_snippets/`, not the package itself.** It's NOT installed by `pip install -e .`. Workaround: the `pyroki_snippets/` directory in the project root is a copy of `pyroki_src/examples/pyroki_snippets/` plus our `_solve_ik_seeded.py`, and every `apps/` script's bootstrap adds the repo root (and `lib/`) to `sys.path` so `import pyroki_snippets` works.
+- **PyRoki's `solve_ik` lives in `examples/pyroki_snippets/`, not the package itself.** It's NOT installed by `pip install -e .`. Workaround: the `pyroki_snippets/` directory in the project root is a copy of `pyroki_src/examples/pyroki_snippets/` plus our `_solve_ik_seeded.py`, and every `scripts/` script's bootstrap adds the repo root (and `lib/`) to `sys.path` so `import pyroki_snippets` works.
 
 - **First IK call takes ~800 ms (JAX JIT compile); subsequent calls are milliseconds.** Both teleop scripts call `_warmup_ik()` at launch (a no-op IK at the current pose) to pay this cost during startup instead of on the first Plan click — so launch prints "Warming up IK solver…" and takes ~800 ms longer, but the first real Plan is fast.
 

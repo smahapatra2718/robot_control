@@ -16,7 +16,7 @@ opening over the Robotiq URCap socket (see hande_gripper.py) plus a matching
 viz animation. Each waypoint stores the gripper fraction, replayed on Play.
 
 Run from project root so `pyroki_snippets/` is on the path:
-  ./robot_control/bin/python apps/teleop_ur15.py
+  ./robot_control/bin/python scripts/teleop_ur15.py
 """
 
 import itertools

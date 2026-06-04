@@ -12,7 +12,7 @@ EGM_COMM.cfg + EGM_MOC.cfg loaded, controller rebooted, PP-to-Main + Play
 done so the RAPID supervisor is parked at WaitUntil egm_go).
 
 Run:
-  ./robot_control/bin/python apps/teleop_gofa_egm.py
+  ./robot_control/bin/python scripts/teleop_gofa_egm.py
 """
 
 import atexit

@@ -4,7 +4,7 @@ Hand-guide the arm in free-drive and capture waypoints with single keypresses,
 saving in the same trajectories/<name>.json format play_trajectory.py replays.
 This is the record-side counterpart to play_trajectory.py.
 
-  ./robot_control/bin/python apps/teleop.py [name] [--robot ur|gofa]
+  ./robot_control/bin/python scripts/teleop.py [name] [--robot ur|gofa]
 
 If name/robot are omitted you're prompted for them. Then the arm enters free-drive
 (UR: teachMode; GoFa: software lead-through) and the key map is:

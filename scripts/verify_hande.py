@@ -11,7 +11,7 @@ firewall may block 63352 by default -- if connect fails, allow that port
 What it does: connect, activate, open, close, open, printing status each step.
 If this passes, the same HandEGripper drives teleop_ur15.py unchanged.
 
-  ./robot_control/bin/python apps/verify_hande.py
+  ./robot_control/bin/python scripts/verify_hande.py
 """
 
 import os
