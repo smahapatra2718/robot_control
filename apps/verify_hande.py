@@ -11,15 +11,22 @@ firewall may block 63352 by default -- if connect fails, allow that port
 What it does: connect, activate, open, close, open, printing status each step.
 If this passes, the same HandEGripper drives teleop_ur15.py unchanged.
 
-  ./robot_control/bin/python verify_hande.py
+  ./robot_control/bin/python apps/verify_hande.py
 """
 
+import os
 import sys
 import time
 
-import hande_gripper
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root + lib/ (our modules)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-HOST = "192.168.125.2"   # must match ROBOT_IP in teleop_ur15.py
+import hande_gripper  # noqa: E402
+import robot_common as rc  # noqa: E402
+
+HOST = rc.UR_ROBOT_IP    # same UR controller as teleop_ur15.py
 PORT = hande_gripper.DEFAULT_PORT
 
 

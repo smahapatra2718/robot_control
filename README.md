@@ -10,7 +10,7 @@ Browser-based teleop for two robot arms sharing the same [viser](https://github.
 Both teleop scripts share the same UI (viser scene + 6-DoF gizmo + waypoints), the same seeded IK (`pyroki_snippets/_solve_ik_seeded.py`), and the same trapezoidal play loop. All four entry points pull shared config + helpers from **`robot_common.py`**. See [`CLAUDE.md`](CLAUDE.md) for the full architecture, controller bring-up notes, tunables, and hard-won gotchas.
 
 ```bash
-./robot_control/bin/python teleop_ur15.py   # or teleop_gofa_egm.py
+./robot_control/bin/python apps/teleop_ur15.py   # or apps/teleop_gofa_egm.py
 ```
 
 Then open the printed `http://localhost:8080`.

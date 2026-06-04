@@ -4,7 +4,7 @@ Hand-guide the arm in free-drive and capture waypoints with single keypresses,
 saving in the same trajectories/<name>.json format play_trajectory.py replays.
 This is the record-side counterpart to play_trajectory.py.
 
-  ./robot_control/bin/python teleop.py [name] [--robot ur|gofa]
+  ./robot_control/bin/python apps/teleop.py [name] [--robot ur|gofa]
 
 If name/robot are omitted you're prompted for them. Then the arm enters free-drive
 (UR: teachMode; GoFa: software lead-through) and the key map is:
@@ -29,8 +29,10 @@ import tty
 
 import numpy as np
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root (pyroki_snippets) + lib/ (our modules)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import robot_common as rc  # noqa: E402
 from robot_common import (  # noqa: E402

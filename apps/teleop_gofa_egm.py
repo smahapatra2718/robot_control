@@ -12,7 +12,7 @@ EGM_COMM.cfg + EGM_MOC.cfg loaded, controller rebooted, PP-to-Main + Play
 done so the RAPID supervisor is parked at WaitUntil egm_go).
 
 Run:
-  ./robot_control/bin/python teleop_gofa_egm.py
+  ./robot_control/bin/python apps/teleop_gofa_egm.py
 """
 
 import atexit
@@ -33,8 +33,10 @@ from viser.extras import ViserUrdf
 import abb_egm
 import abb_rws
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root (pyroki_snippets) + lib/ (our modules)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 import pyroki_snippets as pks  # noqa: E402
 import robot_common as rc  # noqa: E402
 

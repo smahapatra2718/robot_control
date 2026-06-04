@@ -18,10 +18,12 @@ import datetime
 import json
 import os
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
+# Repo root = parent of lib/ (this module lives in lib/). Asset paths below
+# resolve against the root from __file__, independent of the caller's CWD.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Saved teach trajectories: trajectories/<name>.json (shared by every script).
-TRAJ_DIR = os.path.join(_HERE, "trajectories")
+TRAJ_DIR = os.path.join(_ROOT, "trajectories")
 TARGET_LINK = "tool0"            # FK link both arms target
 
 # ---- trapezoidal play profile (shared by all four scripts) ----
@@ -44,8 +46,8 @@ UR_SETTLE_EPS_RAD = 0.00002      # min per-check improvement to count as "still 
 UR_SETTLE_STALL_TICKS = 10       # consecutive non-improving checks => at the servoJ floor, stop
 UR_SETTLE_MAX_S = 3.0            # hard cap on the final convergence hold
 # Hand-E gripper geometry / payload
-UR_GRIPPER_URDF_PATH = os.path.join(_HERE, "urdf", "hande.urdf")
-UR_MESH_DIR_PREFIX = _HERE       # hande.urdf package://robotiq_hande_description meshes resolve under the project root
+UR_GRIPPER_URDF_PATH = os.path.join(_ROOT, "urdf", "hande.urdf")
+UR_MESH_DIR_PREFIX = _ROOT       # hande.urdf package://robotiq_hande_description meshes resolve under the project root
 UR_GRASP_LINK = "robotiq_hande_end"   # grasp point; fixed offset from tool0 (gripper is rigid)
 UR_GRIPPER_FINGER_OPEN = 0.025   # per-side finger travel (m) = URDF upper limit (open)
 UR_GRIPPER_MASS = 1.0            # Hand-E payload (kg) told to the UR so it compensates gravity
@@ -55,8 +57,8 @@ UR_GRIPPER_COG = (0.0, 0.0, 0.06)  # payload center of gravity in the tool-flang
 GOFA_ROBOT_IP = "192.168.125.1"
 GOFA_RWS_USER = "Default User"
 GOFA_RWS_PASSWORD = "robotics"
-GOFA_URDF_PATH = os.path.join(_HERE, "urdf", "crb15000_5_95.urdf")
-GOFA_MESH_DIR_PREFIX = os.path.join(_HERE, "abb_desc")
+GOFA_URDF_PATH = os.path.join(_ROOT, "urdf", "crb15000_5_95.urdf")
+GOFA_MESH_DIR_PREFIX = os.path.join(_ROOT, "abb_desc")
 GOFA_RAPID_MODULE = "PyEgm"      # supervisor module loaded by install_gofa_egm.py
 GOFA_RAPID_GO_FLAG = "egm_go"    # bool in PyEgm.mod: TRUE -> enter EGMRunJoint
 GOFA_RAPID_LEAD_FLAG = "lead_go"  # bool in PyEgm.mod: TRUE -> SetLeadThrough (hand-guide)

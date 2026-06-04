@@ -24,10 +24,16 @@ Prerequisites:
   C. Controller in AUTO, motors on (or we'll turn them on), robot in Normal.
 """
 
+import os
 import sys
 import time
 
-import abb_rws
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root + lib/ (our modules)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import abb_rws  # noqa: E402
 
 # ---- match what EGM_COMM.cfg / PyEgm.mod expect ----
 ROBOT_IP = "192.168.125.1"          # GoFa MGMT port

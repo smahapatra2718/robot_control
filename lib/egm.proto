@@ -2,8 +2,8 @@
 // controllers. Transcribed from ABB Application Manual "Externally Guided
 // Motion" (3HAC073319-001) / "Controller software OmniCore" (3HAC066554-001).
 //
-// Generate the Python binding with:
-//   ./robot_control/bin/python -m grpc_tools.protoc -I. --python_out=. egm.proto
+// Generate the Python binding with (run from lib/ so the descriptor name stays "egm.proto"):
+//   cd lib && ../robot_control/bin/python -m grpc_tools.protoc -I. --python_out=. egm.proto
 
 syntax = "proto2";
 

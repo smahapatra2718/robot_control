@@ -6,13 +6,20 @@ and replays the stored joint waypoints on the real arm (after a confirm prompt)
 or Plan-and-save in viser). The GoFa path imports pyroki for forward kinematics
 only, to enforce the MAX_TCP_SPEED collaborative cap.
 
-  ./robot_control/bin/python play_trajectory.py <name> [--speed S] [--dry-run] [--no-confirm]
+  ./robot_control/bin/python apps/play_trajectory.py <name> [--speed S] [--dry-run] [--no-confirm]
 """
 
 import argparse
+import os
+import sys
 import time
 
 import numpy as np
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root + lib/ (our modules)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import robot_common as rc
 from robot_common import (
