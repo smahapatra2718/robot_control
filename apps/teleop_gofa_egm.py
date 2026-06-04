@@ -30,13 +30,12 @@ import viser
 import yourdfpy
 from viser.extras import ViserUrdf
 
-import abb_egm
-import abb_rws
-
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root (pyroki_snippets) + lib/ (our modules)
     if _p not in sys.path:
         sys.path.insert(0, _p)
+import abb_egm  # noqa: E402
+import abb_rws  # noqa: E402
 import pyroki_snippets as pks  # noqa: E402
 import robot_common as rc  # noqa: E402
 
