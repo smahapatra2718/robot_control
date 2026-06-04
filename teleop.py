@@ -386,12 +386,10 @@ def key_loop(backend, name: str, waypoints: list) -> str:
                 if k == "c":
                     waypoints.append(backend.make_waypoint(q))
                     status = f"captured waypoint {len(waypoints)}"
-                elif k == "o":      # open one step
-                    f = backend.adjust_grip(-GRIP_STEP)
-                    status = "no gripper" if f is None else f"gripper -> {int(round(f * 100))}% closed"
+                elif k == "o":      # open one step (live % shows on the Gripper line)
+                    status = "no gripper" if backend.adjust_grip(-GRIP_STEP) is None else "opening gripper"
                 elif k == "p":      # close one step
-                    f = backend.adjust_grip(+GRIP_STEP)
-                    status = "no gripper" if f is None else f"gripper -> {int(round(f * 100))}% closed"
+                    status = "no gripper" if backend.adjust_grip(+GRIP_STEP) is None else "closing gripper"
                 elif k in ("\r", "\n"):
                     return "save"
                 elif k == "w":
