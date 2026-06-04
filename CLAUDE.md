@@ -35,6 +35,8 @@ abb_foga/
 ├── egm.proto / egm_pb2.py     # EGM protobuf schema + generated bindings
 ├── EGM_COMM.cfg / EGM_MOC.cfg # controller EGM config (uploaded by installer)
 ├── install_gofa_egm.py        # one-shot: uploads PyEgm.mod + .cfg, gets it running
+├── play_trajectory.py         # headless replay of a saved trajectory (UR15 / GoFa)
+├── teleop.py                  # headless CLI trajectory recorder (free-drive + keypress capture)
 └── CLAUDE.md                  # this file
 ```
 
@@ -161,6 +163,26 @@ Replay a saved trajectory on either arm without viser:
 ```
 
 Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, and executes on the real arm after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits without touching hardware. It is **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. The first segment moves the arm from its current pose to waypoint 1 (same as viser). The UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). The GoFa path imports pyroki for forward kinematics **only** to enforce the `MAX_TCP_SPEED` collaborative cap, then streams over the existing EGM supervisor (PyEgm must be parked at `WaitUntil egm_go`). The profile constants are mirrored from the teleop scripts (the `UR_`/`GOFA_` prefixed block at the top of `play_trajectory.py`) — keep them in sync if you retune a teleop script.
+
+## Headless recording — `teleop.py`
+
+Record a trajectory by hand-guiding the arm, no viser — the record-side counterpart to `play_trajectory.py`. Output is the **same `trajectories/<name>.json` format**, so it replays unchanged.
+
+```bash
+./robot_control/bin/python teleop.py [name] [--robot ur|gofa]
+```
+
+Missing `name`/`--robot` are prompted for (name first, then `[1] UR / [2] GoFa`). The robot connects once and is reused for the whole session. Then the arm enters free-drive (UR `teachMode()`; GoFa `lead_go=TRUE` → `SetLeadThrough`) and a **raw-keypress loop** runs:
+
+| Key | Action |
+|---|---|
+| `c` | Capture a waypoint: live joints `q` + FK grasp `pos`/`wxyz` + current gripper `grip` (UR). |
+| `↑` / `↓` | UR only: open / close the gripper one `GRIP_STEP` (10%), commanded live. No-op on GoFa or if the gripper is unreachable. |
+| `Enter` | End free-drive, save `trajectories/<name>.json`, then prompt for the next trajectory (same robot). 0 waypoints → nothing saved. |
+| `Esc` | **Soft stop:** end free-drive cleanly and exit. |
+| `q` | **Hard stop:** UR → `triggerProtectiveStop()` + `stopScript`; GoFa → clear `lead_go`/`egm_go` + `stop_program()` (no software motors-off over RWS, so this halts RAPID + drops lead-through rather than cutting motor power — recover via PP-to-Main + Play or re-running the installer). Then exit. |
+
+A **blank name + Enter** at the name prompt exits. Implementation notes: terminal uses `tty.setcbreak` (raw mode only during the key loop; prompts run cooked), restored on every exit path. Arrow keys arrive as `ESC [ A/B`; a bare `Esc` is told apart by a ~50 ms `select` peek finding nothing after the `ESC`. FK reuses the jaxlie + pyroki path (UR multiplies by `TOOL0_T_GRASP`; GoFa uses `tool0`), warmed at startup. Two backend classes (`URBackend`, `GoFaBackend`) sit behind one recording loop; config constants are mirrored from `play_trajectory.py` (`UR_*` / `GOFA_*`) — keep them in sync. `q`-carrying waypoints replay exactly in `play_trajectory.py` (no IK), which is why recording stores joints directly. GoFa software lead-through carries the same caveats as `teleop_gofa_egm.py` (needs the EGM supervisor installed/parked; verify `SetLeadThrough` engages in your mode). Design spec: `docs/superpowers/specs/2026-06-04-cli-trajectory-recorder-design.md`.
 
 ---
 
