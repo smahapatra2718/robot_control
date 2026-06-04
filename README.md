@@ -4,7 +4,7 @@ Browser-based teleop for two robot arms sharing the same [viser](https://github.
 
 - **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`), streaming `servoJ`, with a Robotiq Hand-E gripper on the wrist (mesh + Open/Close via the Grippers URCap socket; see `hande_gripper.py` / `verify_hande.py`).
 - **`teleop_gofa_egm.py`** — ABB GoFa CRB 15000 over Externally Guided Motion (EGM): joint targets stream over UDP to a RAPID supervisor (`PyEgm.mod`), with RWS (`abb_rws.py`) for mastership and the start/stop flag. Slider-unified like the UR15, with a TCP-speed cap.
-- **`play_trajectory.py <name>`** — headless replay of a saved trajectory (UR15 or GoFa), no viser. `--dry-run` to preview, `--no-confirm` to skip the prompt.
+- **`play_trajectory.py <name> [more names...]`** — headless replay of a saved trajectory (UR15 or GoFa), no viser. Pass several names to chain them into one continuous motion (gripper calibrated once at the start, not between). `--dry-run` to preview, `--no-confirm` to skip the prompt.
 - **`teleop.py [name] [--robot ur|gofa]`** — headless CLI trajectory *recorder*: hand-guide the arm in free-drive, capture waypoints with single keypresses, save in the same format `play_trajectory.py` replays.
 
 Both teleop scripts share the same UI (viser scene + 6-DoF gizmo + waypoints), the same seeded IK (`pyroki_snippets/_solve_ik_seeded.py`), and the same trapezoidal play loop. All four entry points pull shared config + helpers from **`robot_common.py`**. See [`CLAUDE.md`](CLAUDE.md) for the full architecture, controller bring-up notes, tunables, and hard-won gotchas.

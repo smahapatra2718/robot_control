@@ -6,7 +6,13 @@ and replays the stored joint waypoints on the real arm (after a confirm prompt)
 or Plan-and-save in viser). The GoFa path imports pyroki for forward kinematics
 only, to enforce the MAX_TCP_SPEED collaborative cap.
 
-  ./robot_control/bin/python scripts/play_trajectory.py <name> [--speed S] [--dry-run] [--no-confirm]
+Pass several names to chain them: they play back-to-back as one continuous
+motion (each trajectory's last waypoint -> the next's first becomes a normal
+move segment), the Hand-E is calibrated ONCE at the start (not between
+trajectories), and the gripper state carries across the seam. All chained
+trajectories must target the same robot.
+
+  ./robot_control/bin/python scripts/play_trajectory.py <name> [more names...] [--speed S] [--dry-run] [--no-confirm]
 """
 
 import argparse
@@ -98,30 +104,44 @@ def print_plan(robot: str, segments, speed: float) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Headless trajectory replay (UR15 / GoFa).")
-    ap.add_argument("name", help="trajectory name (trajectories/<name>.json)")
+    ap.add_argument("name", nargs="+",
+                    help="trajectory name(s) (trajectories/<name>.json); multiple play in order")
     ap.add_argument("--speed", type=float, default=1.0, help="playback speed scale (default 1.0)")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and exit, no motion")
     ap.add_argument("--no-confirm", action="store_true", help="skip the confirmation prompt")
     args = ap.parse_args()
 
-    data = load_trajectory(args.name)
-    robot = data.get("robot")
+    datas = [load_trajectory(n) for n in args.name]
+    robots = {d.get("robot") for d in datas}
+    if len(robots) > 1:
+        raise SystemExit(f"cannot chain different robots in one run: {sorted(robots)}")
+    robot = datas[0].get("robot")
     if robot not in ("ur15", "gofa"):
-        raise SystemExit(f"unknown robot {robot!r} in {args.name}.json")
+        raise SystemExit(f"unknown robot {robot!r} in {args.name[0]}.json")
+
+    # Concatenate every trajectory's waypoints into one continuous list. The
+    # players already calibrate the gripper once and replay a single waypoint
+    # list, so chaining = one calibration, one settle, and each seam (prev last
+    # waypoint -> next first) is just another move segment.
+    all_wps = [wp for d in datas for wp in d["waypoints"]]
+    combined = {"robot": robot, "waypoints": all_wps}
+    if len(args.name) > 1:
+        chain = ", ".join(f"{n} ({len(d['waypoints'])} wp)" for n, d in zip(args.name, datas))
+        print(f"Chaining {len(args.name)} trajectories: {chain}")
+        print("  -> one continuous motion; Hand-E calibrated once at the start.")
 
     if args.dry_run:
         # current pose unknown without a robot connection: show segments between
         # the stored waypoints (waypoint1->2->...), which is the bulk of the plan.
-        wps = data["waypoints"]
-        segs = build_segments(np.asarray(wps[0]["q"], dtype=np.float64), wps[1:])
+        segs = build_segments(np.asarray(all_wps[0]["q"], dtype=np.float64), all_wps[1:])
         print("[dry-run] (move-to-start segment omitted; needs a live robot pose)")
         print_plan(robot, segs, args.speed)
         return
 
     if robot == "ur15":
-        play_ur15(data, args.speed, args.no_confirm)
+        play_ur15(combined, args.speed, args.no_confirm)
     else:
-        play_gofa(data, args.speed, args.no_confirm)
+        play_gofa(combined, args.speed, args.no_confirm)
 
 
 def play_ur15(data, speed, no_confirm):

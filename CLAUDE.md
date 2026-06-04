@@ -192,10 +192,12 @@ Teach-by-demonstration: hand-guide the arm, capture poses, save/replay. UR15 has
 Replay a saved trajectory on either arm without viser:
 
 ```bash
-./robot_control/bin/python scripts/play_trajectory.py <name> [--speed S] [--dry-run] [--no-confirm]
+./robot_control/bin/python scripts/play_trajectory.py <name> [more names...] [--speed S] [--dry-run] [--no-confirm]
 ```
 
 Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, and executes on the real arm after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits without touching hardware. It is **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. The first segment moves the arm from its current pose to waypoint 1 (same as viser). The UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). The GoFa path imports pyroki for forward kinematics **only** to enforce the `MAX_TCP_SPEED` collaborative cap, then streams over the existing EGM supervisor (PyEgm must be parked at `WaitUntil egm_go`). The profile + connection constants come from `robot_common.py` (`from robot_common import UR_* / GOFA_*`), so retuning a teleop script updates this one too — no manual mirroring.
+
+**Chaining.** Pass several names (`play_trajectory.py a b c`) to play them back-to-back as **one continuous motion**: their waypoint lists are concatenated, so each seam (one trajectory's last waypoint → the next's first) is just another move segment, and the gripper state carries across it. The whole chain shares one confirm, one Hand-E calibration **at the start** (no recalibration between trajectories — calibration is the slow part), and one final settle. All chained trajectories must target the same robot (mixing UR15 + GoFa aborts). Implementation is purely in `main()` — it builds a synthetic combined `{robot, waypoints}` and hands it to the unchanged single-trajectory player.
 
 ## Headless recording — `teleop.py`
 
