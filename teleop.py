@@ -10,12 +10,13 @@ If name/robot are omitted you're prompted for them. Then the arm enters free-dri
 (UR: teachMode; GoFa: software lead-through) and the key map is:
 
   c       capture a waypoint (joints + FK grasp pose + gripper fraction)
-  up/down UR only: open / close the gripper one step (10%), commanded live
+  o / p   UR only: open / close the gripper one step (10%), commanded live
   Enter   end free-drive, save the trajectory, prompt for the next one
-  Esc     soft stop: end free-drive cleanly and exit
+  w       soft stop: end free-drive cleanly and exit
   q       hard stop: protective stop (UR) / stop RAPID + drop lead-through (GoFa), exit
 
-A blank name + Enter at the name prompt exits the script.
+A live terminal dashboard shows the grasp pose, joint angles, and gripper % while
+recording. A blank name + Enter at the name prompt exits the script.
 """
 
 import argparse
@@ -34,7 +35,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 TRAJ_DIR = os.path.join(_HERE, "trajectories")
 
-GRIP_STEP = 0.10                # gripper fraction change per up/down press (UR)
+GRIP_STEP = 0.10                # gripper fraction change per o/p press (UR)
+DASH_HZ = 10                    # live dashboard refresh + key-poll rate
 
 # ---- UR15 (mirror play_trajectory.py / teleop_ur15.py) ----
 UR_ROBOT_IP = "192.168.125.2"
@@ -68,21 +70,43 @@ class raw_mode:
         termios.tcsetattr(self.fd, termios.TCSADRAIN, self.saved)
 
 
-def read_key() -> str:
-    """Block for one keypress; return 'c','q','enter','esc','up','down', or the
-    raw character. Arrow keys arrive as ESC [ A/B; a bare Esc has nothing
-    following within ~50 ms, which is how we tell them apart."""
-    ch = sys.stdin.read(1)
-    if ch == "\x1b":
-        r, _, _ = select.select([sys.stdin], [], [], 0.05)
-        if not r:
-            return "esc"
-        if sys.stdin.read(1) == "[":
-            return {"A": "up", "B": "down"}.get(sys.stdin.read(1), "other")
-        return "esc"
-    if ch in ("\r", "\n"):
-        return "enter"
-    return ch
+def quat_to_rpy(wxyz) -> np.ndarray:
+    """Quaternion (w,x,y,z) -> roll/pitch/yaw in degrees (for the dashboard)."""
+    w, x, y, z = wxyz
+    roll = np.arctan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    pitch = np.arcsin(np.clip(2 * (w * y - z * x), -1.0, 1.0))
+    yaw = np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+    return np.degrees([roll, pitch, yaw])
+
+
+# ---------------- live dashboard ----------------
+def build_lines(backend, name, q, pos, wxyz, count, status) -> list[str]:
+    rpy = quat_to_rpy(wxyz)
+    jdeg = np.degrees(np.asarray(q))
+    joints = "  ".join(f"{v:+6.1f}" for v in jdeg)
+    sep = "─" * 56
+    return [
+        f" teleop · {backend.robot_name} · '{name}'  —  FREE-DRIVE, hand-guide the arm",
+        f" {sep}",
+        f" Pose    X {pos[0] * 1000:+8.1f}   Y {pos[1] * 1000:+8.1f}   Z {pos[2] * 1000:+8.1f}   mm",
+        f"         R {rpy[0]:+8.1f}   P {rpy[1]:+8.1f}   Y {rpy[2]:+8.1f}   deg",
+        f" Joints  {joints}   deg",
+        f" Gripper {backend.grip_text()}",
+        f" Points  {count} captured",
+        f" {sep}",
+        f" c capture    o/p open/close    Enter save    w stop    q E-STOP",
+        f" > {status}",
+    ]
+
+
+def render(lines: list[str], first: bool) -> None:
+    """Redraw the block in place: move the cursor up to its top (except the first
+    time), then rewrite each line clearing to end-of-line. Line count is constant."""
+    buf = [] if first else [f"\033[{len(lines)}A"]
+    for ln in lines:
+        buf.append("\r\033[K" + ln + "\n")
+    sys.stdout.write("".join(buf))
+    sys.stdout.flush()
 
 
 # ---------------- backends ----------------
@@ -155,15 +179,18 @@ class URBackend:
     def grasp_pose(self, q):
         Ts = self._robot.forward_kinematics(cfg=self._jnp.array(q))
         T = self._jaxlie.SE3(Ts[self._tcp]).multiply(self._tool0_T_grasp)
-        return np.asarray(T.translation()).tolist(), np.asarray(T.rotation().wxyz).tolist()
+        return np.asarray(T.translation()), np.asarray(T.rotation().wxyz)
 
     def read_joints(self):
         return np.asarray(self._r.getActualQ(), dtype=np.float64)
 
-    def capture(self):
-        q = self.read_joints()
+    def make_waypoint(self, q):
         pos, wxyz = self.grasp_pose(q)
-        return {"q": q.tolist(), "pos": pos, "wxyz": wxyz, "grip": self.grip}
+        return {"q": q.tolist(), "pos": pos.tolist(), "wxyz": wxyz.tolist(), "grip": self.grip}
+
+    def grip_text(self):
+        s = f"{int(round(self.grip * 100))}% closed"
+        return s if self._gripper is not None else s + "   (gripper offline)"
 
     def adjust_grip(self, delta):
         if self._gripper is None:
@@ -248,15 +275,17 @@ class GoFaBackend:
     def grasp_pose(self, q):
         Ts = self._robot.forward_kinematics(cfg=self._jnp.array(q))
         T = self._jaxlie.SE3(Ts[self._tcp])
-        return np.asarray(T.translation()).tolist(), np.asarray(T.rotation().wxyz).tolist()
+        return np.asarray(T.translation()), np.asarray(T.rotation().wxyz)
 
     def read_joints(self):
         return np.asarray(self._rws.get_joints(), dtype=np.float64)
 
-    def capture(self):
-        q = self.read_joints()
+    def make_waypoint(self, q):
         pos, wxyz = self.grasp_pose(q)
-        return {"q": q.tolist(), "pos": pos, "wxyz": wxyz}
+        return {"q": q.tolist(), "pos": pos.tolist(), "wxyz": wxyz.tolist()}
+
+    def grip_text(self):
+        return "n/a (no gripper)"
 
     def adjust_grip(self, delta):
         return None   # GoFa has no gripper
@@ -330,29 +359,49 @@ def save_traj(name: str, robot: str, waypoints: list) -> None:
 
 
 # ---------------- recording loop ----------------
-def key_loop(backend, waypoints: list) -> str:
-    """Free-drive key loop. Returns 'save', 'soft', or 'hard'."""
-    with raw_mode():
-        while True:
-            k = read_key()
-            if k == "c":
-                waypoints.append(backend.capture())
-                print(f"  captured waypoint {len(waypoints)}")
-            elif k == "up":      # open
-                f = backend.adjust_grip(-GRIP_STEP)
-                if f is not None:
-                    print(f"  gripper {int(round(f * 100))}% closed")
-            elif k == "down":    # close
-                f = backend.adjust_grip(+GRIP_STEP)
-                if f is not None:
-                    print(f"  gripper {int(round(f * 100))}% closed")
-            elif k == "enter":
-                return "save"
-            elif k == "esc":
-                return "soft"
-            elif k == "q":
-                backend.hard_stop()
-                return "hard"
+def key_loop(backend, name: str, waypoints: list) -> str:
+    """Free-drive loop: refresh the live dashboard at DASH_HZ and poll for a key
+    each tick (non-blocking, so the dashboard keeps updating). Returns 'save',
+    'soft', or 'hard'."""
+    status = "ready"
+    first = True
+    last_q = backend.read_joints()
+    sys.stdout.write("\033[?25l")   # hide cursor while the dashboard owns the screen
+    try:
+        with raw_mode():
+            while True:
+                try:
+                    q = backend.read_joints()
+                    last_q = q
+                except Exception:
+                    q = last_q          # network/RTDE blip: hold the last reading
+                pos, wxyz = backend.grasp_pose(q)
+                render(build_lines(backend, name, q, pos, wxyz, len(waypoints), status), first)
+                first = False
+
+                r, _, _ = select.select([sys.stdin], [], [], 1.0 / DASH_HZ)
+                if not r:
+                    continue
+                k = sys.stdin.read(1)
+                if k == "c":
+                    waypoints.append(backend.make_waypoint(q))
+                    status = f"captured waypoint {len(waypoints)}"
+                elif k == "o":      # open one step
+                    f = backend.adjust_grip(-GRIP_STEP)
+                    status = "no gripper" if f is None else f"gripper -> {int(round(f * 100))}% closed"
+                elif k == "p":      # close one step
+                    f = backend.adjust_grip(+GRIP_STEP)
+                    status = "no gripper" if f is None else f"gripper -> {int(round(f * 100))}% closed"
+                elif k in ("\r", "\n"):
+                    return "save"
+                elif k == "w":
+                    return "soft"
+                elif k == "q":
+                    backend.hard_stop()
+                    return "hard"
+    finally:
+        sys.stdout.write("\033[?25h\n")   # restore cursor, drop below the dashboard
+        sys.stdout.flush()
 
 
 def record_session(backend, first_name: str) -> None:
@@ -365,11 +414,9 @@ def record_session(backend, first_name: str) -> None:
                 print("No name — exiting.")
                 return
             waypoints: list = []
-            print(f"\nRecording '{name}' — FREE-DRIVE ON. Move the arm by hand.")
-            print("  c=capture   up/down=gripper   Enter=save   Esc=stop   q=E-STOP")
             backend.start_freedrive()
             try:
-                action = key_loop(backend, waypoints)
+                action = key_loop(backend, name, waypoints)
             finally:
                 backend.stop_freedrive()
 

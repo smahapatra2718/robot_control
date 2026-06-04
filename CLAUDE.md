@@ -177,12 +177,14 @@ Missing `name`/`--robot` are prompted for (name first, then `[1] UR / [2] GoFa`)
 | Key | Action |
 |---|---|
 | `c` | Capture a waypoint: live joints `q` + FK grasp `pos`/`wxyz` + current gripper `grip` (UR). |
-| `↑` / `↓` | UR only: open / close the gripper one `GRIP_STEP` (10%), commanded live. No-op on GoFa or if the gripper is unreachable. |
+| `o` / `p` | UR only: open / close the gripper one `GRIP_STEP` (10%), commanded live. No-op on GoFa or if the gripper is unreachable. |
 | `Enter` | End free-drive, save `trajectories/<name>.json`, then prompt for the next trajectory (same robot). 0 waypoints → nothing saved. |
-| `Esc` | **Soft stop:** end free-drive cleanly and exit. |
+| `w` | **Soft stop:** end free-drive cleanly and exit. |
 | `q` | **Hard stop:** UR → `triggerProtectiveStop()` + `stopScript`; GoFa → clear `lead_go`/`egm_go` + `stop_program()` (no software motors-off over RWS, so this halts RAPID + drops lead-through rather than cutting motor power — recover via PP-to-Main + Play or re-running the installer). Then exit. |
 
-A **blank name + Enter** at the name prompt exits. Implementation notes: terminal uses `tty.setcbreak` (raw mode only during the key loop; prompts run cooked), restored on every exit path. Arrow keys arrive as `ESC [ A/B`; a bare `Esc` is told apart by a ~50 ms `select` peek finding nothing after the `ESC`. FK reuses the jaxlie + pyroki path (UR multiplies by `TOOL0_T_GRASP`; GoFa uses `tool0`), warmed at startup. Two backend classes (`URBackend`, `GoFaBackend`) sit behind one recording loop; config constants are mirrored from `play_trajectory.py` (`UR_*` / `GOFA_*`) — keep them in sync. `q`-carrying waypoints replay exactly in `play_trajectory.py` (no IK), which is why recording stores joints directly. GoFa software lead-through carries the same caveats as `teleop_gofa_egm.py` (needs the EGM supervisor installed/parked; verify `SetLeadThrough` engages in your mode). Design spec: `docs/superpowers/specs/2026-06-04-cli-trajectory-recorder-design.md`.
+While recording, a **live terminal dashboard** redraws in place at `DASH_HZ` (10 Hz): grasp pose (XYZ mm + RPY deg), the six joint angles (deg), gripper %, and the captured-waypoint count, plus a status line for the last action. It's a single `key_loop` that polls `stdin` non-blocking via `select` each tick (no arrow-key escape sequences — that earlier `ESC [` parsing was dropped, which is why stop is `w` not `Esc`); cursor-up + clear-to-EOL keeps it flicker-free, and the cursor is hidden during the loop.
+
+A **blank name + Enter** at the name prompt exits. Implementation notes: terminal uses `tty.setcbreak` (raw mode only during the key loop; prompts run cooked), restored on every exit path. FK reuses the jaxlie + pyroki path (UR multiplies by `TOOL0_T_GRASP`; GoFa uses `tool0`), warmed at startup. Two backend classes (`URBackend`, `GoFaBackend`) sit behind one recording loop; config constants are mirrored from `play_trajectory.py` (`UR_*` / `GOFA_*`) — keep them in sync. `q`-carrying waypoints replay exactly in `play_trajectory.py` (no IK), which is why recording stores joints directly. GoFa software lead-through carries the same caveats as `teleop_gofa_egm.py` (needs the EGM supervisor installed/parked; verify `SetLeadThrough` engages in your mode). Design spec: `docs/superpowers/specs/2026-06-04-cli-trajectory-recorder-design.md`.
 
 ---
 
