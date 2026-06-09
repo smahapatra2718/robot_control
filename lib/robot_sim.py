@@ -123,6 +123,121 @@ class FakeHandE:
                     "position": int(SIM.grip_frac * 255)}
 
 
+# ---------- GoFa RWS fake (abb_rws) ----------
+class FakeRWS:
+    def __init__(self, *a, **kw) -> None: pass
+    def request_mastership(self) -> None: pass
+    def release_mastership(self) -> None: pass
+    def set_motors_on(self) -> None: pass
+    def reset_pp(self, *a, **kw) -> None: pass
+    def unload_module(self, *a, **kw) -> None: pass
+    def start_program(self) -> None: pass
+    def stop_program(self) -> None: pass
+    def get_operation_mode(self) -> str: return "AUTO"
+    def get_execution_state(self) -> str: return "running"
+    def get_controller_state(self) -> str: return "motoron"
+
+    def get_joints(self, mechunit: str = "ROB_1"):
+        with SIM.lock:
+            return list(SIM.q)
+
+    def set_rapid_bool(self, var, value, task: str = "T_ROB1", module: str = "PyEgm") -> None:
+        with SIM.lock:
+            was = SIM.flags.get(var, False)
+            SIM.flags[var] = bool(value)
+            # egm_go rising edge: (re)arm the convergence clock so CondTime doesn't
+            # fire before any target has streamed.
+            if var == "egm_go" and bool(value) and not was:
+                SIM.egm_last_change = time.monotonic()
+                SIM.egm_last_target = None
+
+    def get_rapid_data(self, var, task: str = "T_ROB1", module: str = "PyEgm") -> str:
+        with SIM.lock:
+            return "TRUE" if SIM.flags.get(var, False) else "FALSE"
+
+
+# ---------- GoFa EGM fake + fake RAPID supervisor (abb_egm) ----------
+class FakeEGM:
+    def __init__(self, local_port: int = 6510, *a, **kw) -> None:
+        self.local_port = local_port
+        self._stop = threading.Event()
+        self._thread = None
+
+    @property
+    def packets_rx(self) -> int:
+        with SIM.lock:
+            return SIM.packets_rx
+
+    @property
+    def packets_tx(self) -> int:
+        with SIM.lock:
+            return SIM.packets_tx
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._supervise, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+
+    def set_target_rad(self, joints_rad) -> None:
+        assert len(joints_rad) == 6
+        with SIM.lock:
+            SIM.egm_target = list(joints_rad)
+
+    def get_feedback_rad(self):
+        with SIM.lock:
+            return list(SIM.egm_feedback) if SIM.egm_feedback is not None else None
+
+    def has_feedback(self) -> bool:
+        with SIM.lock:
+            return SIM.egm_feedback is not None
+
+    def is_fresh(self, max_age_s: float = 0.2) -> bool:
+        with SIM.lock:
+            return (SIM.egm_feedback is not None
+                    and (time.time() - SIM.egm_feedback_time) < max_age_s)
+
+    def stats(self):
+        with SIM.lock:
+            return {
+                "rx": SIM.packets_rx, "tx": SIM.packets_tx,
+                "age_s": (time.time() - SIM.egm_feedback_time) if SIM.egm_feedback else -1.0,
+                "remote": "(sim)",
+            }
+
+    def _supervise(self) -> None:
+        """Mimic PyEgm.mod's EGMRunJoint: while egm_go, mark feedback fresh and
+        apply the streamed target to the joints; when the target holds steady for
+        COND_TIME, clear egm_go (the controller-side convergence-and-exit)."""
+        while not self._stop.is_set():
+            now = time.monotonic()
+            with SIM.lock:
+                if SIM.flags.get("egm_go", False):
+                    SIM.packets_rx += 1
+                    SIM.packets_tx += 1
+                    SIM.egm_feedback = list(SIM.q)
+                    SIM.egm_feedback_time = time.time()
+                    tgt = SIM.egm_target
+                    if tgt is not None:
+                        if tgt != SIM.egm_last_target:
+                            SIM.egm_last_target = list(tgt)
+                            SIM.egm_last_change = now
+                        SIM.q = list(tgt)
+                        if now - SIM.egm_last_change >= COND_TIME:
+                            SIM.flags["egm_go"] = False
+                # egm_go FALSE: do NOT refresh feedback_time, so is_fresh() goes
+                # stale (matches the controller halting its stream after exit).
+                # lead_go: no-op (arm "compliant"; joints unchanged).
+            time.sleep(0.005)
+
+
 # ---------- install ----------
 def _module(name: str, **attrs) -> types.ModuleType:
     m = types.ModuleType(name)
@@ -139,5 +254,7 @@ def install(robot_hint: str | None = None) -> None:
     sys.modules["hande_gripper"] = _module(
         "hande_gripper", HandEGripper=FakeHandE, DEFAULT_PORT=DEFAULT_PORT
     )
+    sys.modules["abb_rws"] = _module("abb_rws", RWSClient=FakeRWS)
+    sys.modules["abb_egm"] = _module("abb_egm", EGMSession=FakeEGM)
     home = {"ur15": UR_HOME, "gofa": GOFA_HOME}.get(robot_hint, NEUTRAL_HOME)
     SIM.set_home(home)

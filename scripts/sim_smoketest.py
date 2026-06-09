@@ -41,8 +41,50 @@ def test_ur_roundtrip():
     print("PASS test_ur_roundtrip")
 
 
+def test_gofa_handshake():
+    robot_sim.install("gofa")
+    import abb_rws
+    import abb_egm
+
+    rws = abb_rws.RWSClient(host="192.168.0.1")
+    egm = abb_egm.EGMSession(local_port=6510)
+    egm.start()
+    try:
+        assert rws.get_controller_state() == "motoron"
+        assert rws.get_joints() == robot_sim.GOFA_HOME, "GoFa home not seeded"
+
+        # Arm EGM: preload a target, then flip egm_go TRUE (as the scripts do).
+        egm.set_target_rad(robot_sim.GOFA_HOME)
+        rws.set_rapid_bool("egm_go", True, module="PyEgm")
+
+        deadline = time.time() + 2.0
+        while time.time() < deadline and not egm.is_fresh(0.1):
+            time.sleep(0.02)
+        assert egm.is_fresh(0.1), "EGM never went fresh after egm_go=TRUE"
+
+        # A moving target keeps egm_go TRUE and is applied to the joints.
+        tgt = [0.0, 0.1, 0.0, 0.0, 1.5708, 0.0]
+        egm.set_target_rad(tgt)
+        time.sleep(0.1)
+        assert rws.get_joints() == tgt, "EGM target not applied to joints"
+        assert rws.get_rapid_data("egm_go", module="PyEgm") == "TRUE"
+
+        # Holding the target steady > COND_TIME clears egm_go (EGMRunJoint converged).
+        deadline = time.time() + robot_sim.COND_TIME + 1.0
+        while time.time() < deadline and \
+                rws.get_rapid_data("egm_go", module="PyEgm") == "TRUE":
+            egm.set_target_rad(tgt)  # same value held
+            time.sleep(0.05)
+        assert rws.get_rapid_data("egm_go", module="PyEgm") == "FALSE", \
+            "egm_go never auto-cleared (CondTime mimic broken)"
+    finally:
+        egm.stop()
+    print("PASS test_gofa_handshake")
+
+
 def main():
     test_ur_roundtrip()
+    test_gofa_handshake()
     print("ALL SMOKE TESTS PASSED")
 
 
