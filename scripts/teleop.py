@@ -35,13 +35,7 @@ for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root (pyroki_snippets) + 
         sys.path.insert(0, _p)
 
 import robot_common as rc  # noqa: E402
-from robot_common import (  # noqa: E402
-    TRAJ_DIR, TARGET_LINK,
-    UR_ROBOT_IP, UR_ROBOT_DESCRIPTION, UR_GRASP_LINK, UR_GRIPPER_URDF_PATH,
-    UR_MESH_DIR_PREFIX, UR_GRIPPER_FINGER_OPEN, UR_GRIPPER_MASS, UR_GRIPPER_COG,
-    GOFA_ROBOT_IP, GOFA_RWS_USER, GOFA_RWS_PASSWORD, GOFA_RAPID_MODULE,
-    GOFA_RAPID_LEAD_FLAG, GOFA_RAPID_GO_FLAG, GOFA_URDF_PATH, GOFA_MESH_DIR_PREFIX,
-)
+from control import make_controller  # noqa: E402
 
 GRIP_STEP = 0.10                # gripper fraction change per o/p press (UR)
 DASH_HZ = 10                    # live dashboard refresh + key-poll rate
@@ -101,215 +95,60 @@ def render(lines: list[str], first: bool) -> None:
     sys.stdout.flush()
 
 
-# ---------------- backends ----------------
-class URBackend:
-    robot_name = "ur15"
-
-    def __init__(self):
-        import jax.numpy as jnp
-        import jaxlie
-        import pyroki as pk
-        import yourdfpy
-        from robot_descriptions.loaders.yourdfpy import load_robot_description
-        from rtde_control import RTDEControlInterface
-        from rtde_receive import RTDEReceiveInterface
-
-        import hande_gripper
-
-        self._jnp, self._jaxlie = jnp, jaxlie
-
-        urdf = load_robot_description(UR_ROBOT_DESCRIPTION)
-        self._robot = pk.Robot.from_urdf(urdf)
-        self._tcp = self._robot.links.names.index(TARGET_LINK)
-
-        # Fixed tool0 -> grasp-point offset, read from the Hand-E URDF (gripper rigid).
-        g_urdf = yourdfpy.URDF.load(
-            UR_GRIPPER_URDF_PATH, filename_handler=rc.make_mesh_resolver(UR_MESH_DIR_PREFIX)
-        )
-        g_urdf.update_cfg(np.array([UR_GRIPPER_FINGER_OPEN]))
-        self._tool0_T_grasp = jaxlie.SE3.from_matrix(
-            jnp.asarray(g_urdf.get_transform(UR_GRASP_LINK, TARGET_LINK))
-        )
-
-        print(f"Connecting to UR15 at {UR_ROBOT_IP} ...")
-        self._r = RTDEReceiveInterface(UR_ROBOT_IP)
-        self._c = RTDEControlInterface(UR_ROBOT_IP)
-        try:
-            self._c.setPayload(UR_GRIPPER_MASS, list(UR_GRIPPER_COG))
-        except Exception as e:
-            print(f"setPayload failed ({e}).")
-
-        # Gripper best-effort: connect + activate + WAIT for calibration so the
-        # arrow keys command a calibrated gripper. Unreachable -> arrows are no-ops.
-        self.grip = 0.0
-        try:
-            self._gripper = hande_gripper.HandEGripper(UR_ROBOT_IP, hande_gripper.DEFAULT_PORT)
-            self._gripper.connect()
-            print("Activating Hand-E; waiting for calibration ...")
-            self._gripper.reset(timeout=5.0)
-            self._gripper.activate(timeout=20.0)
-            self._gripper.open()
-            self._gripper.wait_until_idle(timeout=10.0)
-            print("Hand-E calibrated + open.")
-        except Exception as e:
-            self._gripper = None
-            print(f"Hand-E unreachable ({e}); gripper keys disabled.")
-
-        self._warmup()
-
-    def _warmup(self):
-        # Pay the JAX FK JIT compile now so the first capture isn't slow.
-        try:
-            self.grasp_pose(self.read_joints())
-        except Exception:
-            pass
-
-    def grasp_pose(self, q):
-        Ts = self._robot.forward_kinematics(cfg=self._jnp.array(q))
-        T = self._jaxlie.SE3(Ts[self._tcp]).multiply(self._tool0_T_grasp)
-        return np.asarray(T.translation()), np.asarray(T.rotation().wxyz)
+# ---------------- backend ----------------
+class Backend:
+    def __init__(self, choice: str):
+        self.robot_name = "ur15" if choice == "ur" else "gofa"
+        print(f"Connecting to {self.robot_name} ...")
+        self._c = make_controller(self.robot_name)
+        self._c.connect()
 
     def read_joints(self):
-        return np.asarray(self._r.getActualQ(), dtype=np.float64)
+        return np.asarray(self._c.get_state().q, dtype=np.float64)
+
+    def grasp_pose(self, q):
+        pos, wxyz = self._c.grasp_pose(q)
+        return np.asarray(pos), np.asarray(wxyz)
 
     def make_waypoint(self, q):
         pos, wxyz = self.grasp_pose(q)
-        return {"q": q.tolist(), "pos": pos.tolist(), "wxyz": wxyz.tolist(), "grip": self.grip}
+        wp = {"q": q.tolist(), "pos": pos.tolist(), "wxyz": wxyz.tolist()}
+        frac = self._c.get_state().gripper_frac
+        if frac is not None:
+            wp["grip"] = frac
+        return wp
 
     def grip_text(self):
-        s = f"{int(round(self.grip * 100))}% closed"
-        return s if self._gripper is not None else s + "   (gripper offline)"
+        frac = self._c.get_state().gripper_frac
+        if frac is None:
+            return "n/a (no gripper)"
+        return f"{int(round(frac * 100))}% closed"
 
     def adjust_grip(self, delta):
-        if self._gripper is None:
-            return None
-        self.grip = max(0.0, min(1.0, self.grip + delta))
-        try:
-            self._gripper.move(self.grip)
-        except Exception as e:
-            print(f"  gripper cmd failed: {e}")
-        return self.grip
+        return self._c.adjust_grip(delta)
 
     def start_freedrive(self):
-        self._c.teachMode()
+        self._c.start_freedrive()
 
     def stop_freedrive(self):
-        try:
-            self._c.endTeachMode()
-        except Exception:
-            pass
+        self._c.stop_freedrive()
 
     def hard_stop(self):
         self.stop_freedrive()
-        try:
-            self._c.triggerProtectiveStop()
+        self._c.estop()
+        # close() (always run by record_session's finally) follows with stopScript/teardown
+        if self.robot_name == "gofa":
+            print("  *** STOPPED RAPID + dropped lead-through — re-run install/Play to resume ***")
+        else:
             print("  *** PROTECTIVE STOP — clear it on the pendant ***")
-        except Exception as e:
-            print(f"  triggerProtectiveStop failed ({e}); stopping script.")
-        try:
-            self._c.stopScript()
-        except Exception:
-            pass
 
     def close(self):
         self.stop_freedrive()
-        for fn in (self._c.stopScript, self._c.disconnect, self._r.disconnect,
-                   (self._gripper.close if self._gripper is not None else (lambda: None))):
-            try:
-                fn()
-            except Exception:
-                pass
-
-
-class GoFaBackend:
-    robot_name = "gofa"
-
-    def __init__(self):
-        import jax.numpy as jnp
-        import jaxlie
-        import pyroki as pk
-        import yourdfpy
-
-        import abb_rws
-
-        self._jnp, self._jaxlie = jnp, jaxlie
-
-        urdf = yourdfpy.URDF.load(
-            GOFA_URDF_PATH, filename_handler=rc.make_mesh_resolver(GOFA_MESH_DIR_PREFIX)
-        )
-        self._robot = pk.Robot.from_urdf(urdf)
-        self._tcp = self._robot.links.names.index(TARGET_LINK)
-
-        print(f"Connecting to GoFa RWS at {GOFA_ROBOT_IP} ...")
-        self._rws = abb_rws.RWSClient(
-            host=GOFA_ROBOT_IP, user=GOFA_RWS_USER, password=GOFA_RWS_PASSWORD
-        )
-        self._rws.request_mastership()
-        # Safety: both flags FALSE so a stray TRUE doesn't fire EGM or lead-through.
-        self._rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, False, module=GOFA_RAPID_MODULE)
-        self._rws.set_rapid_bool(GOFA_RAPID_LEAD_FLAG, False, module=GOFA_RAPID_MODULE)
-        self._warmup()
-
-    def _warmup(self):
-        try:
-            self.grasp_pose(self.read_joints())
-        except Exception:
-            pass
-
-    def grasp_pose(self, q):
-        Ts = self._robot.forward_kinematics(cfg=self._jnp.array(q))
-        T = self._jaxlie.SE3(Ts[self._tcp])
-        return np.asarray(T.translation()), np.asarray(T.rotation().wxyz)
-
-    def read_joints(self):
-        return np.asarray(self._rws.get_joints(), dtype=np.float64)
-
-    def make_waypoint(self, q):
-        pos, wxyz = self.grasp_pose(q)
-        return {"q": q.tolist(), "pos": pos.tolist(), "wxyz": wxyz.tolist()}
-
-    def grip_text(self):
-        return "n/a (no gripper)"
-
-    def adjust_grip(self, delta):
-        return None   # GoFa has no gripper
-
-    def start_freedrive(self):
-        # lead_go = TRUE -> PyEgm.mod calls SetLeadThrough \On (hand-guiding).
-        self._rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, False, module=GOFA_RAPID_MODULE)
-        self._rws.set_rapid_bool(GOFA_RAPID_LEAD_FLAG, True, module=GOFA_RAPID_MODULE)
-
-    def stop_freedrive(self):
-        try:
-            self._rws.set_rapid_bool(GOFA_RAPID_LEAD_FLAG, False, module=GOFA_RAPID_MODULE)
-        except Exception:
-            pass
-
-    def hard_stop(self):
-        # No reliable software motors-off over RWS; stopping the RAPID program
-        # halts all motion and the supervisor, and clearing the flags drops
-        # lead-through. Effective protective stop.
-        for fn in (
-            lambda: self._rws.set_rapid_bool(GOFA_RAPID_LEAD_FLAG, False, module=GOFA_RAPID_MODULE),
-            lambda: self._rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, False, module=GOFA_RAPID_MODULE),
-            self._rws.stop_program,
-        ):
-            try:
-                fn()
-            except Exception:
-                pass
-        print("  *** STOPPED RAPID + dropped lead-through — re-run install/Play to resume ***")
-
-    def close(self):
-        self.stop_freedrive()
-        try:
-            self._rws.release_mastership()
-        except Exception:
-            pass
+        self._c.close()
 
 
 def make_backend(choice: str):
-    return URBackend() if choice == "ur" else GoFaBackend()
+    return Backend(choice)
 
 
 # ---------------- prompts ----------------

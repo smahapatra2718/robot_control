@@ -85,6 +85,17 @@ class GoFaController(RobotController):
     def _gripper_blocking(self, frac, progress_cb):
         raise Unsupported("GoFa has no gripper")
 
+    # ---- freedrive ----
+    def _start_freedrive(self) -> None:
+        self._rws.set_rapid_bool(rc.GOFA_RAPID_GO_FLAG, False, module=rc.GOFA_RAPID_MODULE)
+        self._rws.set_rapid_bool(rc.GOFA_RAPID_LEAD_FLAG, True, module=rc.GOFA_RAPID_MODULE)
+
+    def _stop_freedrive(self) -> None:
+        try:
+            self._rws.set_rapid_bool(rc.GOFA_RAPID_LEAD_FLAG, False, module=rc.GOFA_RAPID_MODULE)
+        except Exception:
+            pass
+
     # ---- stops ----
     def _graceful_stop(self) -> None:
         try:

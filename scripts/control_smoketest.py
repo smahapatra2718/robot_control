@@ -148,6 +148,27 @@ def test_gofa_move_play():
     print("PASS test_gofa_move_play")
 
 
+def test_controller_freedrive_grasp():
+    for robot in ("ur15", "gofa"):
+        robot_sim.install(robot)
+        from control import make_controller
+        c = make_controller(robot)
+        c.connect()
+        try:
+            pos, wxyz = c.grasp_pose(c.get_state().q)
+            assert len(pos) == 3 and len(wxyz) == 4, f"{robot} grasp_pose shape"
+            c.start_freedrive()   # must not raise (no-op-ish in sim)
+            c.stop_freedrive()
+            g = c.adjust_grip(0.1)
+            if robot == "ur15":
+                assert g is not None and abs(g - 0.1) < 1e-9, "ur adjust_grip should step the grip"
+            else:
+                assert g is None, "gofa has no gripper"
+        finally:
+            c.close()
+    print("PASS test_controller_freedrive_grasp")
+
+
 def main():
     test_state_dataclass()
     test_ur_connect_state()
@@ -155,6 +176,7 @@ def main():
     test_ur_play_gripper()
     test_gofa_connect_state()
     test_gofa_move_play()
+    test_controller_freedrive_grasp()
     print("ALL CONTROL SMOKE TESTS PASSED")
 
 

@@ -105,7 +105,9 @@ class URController(RobotController):
             q_seed=q_seed, rest_weight=2.0))
 
     def _gripper_frac(self):
-        return self._grip_frac
+        # None when the Hand-E is unreachable, so RobotState.gripper_frac (and the
+        # recorder's grip_text) read "no gripper" rather than a misleading 0% closed.
+        return self._grip_frac if self._gripper is not None else None
 
     def _gripper_blocking(self, frac, progress_cb) -> None:
         frac = max(0.0, min(1.0, float(frac)))
@@ -114,6 +116,26 @@ class URController(RobotController):
             time.sleep(_GRIPPER_MOVE_S)   # let the fingers move
         self._grip_frac = frac
         progress_cb(1.0)
+
+    # ---- freedrive ----
+    def _start_freedrive(self) -> None:
+        self._c.teachMode()
+
+    def _stop_freedrive(self) -> None:
+        try:
+            self._c.endTeachMode()
+        except Exception:
+            pass
+
+    def adjust_grip(self, delta):
+        if self._gripper is None:
+            return None
+        self._grip_frac = max(0.0, min(1.0, self._grip_frac + delta))
+        try:
+            self._gripper.move(self._grip_frac)
+        except Exception as e:
+            print(f"  gripper cmd failed: {e}")
+        return self._grip_frac
 
     # ---- stops ----
     def _graceful_stop(self) -> None:

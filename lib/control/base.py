@@ -195,6 +195,23 @@ class RobotController:
         self._cmd_stop.set()
         self._hard_stop()
 
+    def grasp_pose(self, q):
+        """FK grasp/EE pose for q -> (pos, wxyz). Used by the recorder dashboard."""
+        return self._fk_pose(np.asarray(q, dtype=float))
+
+    def start_freedrive(self) -> None:
+        """Enter hand-guiding (UR teachMode / GoFa lead-through). Bypasses the command
+        executor, so the CALLER must ensure no motion command is active first — mixing
+        free-drive with an active servoJ/EGM stream conflicts at the controller."""
+        self._start_freedrive()
+
+    def stop_freedrive(self) -> None:
+        self._stop_freedrive()
+
+    def adjust_grip(self, delta):
+        """Nudge the gripper by `delta` (UR only); returns the new fraction or None."""
+        return None
+
     # ---------- shared helpers ----------
     def _read_q_copy(self) -> np.ndarray:
         return np.asarray(self._read_q(), dtype=float).copy()
@@ -233,3 +250,5 @@ class RobotController:
     def _hard_stop(self) -> None: raise NotImplementedError
     def _gripper_frac(self): return None
     def _gripper_blocking(self, frac, progress_cb): raise Unsupported("no gripper")
+    def _start_freedrive(self) -> None: raise NotImplementedError
+    def _stop_freedrive(self) -> None: raise NotImplementedError
