@@ -24,7 +24,6 @@ import os
 import select
 import sys
 import termios
-import time
 import tty
 
 import numpy as np

@@ -45,6 +45,7 @@ class RobotController:
         self._active: dict | None = None         # {"id","kind","status","progress","error"}
         self._cmd_counter = itertools.count(1)
         self._state_thread: threading.Thread | None = None
+        self._cmd_thread: threading.Thread | None = None
 
     # ---------- lifecycle ----------
     def connect(self) -> None:
@@ -54,11 +55,12 @@ class RobotController:
         self._state_thread.start()
 
     def close(self) -> None:
-        """Shut down: signal stop + close, join the state thread, then _close().
-        A command worker may still be mid-motion when _close() runs, so a subclass
-        _close() must be safe to call while _run_play is still executing."""
+        """Shut down: signal stop, join the active command worker (preempted by
+        _cmd_stop) and the state thread, then _close() to tear down hardware."""
         self._cmd_stop.set()
         self._stop_evt.set()
+        if self._cmd_thread is not None:
+            self._cmd_thread.join(timeout=2.0)
         if self._state_thread is not None:
             self._state_thread.join(timeout=1.0)
         self._close()
@@ -118,7 +120,8 @@ class RobotController:
             cid = next(self._cmd_counter)
             self._active = {"id": cid, "kind": kind, "status": "running",
                             "progress": 0.0, "error": None}
-        threading.Thread(target=self._run_cmd, args=(cid, run), daemon=True).start()
+        self._cmd_thread = threading.Thread(target=self._run_cmd, args=(cid, run), daemon=True)
+        self._cmd_thread.start()
         return cid
 
     def _run_cmd(self, cid: int, run) -> None:
