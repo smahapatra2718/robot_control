@@ -106,11 +106,55 @@ def test_ur_play_gripper():
     print("PASS test_ur_play_gripper")
 
 
+def test_gofa_connect_state():
+    robot_sim.install("gofa")
+    from control import make_controller
+    c = make_controller("gofa")
+    c.connect()
+    try:
+        st = c.get_state()
+        assert st.robot == "gofa"
+        assert st.q == robot_sim.GOFA_HOME, "state q should be the seeded GoFa home"
+        assert st.gripper_frac is None, "GoFa has no gripper"
+        assert len(st.pose["pos"]) == 3 and len(st.pose["wxyz"]) == 4
+    finally:
+        c.close()
+    print("PASS test_gofa_connect_state")
+
+
+def test_gofa_move_play():
+    robot_sim.install("gofa")
+    from control import make_controller
+    c = make_controller("gofa")
+    c.connect()
+    try:
+        target = [0.0, 0.1, 0.0, 0.0, 1.5708, 0.0]
+        cid = c.move_to_joints(target, speed=5.0)
+        assert c.wait(cid, timeout=30.0) == "done", "gofa move did not complete"
+        st = c.get_state()
+        assert max(abs(a - b) for a, b in zip(st.q, target)) < 1e-6, "gofa did not reach target"
+        pid = c.play("_sample_gofa", speed=5.0)
+        assert c.wait(pid, timeout=40.0) == "done", "gofa play did not complete"
+        import robot_common as rc
+        q_final = rc.load_trajectory("_sample_gofa")["waypoints"][-1]["q"]
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and \
+                max(abs(a - b) for a, b in zip(c.get_state().q, q_final)) > 1e-6:
+            time.sleep(0.02)
+        assert max(abs(a - b) for a, b in zip(c.get_state().q, q_final)) < 1e-6, \
+            "gofa play did not reach final waypoint"
+    finally:
+        c.close()
+    print("PASS test_gofa_move_play")
+
+
 def main():
     test_state_dataclass()
     test_ur_connect_state()
     test_ur_move()
     test_ur_play_gripper()
+    test_gofa_connect_state()
+    test_gofa_move_play()
     print("ALL CONTROL SMOKE TESTS PASSED")
 
 
