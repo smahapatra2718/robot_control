@@ -18,7 +18,6 @@ trajectories must target the same robot.
 import argparse
 import os
 import sys
-import time
 
 import numpy as np
 
@@ -29,15 +28,13 @@ for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root + lib/ (our modules)
 
 import robot_common as rc
 from robot_common import (
-    RAMP_FRAC, MIN_SEG_DURATION_S, DWELL_S, GRIP_PREDELAY_S, GRIP_EPS,
-    alpha_to_s, norm_grip,
-    UR_ROBOT_IP, UR_MAX_JOINT_SPEED, UR_STREAM_HZ, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN,
-    UR_SERVO_STOP_DECEL, UR_SETTLE_GAIN, UR_SETTLE_EPS_RAD, UR_SETTLE_STALL_TICKS,
-    UR_SETTLE_MAX_S, UR_GRIPPER_MASS, UR_GRIPPER_COG,
-    GOFA_ROBOT_IP, GOFA_RWS_USER, GOFA_RWS_PASSWORD, GOFA_RAPID_MODULE,
-    GOFA_RAPID_GO_FLAG, GOFA_EGM_LOCAL_PORT, GOFA_MAX_JOINT_SPEED, GOFA_MAX_TCP_SPEED,
-    GOFA_STREAM_HZ, GOFA_HOLD_AFTER_PLAY_S, GOFA_URDF_PATH, GOFA_MESH_DIR_PREFIX,
+    MIN_SEG_DURATION_S, DWELL_S, GRIP_PREDELAY_S,
+    norm_grip,
+    UR_MAX_JOINT_SPEED,
+    GOFA_MAX_JOINT_SPEED,
 )
+
+from control import make_controller
 
 
 def confirm(prompt: str) -> bool:
@@ -138,191 +135,28 @@ def main() -> None:
         print_plan(robot, segs, args.speed)
         return
 
-    if robot == "ur15":
-        play_ur15(combined, args.speed, args.no_confirm)
-    else:
-        play_gofa(combined, args.speed, args.no_confirm)
+    play_on_controller(robot, combined, args.speed, args.no_confirm)
 
 
-def play_ur15(data, speed, no_confirm):
-    import hande_gripper
-    from rtde_control import RTDEControlInterface
-    from rtde_receive import RTDEReceiveInterface
-
-    rtde_r = RTDEReceiveInterface(UR_ROBOT_IP)
-    rtde_c = RTDEControlInterface(UR_ROBOT_IP)
+def play_on_controller(robot: str, data, speed, no_confirm):
+    c = make_controller(robot)
+    print(f"Connecting to {robot} ...")
+    c.connect()
     try:
-        rtde_c.setPayload(UR_GRIPPER_MASS, list(UR_GRIPPER_COG))
-    except Exception as e:
-        print(f"setPayload failed ({e}); end-of-play droop may be larger.")
-
-    # gripper best-effort: only fall back to motion-only if it's unreachable. If it
-    # IS reachable, WAIT for activation calibration (it auto-references its full
-    # open/close range) and the initial open to finish before any motion runs --
-    # the trajectory's grip actions assume a calibrated gripper.
-    try:
-        gripper = hande_gripper.HandEGripper(UR_ROBOT_IP, hande_gripper.DEFAULT_PORT)
-        gripper.connect()
-    except Exception as e:
-        gripper = None
-        print(f"Hand-E unreachable ({e}); motion-only (grip actions skipped).")
-
-    if gripper is not None:
-        print("Resetting + activating Hand-E; waiting for full calibration...")
-        try:
-            # Force a clean ACT 0->1 cycle so we actually observe the auto-
-            # calibration (STA 0->3), not a stale STA==3 from a prior session that
-            # would let activate() return while the fingers are still referencing.
-            gripper.reset(timeout=5.0)               # ACT=0 -> STA==0
-            gripper.activate(timeout=20.0)           # ACT=1 -> STA==3 (calibration done)
-            gripper.open()
-            gripper.wait_until_idle(timeout=10.0)    # wait out the open move
-            print("Hand-E calibrated + open.")
-        except Exception as e:
-            raise SystemExit(
-                f"Hand-E activation/calibration failed: {e}. Power-cycle the gripper "
-                f"or run verify_hande.py, then retry (or unplug it to run motion-only)."
-            )
-    cur_grip = 0.0   # fraction closed (0=open), matches the known-open startup state
-
-    q_now = np.array(rtde_r.getActualQ(), dtype=np.float64)
-    segments = build_segments(q_now, data["waypoints"])
-    print_plan("ur15", segments, speed)
-    if not no_confirm and not confirm("Execute on the real UR15? [y/N] "):
-        print("Aborted."); return
-
-    dt = 1.0 / UR_STREAM_HZ
-    try:
-        for seg_idx, (q_start, q_goal, grip) in enumerate(segments):
-            delta = q_goal - q_start
-            seg_duration = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / UR_MAX_JOINT_SPEED)
-            print(f"Segment {seg_idx + 1}/{len(segments)}")
-            alpha = 0.0
-            while alpha < 1.0:
-                q = q_start + delta * alpha_to_s(alpha)
-                rtde_c.servoJ(q.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN)
-                time.sleep(dt)
-                alpha = min(1.0, alpha + dt * speed / seg_duration)
-
-            if grip is not None and abs(grip - cur_grip) > GRIP_EPS:
-                for _ in range(int(GRIP_PREDELAY_S * UR_STREAM_HZ)):  # settle before actuating
-                    rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN)
-                    time.sleep(dt)
-                if gripper is not None:
-                    print(f"Gripper: {int(round(grip * 100))}% closed")
-                    gripper.move(grip)
-                    time.sleep(0.8)  # let the fingers move
-                cur_grip = grip
-
-            if seg_idx < len(segments) - 1:  # inter-waypoint dwell
-                for _ in range(int(max(0.0, DWELL_S / max(0.1, speed)) * UR_STREAM_HZ)):
-                    rtde_c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SERVO_GAIN)
-                    time.sleep(dt)
-
-        # final settle: hold the last target until the measured joints arrive
-        q_final = segments[-1][1]
-        deadline = time.monotonic() + UR_SETTLE_MAX_S
-        best, stalls = float("inf"), 0
-        while True:
-            rtde_c.servoJ(q_final.tolist(), 0.0, 0.0, dt, UR_SERVO_LOOKAHEAD, UR_SETTLE_GAIN)
-            time.sleep(dt)
-            err = float(np.max(np.abs(np.array(rtde_r.getActualQ()) - q_final)))
-            if err < best - UR_SETTLE_EPS_RAD:
-                best, stalls = err, 0
-            else:
-                stalls += 1
-            if stalls >= UR_SETTLE_STALL_TICKS or time.monotonic() > deadline:
-                print(f"[settle] final joint error {np.degrees(err):.3f} deg")
-                break
+        # display-only plan; the controller builds its own segments from a live q read
+        segments = build_segments(c.get_state().q, data["waypoints"])
+        print_plan(robot, segments, speed)
+        if not no_confirm and not confirm(f"Execute on the real {robot}? [y/N] "):
+            print("Aborted."); return
+        cid = c.play(data["waypoints"], speed=speed)
+        status = c.wait(cid, timeout=600.0)
+        st = c.command_status(cid)
+        if status != "done":
+            print(f"Play ended: {status}" + (f" ({st['error']})" if st and st.get("error") else ""))
+        else:
+            print("Done.")
     finally:
-        rtde_c.servoStop(UR_SERVO_STOP_DECEL)
-        rtde_c.stopScript()
-    print("Done.")
-
-
-def play_gofa(data, speed, no_confirm):
-    import jax.numpy as jnp
-    import jaxlie
-    import pyroki as pk
-    import yourdfpy
-
-    import abb_egm
-    import abb_rws
-
-    urdf = yourdfpy.URDF.load(GOFA_URDF_PATH, filename_handler=rc.make_mesh_resolver(GOFA_MESH_DIR_PREFIX))
-    robot = pk.Robot.from_urdf(urdf)
-    tcp_idx = robot.links.names.index("tool0")
-
-    def tcp_xyz(q):
-        Ts = robot.forward_kinematics(cfg=jnp.array(q))
-        return np.asarray(jaxlie.SE3(Ts[tcp_idx]).translation())
-
-    def cap_seg_duration(q_start, delta, seg_duration, dt):
-        """Stretch seg_duration so peak TCP speed stays <= GOFA_MAX_TCP_SPEED."""
-        alpha, prev_p, peak = 0.0, tcp_xyz(q_start), 0.0
-        while alpha < 1.0:
-            alpha = min(1.0, alpha + dt / seg_duration)
-            p = tcp_xyz(q_start + delta * alpha_to_s(alpha))
-            peak = max(peak, float(np.linalg.norm(p - prev_p)) / dt)
-            prev_p = p
-        if peak > GOFA_MAX_TCP_SPEED:
-            seg_duration *= peak / GOFA_MAX_TCP_SPEED
-        return seg_duration
-
-    rws = abb_rws.RWSClient(host=GOFA_ROBOT_IP, user=GOFA_RWS_USER, password=GOFA_RWS_PASSWORD)
-    rws.request_mastership()
-    rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, False, module=GOFA_RAPID_MODULE)
-    egm = abb_egm.EGMSession(local_port=GOFA_EGM_LOCAL_PORT)
-    egm.start()
-
-    q_now = np.array(rws.get_joints(), dtype=np.float64)
-    segments = build_segments(q_now, data["waypoints"])
-    print_plan("gofa", segments, speed)
-    if not no_confirm and input("Execute on the real GoFa? [y/N] ").strip().lower() != "y":
-        print("Aborted."); return
-
-    dt = 1.0 / GOFA_STREAM_HZ
-
-    def start_egm():
-        egm.set_target_rad(q_now.tolist())
-        rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, True, module=GOFA_RAPID_MODULE)
-        deadline = time.time() + 3.0
-        while time.time() < deadline:
-            if egm.is_fresh(max_age_s=0.1):
-                return True
-            time.sleep(0.05)
-        return False
-
-    if not start_egm():
-        print("EGM did not start (no packets in 3s). Is PyEgm parked at WaitUntil egm_go?")
-        return
-    try:
-        for seg_idx, (q_start, q_goal, _grip) in enumerate(segments):
-            delta = q_goal - q_start
-            seg_duration = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / GOFA_MAX_JOINT_SPEED)
-            seg_duration = cap_seg_duration(q_start, delta, seg_duration, dt)
-            print(f"Segment {seg_idx + 1}/{len(segments)}")
-            alpha = 0.0
-            while alpha < 1.0:
-                q = q_start + delta * alpha_to_s(alpha)
-                egm.set_target_rad(q.tolist())
-                time.sleep(dt)
-                alpha = min(1.0, alpha + dt * speed / seg_duration)
-            if seg_idx < len(segments) - 1:
-                for _ in range(int(max(0.0, DWELL_S / max(0.1, speed)) * GOFA_STREAM_HZ)):
-                    egm.set_target_rad(q_goal.tolist())
-                    time.sleep(dt)
-
-        hold = segments[-1][1]
-        for _ in range(int(GOFA_HOLD_AFTER_PLAY_S * GOFA_STREAM_HZ)):  # let \CondTime fire
-            egm.set_target_rad(hold.tolist())
-            time.sleep(dt)
-    finally:
-        try:
-            rws.set_rapid_bool(GOFA_RAPID_GO_FLAG, False, module=GOFA_RAPID_MODULE)
-        except Exception:
-            pass
-    print("Done.")
+        c.close()
 
 
 if __name__ == "__main__":
