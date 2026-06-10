@@ -8,7 +8,8 @@ Browser-based teleop for two arms on a shared viser + pyroki stack:
 Both unify the speed slider — the same `q` drives the viser preview and the robot each tick, so viz and arm move in lockstep. Both share the UI (viser scene + gizmo + waypoints), the IK (`pyroki_snippets._solve_ik_seeded`), the trapezoidal alpha play profile, and auto-cleanup after a successful executed Play. All four entry points (`teleop_ur15.py`, `teleop_gofa_egm.py`, `play_trajectory.py`, `teleop.py`) pull shared config + pure helpers from **`robot_common.py`** (single source of truth).
 
 ```bash
-./robot_control/bin/python scripts/teleop_ur15.py   # or scripts/teleop_gofa_egm.py
+./robot_control/bin/python scripts/real.py ur15   # real hardware  (targets: ur15 | gofa | play | teleop)
+./robot_control/bin/python scripts/sim.py  ur15   # offline sim    (same targets, no robot/network)
 ```
 
 Open the printed `http://localhost:8080`. Each script connects to its controller at startup and aborts if it can't reach.
@@ -25,14 +26,19 @@ abb_foga/
 │   ├── teleop.py               #   headless CLI trajectory recorder (free-drive + keypress capture)
 │   ├── play_trajectory.py      #   headless replay of a saved trajectory (UR15 / GoFa)
 │   ├── install_gofa_egm.py     #   one-shot GoFa bring-up: generates+loads PyEgm.mod, sets the UDP peer
-│   └── verify_hande.py         #   one-shot Hand-E gripper comms probe (run before trusting control)
+│   ├── verify_hande.py         #   one-shot Hand-E gripper comms probe (run before trusting control)
+│   ├── real.py                 #   dispatcher: real.py <ur15|gofa|play|teleop> [args] on real hardware
+│   ├── sim.py                  #   dispatcher: sim.py  <ur15|gofa|play|teleop> [args] offline (fake arm)
+│   └── sim_smoketest.py        #   stdlib-assert smoke test for the sim fakes + EGM handshake
 │
 ├── lib/                        # importable modules (on sys.path via the scripts/ bootstrap)
 │   ├── robot_common.py         #   shared config (UR_*/GOFA_* constants) + pure helpers
 │   ├── abb_rws.py              #   minimal RWS client for OmniCore (RobotWare 7+)
 │   ├── abb_egm.py              #   minimal EGM UDP client (protobuf wire format)
 │   ├── egm_pb2.py / egm.proto  #   EGM protobuf bindings + the schema they're generated from
-│   └── hande_gripper.py        #   minimal Hand-E URCap-socket client
+│   ├── hande_gripper.py        #   minimal Hand-E URCap-socket client
+│   ├── robot_sim.py            #   offline sim: SimWorld + fake transports + install() (sys.modules shim)
+│   └── dispatch.py             #   shared target->script map + dispatch() for real.py / sim.py
 │
 │   # ── assets ──
 ├── urdf/                       # generated robot models (crb15000_5_95.urdf, hande.urdf)
@@ -73,6 +79,36 @@ Teleop scripts bind these to short local names (`ROBOT_IP = rc.UR_ROBOT_IP`, …
 **Forward kinematics is deliberately NOT shared** — it needs jax/jaxlie/pyroki, which `teleop.py` / `play_trajectory.py` import *lazily* to defer the ~800 ms JIT cost. The few `ee_pose` / `grasp_pose` / `_grasp_to_tool0` blocks (~3 lines each) stay per-script.
 
 ---
+
+## Simulation — `scripts/sim.py` (offline, no robot)
+
+`sim.py <target>` runs the **real, unmodified** teleop scripts against a
+perfect-tracking kinematic sim, so trajectories / IK / the viser UI / play
+profiles can be exercised on the dev machine with no UR15, GoFa, or network. It
+works by injecting fake transport modules (`rtde_control`, `rtde_receive`,
+`hande_gripper`, `abb_rws`, `abb_egm`) into `sys.modules`, then `runpy`-ing the
+target script — see `lib/robot_sim.py`. Because it literally runs
+`teleop_ur15.py` (etc.), every feature works in sim automatically and never
+drifts. `real.py` and `sim.py` are the same dispatcher (`lib/dispatch.py`) and
+differ only in that `sim.py` installs the shim first.
+
+```bash
+./robot_control/bin/python scripts/sim.py ur15                         # UR15 teleop, simulated
+./robot_control/bin/python scripts/sim.py gofa                         # GoFa teleop, simulated
+./robot_control/bin/python scripts/sim.py play _sample_ur15 --no-confirm
+./robot_control/bin/python scripts/sim_smoketest.py                    # fast fakes + handshake check
+```
+
+The sim still needs the `robot_control/` venv (it runs the real jax/pyroki/viser
+stack and the real URDFs) — "offline" means no *robot*, not no Python deps.
+
+**One limitation — free-drive/teach can't be hand-guided** (no physical arm to
+move): `teachMode`/lead-through are no-ops in sim, so "Capture" during free-drive
+just re-grabs the current pose. Offline authoring is via the **gizmo + Add
+waypoint**, **Live**, or **Plan**. The headless `teleop.py` recorder runs (UI,
+keys, save all work) but captured points stay at the home pose — a plumbing test,
+not realistic authoring. Home poses (`UR_HOME` / `GOFA_HOME` / `NEUTRAL_HOME`)
+are tunable constants in `lib/robot_sim.py`.
 
 # UR15
 
