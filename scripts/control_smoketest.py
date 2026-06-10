@@ -38,8 +38,46 @@ def test_state_dataclass():
     print("PASS test_state_dataclass")
 
 
+def test_ur_connect_state():
+    robot_sim.install("ur15")
+    from control import make_controller
+    c = make_controller("ur15")
+    c.connect()
+    try:
+        st = c.get_state()
+        assert st.robot == "ur15"
+        assert st.q == robot_sim.UR_HOME, "state q should be the seeded UR home"
+        assert st.safety_state == "NORMAL"
+        assert st.gripper_frac == 0.0
+        assert len(st.pose["pos"]) == 3 and len(st.pose["wxyz"]) == 4
+        assert st.activity == "idle"
+    finally:
+        c.close()
+    print("PASS test_ur_connect_state")
+
+
+def test_ur_move():
+    robot_sim.install("ur15")
+    from control import make_controller
+    c = make_controller("ur15")
+    c.connect()
+    try:
+        target = [0.0, -1.4, 1.4, -1.4, -1.4, 0.2]
+        cid = c.move_to_joints(target, speed=5.0)
+        assert c.wait(cid, timeout=20.0) == "done", "move did not complete"
+        st = c.get_state()
+        assert max(abs(a - b) for a, b in zip(st.q, target)) < 1e-6, "did not reach target"
+        cid2 = c.move_to_joints(robot_sim.UR_HOME, speed=5.0)
+        assert c.wait(cid2, timeout=20.0) == "done"
+    finally:
+        c.close()
+    print("PASS test_ur_move")
+
+
 def main():
     test_state_dataclass()
+    test_ur_connect_state()
+    test_ur_move()
     print("ALL CONTROL SMOKE TESTS PASSED")
 
 
