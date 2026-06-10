@@ -30,21 +30,24 @@ class SimWorld:
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.q = list(UR_HOME)
-        self.flags = {"egm_go": False, "lead_go": False}
-        self.grip_frac = 0.0
-        # EGM supervisor bookkeeping (populated by FakeEGM's supervisor thread)
-        self.egm_target = None
-        self.egm_last_target = None
-        self.egm_last_change = 0.0
-        self.egm_feedback = None
-        self.egm_feedback_time = 0.0
-        self.packets_rx = 0
-        self.packets_tx = 0
+        self.reset(UR_HOME)
 
-    def set_home(self, q) -> None:
+    def reset(self, home) -> None:
+        """Reset to a clean per-launch state: home pose, cleared RAPID flags and EGM
+        bookkeeping. install() calls this so each sim launch starts hermetic (no stale
+        egm_go / feedback carried over from a prior install() in the same process)."""
         with self.lock:
-            self.q = list(q)
+            self.q = list(home)
+            self.flags = {"egm_go": False, "lead_go": False}
+            self.grip_frac = 0.0
+            # EGM supervisor bookkeeping (populated by FakeEGM's supervisor thread)
+            self.egm_target = None
+            self.egm_last_target = None
+            self.egm_last_change = 0.0
+            self.egm_feedback = None
+            self.egm_feedback_time = 0.0
+            self.packets_rx = 0
+            self.packets_tx = 0
 
 
 SIM = SimWorld()
@@ -257,4 +260,4 @@ def install(robot_hint: str | None = None) -> None:
     sys.modules["abb_rws"] = _module("abb_rws", RWSClient=FakeRWS)
     sys.modules["abb_egm"] = _module("abb_egm", EGMSession=FakeEGM)
     home = {"ur15": UR_HOME, "gofa": GOFA_HOME}.get(robot_hint, NEUTRAL_HOME)
-    SIM.set_home(home)
+    SIM.reset(home)
