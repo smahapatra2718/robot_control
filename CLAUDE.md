@@ -1,13 +1,11 @@
 # abb_foga — robot teleop scaffold
 
-Browser-based teleop for two arms, sharing the same viser + pyroki stack:
+Browser-based teleop for two arms on a shared viser + pyroki stack:
 
-- **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`). Speed slider is unified: the same `q` is sent to both the viser preview and `rtde_c.servoJ()` each tick, so viz and robot move in lockstep.
-- **`teleop_gofa_egm.py`** — ABB GoFa CRB 15000 (variant `crb15000_5_95`) over Externally Guided Motion (EGM), with RWS (`abb_rws.py`) for mastership and the start/stop flag. Joint targets stream over UDP at `STREAM_HZ` to a RAPID supervisor (`PyEgm.mod`) running `EGMRunJoint`, so the slider is unified like the UR15 — the same `q` drives both the viser preview and the robot. Real tool speed is held under `MAX_TCP_SPEED` regardless of slider/pose. EGM is a licensed controller option.
+- **`teleop_ur15.py`** — Universal Robots UR15 over RTDE (`ur_rtde`), `servoJ` per tick.
+- **`teleop_gofa_egm.py`** — ABB GoFa CRB 15000 (variant `crb15000_5_95`) over Externally Guided Motion (EGM, a licensed option), with RWS (`abb_rws.py`) for mastership + the start/stop flag. Joint targets stream over UDP at `STREAM_HZ` to a RAPID supervisor (`PyEgm.mod`) running `EGMRunJoint`. Real tool speed is held under `MAX_TCP_SPEED` regardless of slider/pose.
 
-Both scripts share: the same UI (viser scene + gizmo + waypoints), the same IK (`pyroki_snippets._solve_ik_seeded`), the same trapezoidal-time alpha profile in the play loop, and the same auto-cleanup after a successful executed Play. All four entry points (`teleop_ur15.py`, `teleop_gofa_egm.py`, `play_trajectory.py`, `teleop.py`) pull their shared config + pure helpers from **`robot_common.py`** (single source of truth — see [Shared config](#shared-config--robot_commonpy)).
-
-Run:
+Both unify the speed slider — the same `q` drives the viser preview and the robot each tick, so viz and arm move in lockstep. Both share the UI (viser scene + gizmo + waypoints), the IK (`pyroki_snippets._solve_ik_seeded`), the trapezoidal alpha play profile, and auto-cleanup after a successful executed Play. All four entry points (`teleop_ur15.py`, `teleop_gofa_egm.py`, `play_trajectory.py`, `teleop.py`) pull shared config + pure helpers from **`robot_common.py`** (single source of truth).
 
 ```bash
 ./robot_control/bin/python scripts/teleop_ur15.py   # or scripts/teleop_gofa_egm.py
@@ -17,12 +15,7 @@ Open the printed `http://localhost:8080`. Each script connects to its controller
 
 ## Project layout
 
-Runnable scripts live in `scripts/`, importable modules in `lib/`, assets and
-vendored trees in their own folders. Each `scripts/` script starts with a small
-bootstrap that puts the repo root (for `pyroki_snippets`) and `lib/` (for our
-modules) on `sys.path`, so it can `import robot_common` / `abb_rws` / … by bare
-name from anywhere. Asset paths resolve from `robot_common._ROOT` (= parent of
-`lib/`), so scripts work regardless of the current directory.
+Runnable scripts in `scripts/`, importable modules in `lib/`, assets/vendored trees in their own folders. Each `scripts/` script bootstraps the repo root (for `pyroki_snippets`) and `lib/` onto `sys.path`, so it imports `robot_common` / `abb_rws` / … by bare name from anywhere. Asset paths resolve from `robot_common._ROOT` (= parent of `lib/`), so scripts work regardless of cwd.
 
 ```
 abb_foga/
@@ -61,26 +54,23 @@ abb_foga/
 
 ## Dependencies (already installed in `robot_control/`)
 
-Python: numpy, viser, yourdfpy, jaxlie, jax, jaxlib, robot_descriptions, xacrodoc, pyroki (editable), ur_rtde 1.6.3, requests, urllib3.
+Python: numpy, viser, yourdfpy, jaxlie, jax, jaxlib, robot_descriptions, xacrodoc, pyroki (editable), ur_rtde 1.6.3, requests, urllib3. System (brew): cmake, **boost@1.85** (keg-only, for the ur_rtde build only).
 
-System (brew): cmake, **boost@1.85** (keg-only, for ur_rtde build only).
-
-URDFs:
-- **UR15**: loaded at runtime via `robot_descriptions.loaders.yourdfpy.load_robot_description("ur15_description")`. No local file.
-- **Hand-E**: local `urdf/hande.urdf`, generated via `xacrodoc` from the vendored `robotiq_hande_description` (`xacrodoc.packages.look_in(["."]); XacroDoc.from_file(".../robotiq_hande_gripper.urdf.xacro").to_urdf_file("urdf/hande.urdf")`). Same `file://` → `package://` strip as the GoFa; resolved via `robot_common.make_mesh_resolver(UR_MESH_DIR_PREFIX)` (prefix = project root). The `<ros2_control>` block (irrelevant to us) was stripped after generation. Rendered as a *second* `ViserUrdf` whose root frame is slaved to the live `tool0` pose — the UR IK model is untouched.
-- **GoFa**: local `urdf/crb15000_5_95.urdf` (the 5 kg / 0.95 m reach variant — match this to your actual hardware nameplate), generated via `xacrodoc` from the ros-industrial repo: `xacrodoc.packages.look_in(["abb_desc"]); XacroDoc.from_file(".../crb15000_5_95.xacro").to_urdf_file(...)`. Mesh paths are rewritten to `package://abb_crb15000_support/...`; resolved via `GOFA_MESH_DIR_PREFIX` (= `abb_desc/`) through `robot_common.make_mesh_resolver()`. xacrodoc emits absolute `file://` URIs (yourdfpy can't resolve those); strip the `file://.../abb_desc/` prefix down to `package://`.
+URDFs — all generated via `xacrodoc`, then mesh URIs rewritten to `package://` and resolved through `robot_common.make_mesh_resolver(<prefix>)`. xacrodoc emits absolute `file://` URIs that yourdfpy can't resolve, so the `file://…` prefix is stripped back to `package://` after generation (see the yourdfpy gotcha below).
+- **UR15**: no local file — loaded at runtime via `robot_descriptions.loaders.yourdfpy.load_robot_description("ur15_description")`.
+- **Hand-E**: local `urdf/hande.urdf` from the vendored `robotiq_hande_description` (prefix = project root). `<ros2_control>` block stripped post-gen. Rendered as a *second* `ViserUrdf` slaved to the live `tool0` pose — the UR IK model is untouched.
+- **GoFa**: local `urdf/crb15000_5_95.urdf` (5 kg / 0.95 m reach variant — match to your hardware nameplate) from the ros-industrial repo (prefix = `abb_desc/`, meshes under `package://abb_crb15000_support`).
 
 ## Shared config — `robot_common.py`
 
-The four entry points used to each carry their own copy of the connection details, motion-profile constants, and a handful of tiny functions, with "keep in sync" comments warning you to update them together. That duplication now lives in **one stdlib-only module, `robot_common.py`** — retune a value there and every script picks it up.
+One stdlib-only module holds what the four entry points used to duplicate. Kept stdlib-only on purpose so importing it never drags in the heavy jax stack.
 
-What it holds:
-- **Config constants:** `UR_*` (IP, servoJ/settle params, Hand-E geometry + payload) and `GOFA_*` (IP, RWS creds, RAPID module/flags, EGM port, TCP-speed cap, hold time), plus the shared trapezoidal-profile knobs (`RAMP_FRAC`, `MIN_SEG_DURATION_S`, `DWELL_S`, `GRIP_PREDELAY_S`, `GRIP_EPS`) and `TRAJ_DIR` / `TARGET_LINK`.
-- **Pure helpers:** `alpha_to_s` (trapezoidal velocity profile), `norm_grip` (legacy `"open"`/`"close"` → fraction), `make_mesh_resolver` (the `package://` → local-path `filename_handler` factory), and `load_trajectory` / `save_trajectory` (the `trajectories/<name>.json` read/write).
+- **Config constants:** `UR_*` (IP, servoJ/settle params, Hand-E geometry + payload) and `GOFA_*` (IP, RWS creds, RAPID module/flags, EGM port, TCP-speed cap, hold time), plus shared trapezoidal-profile knobs (`RAMP_FRAC`, `MIN_SEG_DURATION_S`, `DWELL_S`, `GRIP_PREDELAY_S`, `GRIP_EPS`) and `TRAJ_DIR` / `TARGET_LINK`.
+- **Pure helpers:** `alpha_to_s` (trapezoidal velocity profile), `norm_grip` (legacy `"open"`/`"close"` → fraction), `make_mesh_resolver` (`package://` → local-path `filename_handler` factory), `load_trajectory` / `save_trajectory` (the `trajectories/<name>.json` read/write).
 
-How the scripts consume it: the teleop scripts keep their short local names (`ROBOT_IP = rc.UR_ROBOT_IP`, `_alpha_to_s = rc.alpha_to_s`, …) so the large hardware-loop bodies are unchanged; `play_trajectory.py` / `teleop.py` `from robot_common import` the `UR_*`/`GOFA_*` names directly (same spelling). **Script-specific tunables stay local** (e.g. UR-only `MAX_JOINT_ACCEL`, `LIVE_HZ`, `POLL_HZ`).
+Teleop scripts bind these to short local names (`ROBOT_IP = rc.UR_ROBOT_IP`, …) so the large hardware-loop bodies are unchanged; `play_trajectory.py` / `teleop.py` `from robot_common import` the `UR_*`/`GOFA_*` names directly. Script-specific tunables stay local (e.g. UR-only `MAX_JOINT_ACCEL`, `LIVE_HZ`, `POLL_HZ`).
 
-**Forward kinematics is deliberately NOT shared.** It needs jax/jaxlie/pyroki, and `teleop.py` / `play_trajectory.py` import those *lazily* to defer the ~800 ms JIT cost; a shared FK helper would force that cost at import. The few `ee_pose` / `grasp_pose` / `_grasp_to_tool0` blocks stay per-script (they're ~3 lines each). `robot_common.py` is kept stdlib-only on purpose so importing it never drags in the heavy stack.
+**Forward kinematics is deliberately NOT shared** — it needs jax/jaxlie/pyroki, which `teleop.py` / `play_trajectory.py` import *lazily* to defer the ~800 ms JIT cost. The few `ee_pose` / `grasp_pose` / `_grasp_to_tool0` blocks (~3 lines each) stay per-script.
 
 ---
 
@@ -97,32 +87,20 @@ UR15 ships with Polyscope X, which firewalls external services by default. On th
 Quick diagnostic from your Mac:
 
 ```bash
-for p in 29999 30001 30002 30004; do nc -zv -G 2 192.168.125.2 $p; done
+for p in 29999 30001 30002 30004; do nc -zv -G 2 192.168.125.2 $p; done   # all four should "succeed"
 ```
-
-All four should report "succeeded".
 
 ## Architecture of `teleop_ur15.py`
 
-Threads:
-- **`poll_loop`** — `rtde_r.getActualQ()` at 30 Hz into `current_q` under `state_lock`.
-- **`viz_loop`** — when not playing, writes `current_q` into the `ViserUrdf`.
-- **`_play`** — spawned per Play click; owns the URDF viz and (when Execute is on) the `servoJ` stream.
+Threads: **`poll_loop`** reads `rtde_r.getActualQ()` at 30 Hz into `current_q` (under `state_lock`); **`viz_loop`** writes `current_q` into the `ViserUrdf` when not playing; **`_play`** is spawned per Play click and owns the URDF viz + (when Execute is on) the `servoJ` stream.
 
-State machine:
-1. **Idle:** browser mirrors real arm. User drags a 6-DoF gizmo.
-2. **Add waypoint:** snapshots `(pos, wxyz)` into `waypoints[]` and adds a frame to the scene. Remove-last / Clear reverse it.
-3. **Plan:** seeded IK at each waypoint in order (each segment's solution seeds the next). Stores `plan_segments: list[(q_start, q_goal)]`. If no waypoints, falls back to the gizmo's current pose.
-4. **Play:** iterates segments. Per segment, advances `alpha ∈ [0,1]` at `dt * speed_slider / seg_duration` per tick, with `seg_duration = max(MIN_SEG_DURATION_S, max(|Δq|) / MAX_JOINT_SPEED)`. Maps alpha through `_alpha_to_s` (trapezoidal: 25% parabolic ramp / 50% linear cruise / 25% parabolic ramp) and writes `q = q_start + delta * eased` to the URDF and (if Execute on) `rtde_c.servoJ(q, 0, 0, dt, lookahead, gain)`.
-5. **Auto-cleanup after a successful executed Play:** clears waypoints + their frames, resets the gizmo to the new EE pose, drops `plan_segments`, unchecks Execute, disables Play. Stopped or preview plays leave state untouched.
+State machine: Idle (browser mirrors arm, user drags gizmo) → Add waypoint (snapshot `(pos, wxyz)` + scene frame) → Plan (seeded IK at each waypoint, each solution seeds the next, stored as `plan_segments: list[(q_start, q_goal)]`; no waypoints → falls back to gizmo pose) → Play (per segment advance `alpha ∈ [0,1]` at `dt·speed/seg_duration`, `seg_duration = max(MIN_SEG_DURATION_S, max(|Δq|)/MAX_JOINT_SPEED)`, map through `_alpha_to_s`, write `q` to URDF and `servoJ` if Execute on). After a successful executed Play, auto-cleanup clears waypoints/frames, resets the gizmo to the new EE pose, drops `plan_segments`, unchecks Execute. Stopped/preview plays leave state untouched.
 
-Safety:
-- Execute auto-unchecks the instant a Play with Execute=on begins.
-- Stop button → `stop_flag` → loop breaks → `finally` calls `rtde_c.servoStop(SERVO_STOP_DECEL=2.0)` (default 10 felt jerky).
+Safety: Execute auto-unchecks the instant a Play with Execute=on begins; Stop → `stop_flag` → loop breaks → `finally` calls `rtde_c.servoStop(SERVO_STOP_DECEL=2.0)` (default 10 felt jerky).
 
 ## Tunables — `teleop_ur15.py`
 
-The shared ones (`ROBOT_IP`, speeds, settle, gripper geometry, profile knobs) live in `robot_common.py` as `UR_*` / unprefixed names; the script binds them to these local names. UR-only knobs (`MAX_JOINT_ACCEL`, `LIVE_HZ`, `POLL_HZ`, …) are defined locally in `teleop_ur15.py`.
+Shared ones live in `robot_common.py` (`UR_*` / unprefixed); the script binds them to these local names. UR-only knobs are defined locally.
 
 | Constant | Default | Effect |
 |---|---|---|
@@ -139,17 +117,17 @@ The shared ones (`ROBOT_IP`, speeds, settle, gripper geometry, profile knobs) li
 
 ## Hand-E gripper
 
-A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V through the tool flange connector).
+A Robotiq Hand-E parallel gripper on the UR15 wrist (RS-485 + 24 V through the tool flange).
 
-**Rendering & TCP.** `hande.urdf` is rendered as a second `ViserUrdf` rooted at `/world/gripper`, whose frame is slaved to the live `tool0` pose every viz/play tick (`_update_gripper_viz`). The gripper is rigid, so the grasp point is a *fixed* `tool0`→`hande_end` offset (`TOOL0_T_GRASP`, ~0.1565 m along tool0 +z, read straight from the URDF). The gizmo/waypoints live at the grasp point; `_grasp_to_tool0()` maps them back to a `tool0` target so **the UR IK model and the seeded-IK call are unchanged**. Only the one actuated finger joint animates (the other `mimic`s it); 0 m = closed, 0.025 m = open.
+**Rendering & TCP.** `hande.urdf` is a second `ViserUrdf` rooted at `/world/gripper`, slaved to the live `tool0` pose each tick (`_update_gripper_viz`). The gripper is rigid, so the grasp point is a fixed `tool0`→`hande_end` offset (`TOOL0_T_GRASP`, ~0.1565 m along tool0 +z, from the URDF). The gizmo/waypoints live at the grasp point; `_grasp_to_tool0()` maps them back to a `tool0` target so **the UR IK model and the seeded-IK call are unchanged**. Only the one actuated finger joint animates (the other `mimic`s it); 0 m = closed, 0.025 m = open.
 
-**Control path — the URCap socket.** ur_rtde keeps its control script resident for the whole session, so a Robotiq gripper *program* can't run concurrently. But the **Grippers URCap also runs a background daemon** that owns the wrist RS-485 and serves a socket at **`<robot_ip>:63352`** — independent of whatever program is playing, so it coexists with ur_rtde, and the pendant buttons keep working (both route through the same daemon). No URCap swap. `hande_gripper.py` speaks the URCap's newline-terminated ASCII protocol over that socket (`SET POS 255 SPE 255 FOR 150 GTO 1` → `ack`; `GET STA` → `STA 3`); stdlib `socket` only, no deps. This is the same channel the standalone `robotiq_gripper.py` driver uses.
+**Control path — the URCap socket.** ur_rtde keeps its control script resident all session, so a Robotiq gripper *program* can't run concurrently. But the **Grippers URCap also runs a background daemon** that owns the wrist RS-485 and serves a socket at **`<robot_ip>:63352`** — independent of the running program, so it coexists with ur_rtde and the pendant buttons keep working (same daemon). `hande_gripper.py` speaks the URCap's newline-terminated ASCII protocol over that socket, stdlib only.
 
-⚠️ **PolyScope X firewall.** Like RTDE/Dashboard, port 63352 is likely blocked by the Services firewall by default — allow it under **Settings → Security → Services**. **Run `scripts/verify_hande.py` first** (connect → activate → open/close standalone); only once it passes is gripper control in `teleop_ur15.py` trustworthy. If 63352 isn't reachable on X even after opening it, the fallbacks are a USB-RS485 adapter (talk Modbus straight to the gripper) or the RS485 URCap socket bridge — both absorbed by swapping `HandEGripper`'s transport. The gripper connect in `teleop_ur15.py` is best-effort: if the socket is absent it logs and runs viz-only (the slider still animates the meshes).
+⚠️ **PolyScope X firewall.** Like RTDE/Dashboard, port 63352 is likely firewalled — allow it under **Settings → Security → Services**. **Run `scripts/verify_hande.py` first**; only once it passes is gripper control trustworthy. If 63352 is unreachable even after opening it, fallbacks are a USB-RS485 adapter (Modbus straight to the gripper) or the RS485 URCap socket bridge — both absorbed by swapping `HandEGripper`'s transport. The gripper connect is best-effort: if the socket is absent it logs and runs viz-only.
 
-**URCap socket protocol** (port 63352): `SET <VAR> <val> …` → `ack`, `GET <VAR>` → `<VAR> <val>`. Vars: `ACT` activate, `GTO` go-to, `POS` request (0 open … 255 closed), `SPE` speed, `FOR` force (all 0–255), `STA` status (==3 ⇒ activated), `OBJ` object detection (1/2 ⇒ stopped on an object), `FLT` fault.
+**URCap socket protocol** (port 63352): `SET <VAR> <val> …` → `ack`, `GET <VAR>` → `<VAR> <val>`. Vars: `ACT` activate, `GTO` go-to, `POS` request (0 open … 255 closed), `SPE` speed, `FOR` force (all 0–255), `STA` status (==3 ⇒ activated), `OBJ` object detection (1/2 ⇒ stopped on an object), `FLT` fault. (`SET POS 255 SPE 255 FOR 150 GTO 1` → `ack`; `GET STA` → `STA 3`.)
 
-**Gripper position is one tracked value.** `gripper_frac` (a float, `0.0`=open … `1.0`=fully closed) is the single source of truth; the viz fingers always render it (`_frac_to_finger`). The **"Gripper close %" slider** drives it live — its `on_update` calls `_command_grip(frac)`, which commands the real gripper (`HandEGripper.move(frac)` → Robotiq `POS 0..255`) and snaps the viz. At startup the script sends an `open` command, so `gripper_frac` (0.0) is known without polling. **Capture/Add records the current `gripper_frac` into the waypoint automatically.** On replay the gripper actuates only when a waypoint's fraction differs from the running one by more than `GRIP_EPS` (2%), and the arm settles `GRIP_PREDELAY_S` (0.5 s) before each actuation. Saved trajectories persist the per-waypoint fraction (it's just a field in the waypoint JSON); legacy `"open"`/`"close"` strings are normalized on Plan via `_norm_grip`.
+**Gripper position is one tracked value.** `gripper_frac` (float, `0.0`=open … `1.0`=closed) is the single source of truth; viz fingers always render it (`_frac_to_finger`). The **"Gripper close %" slider** drives it live — its `on_update` calls `_command_grip(frac)` → real gripper (`HandEGripper.move(frac)` → `POS 0..255`) + snaps viz. Startup sends `open`, so `gripper_frac` (0.0) is known without polling. **Capture/Add records `gripper_frac` into the waypoint automatically.** On replay the gripper actuates only when a waypoint's fraction differs by more than `GRIP_EPS` (2%), after the arm settles `GRIP_PREDELAY_S` (0.5 s). Saved trajectories persist the per-waypoint fraction; legacy `"open"`/`"close"` strings normalize on Plan via `_norm_grip`.
 
 ### Tunables — Hand-E (`teleop_ur15.py` / `hande_gripper.py`)
 
@@ -163,63 +141,55 @@ A Robotiq Hand-E parallel gripper is mounted on the UR15 wrist (RS-485 + 24 V th
 | `DEFAULT_SPEED` / `DEFAULT_FORCE` | `255` / `150` | Robotiq `SPE` / `FOR` (0–255); force kept collaborative |
 | `GRIP_PREDELAY_S` | `0.5` s | Settle hold before the gripper actuates at a waypoint |
 
-**End-of-play precision & the payload.** With the ~1 kg gripper on the wrist, an *undeclared* payload makes `servoJ` hold the loaded joints slightly below target (gravity droop) — which is why end-of-play undershoot felt worse after mounting it. `setPayload(GRIPPER_MASS, GRIPPER_COG)` at startup fixes that. Separately, the gizmo now targets the grasp point (~156 mm past `tool0`), so the *same* joint error shows up as a larger Cartesian shift — geometric, not a regression. The end-of-play settle (`SETTLE_*`) drives joint error to the `servoJ` floor regardless.
+**Payload & end-of-play precision.** With the ~1 kg gripper, an *undeclared* payload makes `servoJ` hold the loaded joints slightly below target (gravity droop) — `setPayload(GRIPPER_MASS, GRIPPER_COG)` at startup fixes that. The gizmo targets the grasp point (~156 mm past `tool0`), so the *same* joint error shows up as a larger Cartesian shift — geometric, not a regression. The end-of-play settle drives joint error to the `servoJ` floor regardless.
 
 ## Live gizmo-follow mode
 
-Both scripts have a **"Live (drive robot)"** checkbox: a single toggle that makes the real arm chase the gizmo in real time (no Plan/Play). The `_live_loop` thread, at `LIVE_HZ` (30): reads the gizmo pose → seeded IK (seeded from the *last commanded* `q`, not measured, to avoid feedback jitter) → clamps the step → commands the arm. Mutually exclusive with Plan/Play; **Stop** or unticking ends it.
+Both scripts have a **"Live (drive robot)"** checkbox: the real arm chases the gizmo in real time (no Plan/Play). The `_live_loop` thread reads the gizmo pose → seeded IK (seeded from the *last commanded* `q`, not measured, to avoid feedback jitter) → clamps the step → commands the arm. Mutually exclusive with Plan/Play; Stop or unticking ends it.
 
-Safety, shared:
-- **Snap-on-enable:** the gizmo jumps to the current EE first, so the arm never lurches toward a stale gizmo pose.
-- **Acceleration-limited follower (UR):** the live loop tracks the IK target through a per-joint motion profile that bounds **both** speed (`MAX_JOINT_SPEED`) and the rate speed can change (`MAX_JOINT_ACCEL`), with the desired speed tapered to `√(2·a·|err|)` so it decelerates to rest at the target without overshoot and a one-tick `|err|/dt` cap that kills dither at rest. This bounds jerk (smooth stops / IK branch-flips) and low-passes IK jitter — the UR has no controller-side filter like the GoFa's EGM `LpFilter`. Runs at `LIVE_HZ` (125) on an exact `initPeriod`/`waitPeriod` cadence (`servoJ` is jitter-sensitive). The GoFa live loop still uses the simpler per-tick step clamp since EGM filters controller-side.
-
-Per-arm:
-- **UR15:** `servoJ` each tick; `servoStop` on exit.
-- **GoFa:** streams the target over the *existing* EGM session (no supervisor change). Because `PyEgm.mod` uses `\CondTime := 1`, a >1 s pause lets the robot converge and RAPID drops the session; `_live_loop` detects the stale feed (`egm.is_fresh`) and **re-arms** (`_start_egm_session`) on the next motion — so expect a brief hitch after a long pause. It also applies the `MAX_TCP_SPEED` collaborative cap by scaling the per-tick step. On exit it holds the last pose for `HOLD_AFTER_PLAY_S` so `\CondTime` cleanly closes the session. (A smoother-through-pauses version would need a larger `\CondTime` in the supervisor + installer re-run.)
+- **Snap-on-enable:** the gizmo jumps to the current EE first, so the arm never lurches toward a stale pose.
+- **UR acceleration-limited follower:** tracks the IK target through a per-joint profile bounding both speed (`MAX_JOINT_SPEED`) and accel (`MAX_JOINT_ACCEL`), with desired speed tapered to `√(2·a·|err|)` (decelerates to rest without overshoot) and a one-tick `|err|/dt` cap killing rest dither. This bounds jerk and low-passes IK jitter — the UR has no controller-side filter like the GoFa's EGM `LpFilter`. Runs at `LIVE_HZ` (125) on an exact `initPeriod`/`waitPeriod` cadence (`servoJ` is jitter-sensitive). `servoStop` on exit.
+- **GoFa:** simpler per-tick step clamp (EGM filters controller-side). Streams the target over the *existing* EGM session. Because `PyEgm.mod` uses `\CondTime := 1`, a >1 s pause lets the robot converge and RAPID drops the session; `_live_loop` detects the stale feed (`egm.is_fresh`) and **re-arms** (`_start_egm_session`) on the next motion — expect a brief hitch after a long pause. Applies the `MAX_TCP_SPEED` cap by scaling the per-tick step; on exit holds the last pose for `HOLD_AFTER_PLAY_S` so `\CondTime` cleanly closes the session.
 
 ## Free-drive teach & saved trajectories
 
-Teach-by-demonstration: hand-guide the arm, capture poses, save/replay. UR15 has the full version (software free-drive + gripper actions); the GoFa has capture + save/load with hand-guiding via its hardware button.
+Hand-guide the arm, capture poses, save/replay. UR15 has the full version (software free-drive + gripper actions); GoFa has capture + save/load.
 
-- **Free-drive** checkbox → `ur_rtde` `teachMode()` (zero-gravity hand-guiding); unticking / Stop calls `endTeachMode()`. Mutually exclusive with Plan/Play/Live. **`teachMode` must be ended before any `servoJ`** or the control mode conflicts — every exit path does this.
-- **Capture waypoint** snapshots the live joints + FK grasp pose; **Add waypoint** still captures the gizmo pose. Both record the current tracked `gripper_state` (`open`/`close`) automatically — there is no dropdown (see the Hand-E "Gripper state is one tracked value" note).
-- **Waypoint model:** `{"q": [6]|None, "pos", "wxyz", "grip"}` where `grip` is the absolute gripper state at that waypoint. Capture fills `q` (taught joints); gizmo-add leaves `q=None` and Plan backfills it from IK. At Plan, a waypoint **with `q` replays those joints exactly** (no IK); without `q` it IKs from the Cartesian pose (sequential seed, as before). `plan_segments` is `(q_start, q_goal, grip)`; `_play` actuates the gripper at a waypoint **only when its state differs** from the running state — settling `GRIP_PREDELAY_S` (0.5 s) first, holding the arm with `servoJ` (real gripper only on an executed play, viz tweens either way).
-- **Save/Load:** `trajectories/<name>.json` = `{robot, created, waypoints}`. Load clears + repopulates the waypoint list and frames; then Plan to replay. (Saved trajectories are tracked, not gitignored — they sync across machines via the repo.)
-- **GoFa:** same Capture + Save/Load (waypoints store joints+Cartesian; taught joints replay exactly). **Software free-drive toggle:** the **"Free-drive (lead-through)"** checkbox flips a `lead_go` flag over RWS; `PyEgm.mod` then calls `SetLeadThrough \On` (RAPID hand-guiding) and holds the arm compliant until you untick it (`SetLeadThrough \Off`). Mutually exclusive with Plan/Play/Live; Stop and untick both release it; the controller also auto-clears lead-through on motors-off. The GoFa's **physical lead-through button** still works too. Either way, Capture reads the hand-moved joints via RWS polling. No gripper actions. **Requires re-running `install_gofa_egm.py`** to push the updated supervisor (see the PyEgm.mod section + its lead-through caveats).
+- **Free-drive** checkbox → UR `teachMode()` (zero-g hand-guiding); untick/Stop → `endTeachMode()`. Mutually exclusive with Plan/Play/Live. **`teachMode` must be ended before any `servoJ`** or the control mode conflicts — every exit path does this.
+- **Capture waypoint** snapshots live joints + FK grasp pose; **Add waypoint** captures the gizmo pose. Both record the current `gripper_frac` automatically.
+- **Waypoint model:** `{"q": [6]|None, "pos", "wxyz", "grip"}`. Capture fills `q` (taught joints); gizmo-add leaves `q=None` and Plan backfills via IK. At Plan a waypoint **with `q` replays those joints exactly** (no IK); without `q` it IKs from the Cartesian pose (sequential seed). `plan_segments` is `(q_start, q_goal, grip)`; `_play` actuates the gripper only when state differs, settling `GRIP_PREDELAY_S` first (real gripper only on an executed play, viz tweens either way).
+- **Save/Load:** `trajectories/<name>.json` = `{robot, created, waypoints}`. Load clears + repopulates the waypoint list and frames; then Plan to replay. (Tracked, not gitignored — they sync across machines via the repo.)
+- **GoFa software free-drive:** the **"Free-drive (lead-through)"** checkbox flips a `lead_go` flag over RWS; `PyEgm.mod` calls `SetLeadThrough \On` and holds the arm compliant until you untick (`SetLeadThrough \Off`). Mutually exclusive with Plan/Play/Live; Stop/untick release it; the controller auto-clears on motors-off. The **physical lead-through button** still works too. Capture reads the hand-moved joints via RWS polling. No gripper actions. **Requires re-running `install_gofa_egm.py`** to push the updated supervisor (see PyEgm.mod lead-through caveats).
 
 ## Headless replay — `play_trajectory.py`
-
-Replay a saved trajectory on either arm without viser:
 
 ```bash
 ./robot_control/bin/python scripts/play_trajectory.py <name> [more names...] [--speed S] [--dry-run] [--no-confirm]
 ```
 
-Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, and executes on the real arm after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits without touching hardware. It is **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. The first segment moves the arm from its current pose to waypoint 1 (same as viser). The UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). The GoFa path imports pyroki for forward kinematics **only** to enforce the `MAX_TCP_SPEED` collaborative cap, then streams over the existing EGM supervisor (PyEgm must be parked at `WaitUntil egm_go`). The profile + connection constants come from `robot_common.py` (`from robot_common import UR_* / GOFA_*`), so retuning a teleop script updates this one too — no manual mirroring.
+Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, executes after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits. **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. First segment moves from the current pose to waypoint 1. UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). GoFa path imports pyroki for FK **only** to enforce the `MAX_TCP_SPEED` cap, then streams over the existing EGM supervisor (PyEgm parked at `WaitUntil egm_go`). Profile + connection constants come from `robot_common.py`, so retuning a teleop script updates this one too.
 
-**Chaining.** Pass several names (`play_trajectory.py a b c`) to play them back-to-back as **one continuous motion**: their waypoint lists are concatenated, so each seam (one trajectory's last waypoint → the next's first) is just another move segment, and the gripper state carries across it. The whole chain shares one confirm, one Hand-E calibration **at the start** (no recalibration between trajectories — calibration is the slow part), and one final settle. All chained trajectories must target the same robot (mixing UR15 + GoFa aborts). Implementation is purely in `main()` — it builds a synthetic combined `{robot, waypoints}` and hands it to the unchanged single-trajectory player.
+**Chaining.** Pass several names to play them back-to-back as **one continuous motion**: waypoint lists are concatenated, so each seam is just another move segment and gripper state carries across. One confirm, one Hand-E calibration at the start (the slow part), one final settle. All chained trajectories must target the same robot (mixing UR15 + GoFa aborts). Implemented purely in `main()` — builds a synthetic combined `{robot, waypoints}` for the unchanged single-trajectory player.
 
 ## Headless recording — `teleop.py`
 
-Record a trajectory by hand-guiding the arm, no viser — the record-side counterpart to `play_trajectory.py`. Output is the **same `trajectories/<name>.json` format**, so it replays unchanged.
+The record-side counterpart to `play_trajectory.py`; same `trajectories/<name>.json` format, replays unchanged.
 
 ```bash
 ./robot_control/bin/python scripts/teleop.py [name] [--robot ur|gofa]
 ```
 
-Missing `name`/`--robot` are prompted for (name first, then `[1] UR / [2] GoFa`). The robot connects once and is reused for the whole session. Then the arm enters free-drive (UR `teachMode()`; GoFa `lead_go=TRUE` → `SetLeadThrough`) and a **raw-keypress loop** runs:
+Missing `name`/`--robot` are prompted for. The robot connects once and is reused for the session. The arm enters free-drive (UR `teachMode()`; GoFa `lead_go=TRUE` → `SetLeadThrough`) and a raw-keypress loop runs:
 
 | Key | Action |
 |---|---|
 | `c` | Capture a waypoint: live joints `q` + FK grasp `pos`/`wxyz` + current gripper `grip` (UR). |
-| `o` / `p` | UR only: open / close the gripper one `GRIP_STEP` (10%), commanded live. No-op on GoFa or if the gripper is unreachable. |
-| `Enter` | End free-drive, save `trajectories/<name>.json`, then prompt for the next trajectory (same robot). 0 waypoints → nothing saved. |
+| `o` / `p` | UR only: open / close the gripper one `GRIP_STEP` (10%), live. No-op on GoFa or if unreachable. |
+| `Enter` | End free-drive, save, then prompt for the next trajectory (same robot). 0 waypoints → nothing saved. |
 | `w` | **Soft stop:** end free-drive cleanly and exit. |
-| `q` | **Hard stop:** UR → `triggerProtectiveStop()` + `stopScript`; GoFa → clear `lead_go`/`egm_go` + `stop_program()` (no software motors-off over RWS, so this halts RAPID + drops lead-through rather than cutting motor power — recover via PP-to-Main + Play or re-running the installer). Then exit. |
+| `q` | **Hard stop:** UR → `triggerProtectiveStop()` + `stopScript`; GoFa → clear `lead_go`/`egm_go` + `stop_program()` (halts RAPID + drops lead-through, no software motors-off over RWS — recover via PP-to-Main + Play or re-running the installer). Then exit. |
 
-While recording, a **live terminal dashboard** redraws in place at `DASH_HZ` (10 Hz): grasp pose (XYZ mm + RPY deg), the six joint angles (deg), gripper %, and the captured-waypoint count, plus a status line for the last action. It's a single `key_loop` that polls `stdin` non-blocking via `select` each tick (no arrow-key escape sequences — that earlier `ESC [` parsing was dropped, which is why stop is `w` not `Esc`); cursor-up + clear-to-EOL keeps it flicker-free, and the cursor is hidden during the loop.
-
-A **blank name + Enter** at the name prompt exits. Implementation notes: terminal uses `tty.setcbreak` (raw mode only during the key loop; prompts run cooked), restored on every exit path. FK reuses the jaxlie + pyroki path (UR multiplies by `TOOL0_T_GRASP`; GoFa uses `tool0`), warmed at startup. Two backend classes (`URBackend`, `GoFaBackend`) sit behind one recording loop; config constants and the trajectory read/write come from `robot_common.py` (`from robot_common import …`, `rc.save_trajectory`). `q`-carrying waypoints replay exactly in `play_trajectory.py` (no IK), which is why recording stores joints directly. GoFa software lead-through carries the same caveats as `teleop_gofa_egm.py` (needs the EGM supervisor installed/parked; verify `SetLeadThrough` engages in your mode). Design spec: `docs/superpowers/specs/2026-06-04-cli-trajectory-recorder-design.md`.
+A live terminal dashboard redraws in place at `DASH_HZ` (10 Hz): grasp pose (XYZ mm + RPY deg), six joint angles, gripper %, waypoint count, last-action status. Single `key_loop` polling `stdin` non-blocking via `select` (no arrow-key escapes — hence stop is `w` not `Esc`); cursor-up + clear-to-EOL keeps it flicker-free. Blank name + Enter exits. Terminal uses `tty.setcbreak` (raw only during the key loop; prompts run cooked), restored on every exit path. FK reuses the jaxlie + pyroki path (UR × `TOOL0_T_GRASP`; GoFa uses `tool0`), warmed at startup. Two backends (`URBackend`, `GoFaBackend`) behind one loop. GoFa lead-through carries the same caveats as `teleop_gofa_egm.py`. Design spec: `docs/superpowers/specs/2026-06-04-cli-trajectory-recorder-design.md`.
 
 ---
 
@@ -227,11 +197,11 @@ A **blank name + Enter** at the name prompt exits. Implementation notes: termina
 
 ## Controller setup (one-time, ~20 minutes)
 
-This is more involved than the UR because ABB controllers always run a RAPID program for motion — Python doesn't talk to the motion executor directly; it pokes RAPID variables and a RAPID `WHILE TRUE` loop does the work.
+More involved than the UR because ABB controllers always run a RAPID program for motion — Python doesn't talk to the motion executor directly; it pokes RAPID variables and a RAPID `WHILE TRUE` loop does the work.
 
-### Hardware
+### Hardware — safety jumpers
 
-**1. Safety jumpers.** The OmniCore C30 ships with the safeguard chain expecting an external safety device. For a standalone benchtop GoFa, you need physical jumpers on the **X14** terminal block:
+The OmniCore C30 ships with the safeguard chain expecting an external safety device. For a standalone benchtop GoFa, physical jumpers on the **X14** terminal block:
 
 | Pair | Function | Status (lab install) |
 |---|---|---|
@@ -240,9 +210,7 @@ This is more involved than the UR because ABB controllers always run a RAPID pro
 | AS1 (pins 5–6) | Auto stop / safeguard ch 1 | **must be jumpered** |
 | AS2 (pins 7–8) | Auto stop / safeguard ch 2 | **must be jumpered** |
 
-Symptom of missing AS jumpers: Manual mode works (the pendant enabling grip switch bypasses AS), Auto mode immediately fires a "guard stop / protective stop circuit open". Look at the **specific** event log entry — if it says AS1/AS2 or "protective stop circuit", jumper them.
-
-Safety note: jumpering AS bypasses external safeguarding inputs. The GoFa's built-in cobot collision detection still protects against collisions, but **don't** run high-speed Auto motion with people in the workspace.
+Symptom of missing AS jumpers: Manual mode works (the pendant enabling grip switch bypasses AS), Auto mode immediately fires a "guard stop / protective stop circuit open". Check the **specific** event log entry — if it says AS1/AS2 or "protective stop circuit", jumper them. Safety: jumpering AS bypasses external safeguarding inputs; built-in cobot collision detection still protects, but **don't** run high-speed Auto motion with people in the workspace.
 
 ### Network
 
@@ -250,48 +218,43 @@ OmniCore C30 has three logical networks; pick one for RWS access:
 
 | Logical network | Physical port | What lives there |
 |---|---|---|
-| Private / MGMT | **MGMT** (the rightmost of the three at bottom-right) | RWS at `192.168.125.1`, FlexPendant, RobotStudio direct |
+| Private / MGMT | **MGMT** (rightmost of three at bottom-right) | RWS at `192.168.125.1`, FlexPendant, RobotStudio direct |
 | Public / WAN | **WAN** (next to MGMT) | RWS on plant subnet, IP configurable from pendant |
 | I/O Network | **LAN** + X1–X5 ETHERNET SWITCH | EtherNet/IP, Profinet, fieldbus only — **not RWS** |
 
-For lab use, the simplest path is Mac → MGMT direct via Ethernet cable, with the Mac's Ethernet interface set to a static `192.168.125.x` (anything except `.1`).
+Lab use: Mac → MGMT direct via Ethernet, Mac's interface set to a static `192.168.125.x` (anything except `.1`).
 
-⚠️ **VPN gotcha.** If your Mac is on a VPN that claims the `192.168.125.0/24` subnet (e.g., a corporate VPN), packets to the GoFa will be routed into the VPN tunnel instead of out the Ethernet cable. Symptom: connect-refused or timeouts on every port. Either disconnect the VPN while working with the GoFa, or use the WAN port on a non-conflicting subnet (e.g., `192.168.0.102` if your lab network is `192.168.0.0/24` — same subnet as the UR15).
-
-Diagnostic from Mac:
+⚠️ **VPN gotcha.** If your Mac is on a VPN claiming `192.168.125.0/24` (e.g. a corporate VPN), packets to the GoFa route into the tunnel instead of out the Ethernet cable — connect-refused/timeouts on every port. Disconnect the VPN, or use the WAN port on a non-conflicting subnet (e.g. `192.168.0.102` if your lab network is `192.168.0.0/24`).
 
 ```bash
-ping -c 2 192.168.125.1               # should reply, ~0.5 ms
-nc -zv -G 2 192.168.125.1 443         # should be "succeeded" (OmniCore is HTTPS)
-route get 192.168.125.1 | grep interface   # should be en* (Ethernet), NOT utun* (VPN)
+ping -c 2 192.168.125.1                     # should reply, ~0.5 ms
+nc -zv -G 2 192.168.125.1 443               # "succeeded" (OmniCore is HTTPS)
+route get 192.168.125.1 | grep interface    # should be en* (Ethernet), NOT utun* (VPN)
 ```
 
 ### Pendant: enter Auto mode
 
-OmniCore C30 has **no physical Auto/Manual key switch** (unlike larger ABB controllers). Mode selection is on the FlexPendant touchscreen — usually a small mode-icon in the top status bar. Tap it → Automatic → confirm. There may be a separate white motors-on button on the front of the controller cabinet that needs to be pressed once.
+OmniCore C30 has **no physical Auto/Manual key switch**. Mode is on the FlexPendant touchscreen — a small mode-icon in the top status bar → Automatic → confirm. A separate white motors-on button on the cabinet front may need one press.
 
 ### Push the EGM supervisor
 
-EGM is a **licensed** controller option — confirm it's enabled (pendant: Settings → System → installed options) before this will work.
-
-Run the installer:
+EGM is a **licensed** option — confirm it's enabled (pendant: Settings → System → installed options) first.
 
 ```bash
 ./robot_control/bin/python scripts/install_gofa_egm.py
 ```
 
 What it does:
-1. Connects to RWS over HTTPS at `ROBOT_IP` (default `192.168.125.1`).
-2. Probes controller state, opmode, exec state.
-3. Grabs RAPID mastership and stops any running program.
-4. **Unloads `MainModule`** — it ships with a `PROC main()` that collides with ours.
-5. Uploads `EGM_COMM.cfg` + `EGM_MOC.cfg` and `PyEgm.mod` to `$HOME/` on the controller.
-6. Loads `PyEgm.mod` into task `T_ROB1` and turns motors on (if off).
-7. Tries `resetpp` + `start_program` over RWS; when that fails (see [OmniCore RWS gotchas](#omnicore-rws-gotchas)) it prompts you to tap **PP to Main** + green **Play** on the pendant.
+1. Connects to RWS over HTTPS at `ROBOT_IP` (default `192.168.125.1`); probes controller state, opmode, exec state.
+2. Grabs RAPID mastership, stops any running program.
+3. **Unloads `MainModule`** — it ships with a `PROC main()` that collides with ours.
+4. Uploads `EGM_COMM.cfg` + `EGM_MOC.cfg` and `PyEgm.mod` to `$HOME/` on the controller.
+5. Loads `PyEgm.mod` into task `T_ROB1`, turns motors on if off.
+6. Tries `resetpp` + `start_program` over RWS; when that fails (see gotchas) it prompts you to tap **PP to Main** + green **Play** on the pendant.
 
-⚠️ The `.cfg` files (in `egm/`) define the EGM UDP peer (`UCdevice` → your PC). `egm/EGM_COMM.cfg` `RemoteAddress` must equal your PC's IP (default assumes `192.168.125.50`; edit it and `PC_IP` in the installer to match) and `RemotePortNumber` must equal `EGM_LOCAL_PORT` (6510) in `teleop_gofa_egm.py`. Applying the `.cfg` may need a controller restart from the pendant.
+⚠️ The `.cfg` files (in `egm/`) define the EGM UDP peer (`UCdevice` → your PC). `egm/EGM_COMM.cfg` `RemoteAddress` must equal your PC's IP (default assumes `192.168.125.50`; edit it and `PC_IP` in the installer to match) and `RemotePortNumber` must equal `EGM_LOCAL_PORT` (6510). Applying the `.cfg` may need a controller restart from the pendant.
 
-After this, `PyEgm` is parked at `WaitUntil egm_go = TRUE OR lead_go = TRUE`. Setting `egm_go = TRUE` (which `teleop_gofa_egm.py` does via RWS) makes it enter `EGMRunJoint` and follow the UDP joint stream until convergence, then clear `egm_go` and re-park. Setting `lead_go = TRUE` instead makes it call `SetLeadThrough \On` (hand-guiding) and hold until `lead_go` clears, then `SetLeadThrough \Off`.
+After this, `PyEgm` is parked at `WaitUntil egm_go = TRUE OR lead_go = TRUE`. Setting `egm_go = TRUE` (which `teleop_gofa_egm.py` does via RWS) makes it enter `EGMRunJoint` and follow the UDP joint stream until convergence, then clear `egm_go` and re-park. Setting `lead_go = TRUE` instead calls `SetLeadThrough \On` (hand-guiding) until `lead_go` clears.
 
 ### PyEgm.mod — the supervisor
 
@@ -327,30 +290,23 @@ ENDMODULE
 ```
 
 Knobs (edit in `install_gofa_egm.py`, then rerun the installer — Ctrl+C any running teleop first so mastership is free):
-
-- `\MaxSpeedDeviation := 20` — controller-side per-joint speed cap (deg/s). Backstop to the Python `MAX_TCP_SPEED` cap; raise both together if you raise speed.
-- `\LpFilter := 20` — low-pass cutoff (Hz); lower = smoother but laggier following.
+- `\MaxSpeedDeviation := 20` — controller-side per-joint speed cap (deg/s). Backstop to the Python `MAX_TCP_SPEED` cap; raise both together.
+- `\LpFilter := 20` — low-pass cutoff (Hz); lower = smoother but laggier.
 - `\CondTime := 1` — seconds of convergence before `EGMRunJoint` returns (how the session ends after the final target is held).
 
-**Lead-through (`SetLeadThrough`) caveats — verify on hardware.** `SetLeadThrough \On`/`\Off` is the RAPID hand-guiding instruction (3HAC050917-001 / RW7 3HAC065038). Two unknowns to confirm on the actual GoFa: (1) the **RW6** manual documents it as YuMi-only — RW7/OmniCore reportedly extends it to GoFa, but if the controller rejects it, the build error shows at `/rw/rapid/tasks/T_ROB1/program/builderror` (check it after the installer loads `PyEgm`); (2) whether it engages in **Auto** (EGM needs Auto) or requires Manual + the enabling device — the physical lead-through button working in your current Auto setup is a good sign. If lead-through can't run in Auto, teach in Manual and switch to Auto to replay. On failure, the physical button path is unaffected (no regression).
+**Lead-through (`SetLeadThrough`) caveats — verify on hardware.** The RAPID hand-guiding instruction (3HAC050917-001 / RW7 3HAC065038). Two unknowns to confirm on the actual GoFa: (1) **RW6** documents it as YuMi-only — RW7/OmniCore reportedly extends it to GoFa, but if the controller rejects it the build error shows at `/rw/rapid/tasks/T_ROB1/program/builderror` (check after the installer loads `PyEgm`); (2) whether it engages in **Auto** (EGM needs Auto) or requires Manual + enabling device — the physical lead-through button working in your Auto setup is a good sign. If it can't run in Auto, teach in Manual and switch to Auto to replay. On failure the physical button path is unaffected.
 
 ## Architecture of `teleop_gofa_egm.py`
 
 Same shape as `teleop_ur15.py`, with EGM in place of servoJ:
-
-- **State polling** uses `rws.get_joints()` at ~10 Hz (idle viz only). During an Execute play, the play loop drives the URDF directly from the streamed target.
-- **Execute mode** streams joint targets over EGM (UDP) at `STREAM_HZ`. The same `q` from the trapezoidal alpha profile goes to BOTH viser and the EGM stream every tick, so viz and robot move in lockstep — like UR15 servoJ. A play:
-  1. Sets `egm_go = TRUE` (via RWS) and waits for the first EGM feedback packet (controller has entered `EGMRunJoint`).
-  2. Streams targets segment by segment, holding each waypoint for a short dwell between segments.
-  3. Holds the final target for `HOLD_AFTER_PLAY_S` so RAPID's `\CondTime` convergence fires and `EGMRunJoint` exits, clearing `egm_go`.
-
-**Speed is unified and TCP-capped.** The slider scales playback, but `_cap_seg_duration()` stretches each segment so the real TCP speed never exceeds `MAX_TCP_SPEED` (measured against the URDF kinematics per segment). The slider can only scale *below* that cap.
-
-Startup safety: the script sets `egm_go = FALSE` on connect so a stray TRUE doesn't fire EGM.
+- **State polling** via `rws.get_joints()` at ~10 Hz (idle viz only). During an Execute play the loop drives the URDF from the streamed target.
+- **Execute mode** streams joint targets over EGM (UDP) at `STREAM_HZ`; the same `q` from the alpha profile goes to both viser and the stream every tick. A play: (1) sets `egm_go = TRUE` and waits for the first EGM feedback packet; (2) streams targets segment by segment with a short dwell between; (3) holds the final target for `HOLD_AFTER_PLAY_S` so RAPID's `\CondTime` convergence fires and `EGMRunJoint` exits, clearing `egm_go`.
+- **Speed is unified and TCP-capped.** `_cap_seg_duration()` stretches each segment so real TCP speed never exceeds `MAX_TCP_SPEED` (measured against URDF kinematics); the slider can only scale *below* that cap.
+- Startup safety: sets `egm_go = FALSE` on connect so a stray TRUE doesn't fire EGM.
 
 ## Tunables — `teleop_gofa_egm.py`
 
-The shared ones (`ROBOT_IP`, RWS creds, RAPID flags, EGM port, speed caps, profile knobs) live in `robot_common.py` as `GOFA_*` / unprefixed names; the script binds them to these local names. GoFa-only knobs (`LIVE_HZ`, `POLL_HZ`, …) are defined locally in `teleop_gofa_egm.py`.
+Shared ones live in `robot_common.py` (`GOFA_*` / unprefixed); GoFa-only knobs are local.
 
 | Constant | Default | Effect |
 |---|---|---|
@@ -370,54 +326,37 @@ The shared ones (`ROBOT_IP`, RWS creds, RAPID flags, EGM port, speed caps, profi
 
 ## OmniCore RWS gotchas
 
-These bit us during the GoFa bring-up. Captured here so future-us doesn't relearn them:
+These bit us during bring-up. Captured so future-us doesn't relearn them:
 
-- **HTTPS only, port 443.** Port 80 is disabled by default. Use `https=True` (the default in `abb_rws.RWSClient`). The cert is self-signed; we set `verify=False` and suppress `InsecureRequestWarning`.
-
-- **HTTP Basic auth, NOT Digest.** OmniCore RWS 2.0 advertises `WWW-Authenticate: Basic`. `abb_robot_client` (the popular Python lib) uses Digest, which is for IRC5/RW6 — it'll silently 401 against OmniCore. `abb_rws.RWSClient` uses Basic by default; pass `auth_scheme="digest"` for legacy IRC5.
-
+- **HTTPS only, port 443.** Port 80 is disabled by default. Use `https=True` (default in `abb_rws.RWSClient`). Cert is self-signed; we set `verify=False` and suppress `InsecureRequestWarning`.
+- **HTTP Basic auth, NOT Digest.** OmniCore RWS 2.0 advertises `WWW-Authenticate: Basic`. `abb_robot_client` uses Digest (for IRC5/RW6) and silently 401s against OmniCore. `abb_rws.RWSClient` uses Basic by default; pass `auth_scheme="digest"` for legacy IRC5.
 - **Every POST/PUT must have `Content-Type: application/x-www-form-urlencoded;v=2.0`** — note the `;v=2.0` suffix. Without it you get `406 Not Acceptable`. `_post()` sets this automatically.
-
-- **Mastership URL has action in the path, not the body.** OmniCore: `POST /rw/mastership/edit/request`. IRC5 was: `POST /rw/mastership/edit` body `action=request`. Many other endpoints still use action-in-body — there's no consistent convention.
-
-- **RAPID symbol data URL needs the module name in the path.** OmniCore: `POST /rw/rapid/symbol/RAPID/{task}/{module}/{var}/data` body `value=...`. IRC5 was: `POST /rw/rapid/symbol/data/RAPID/{task}/{var}?action=set`.
-
-- **Mastership orphans easily.** If a process holding mastership crashes, the controller still thinks it's held until the session times out. Symptom: subsequent `request` calls 403. Fix: reboot the controller from the pendant, or wait ~30s for session timeout. `abb_rws.RWSClient.__post_init__` registers an `atexit` hook to release on clean exit.
-
-- **`MainModule` collision.** The GoFa ships with a `MainModule.mod` that has its own `PROC main()`. RAPID won't compile two `main`s — when we load `PyEgm` the controller logs "Errors in RAPID program" event 40160. The installer unloads `MainModule` before loading `PyEgm` via `POST /rw/rapid/tasks/T_ROB1/unloadmod` body `module=MainModule`.
-
-- **Build errors are visible at `/rw/rapid/tasks/T_ROB1/program/builderror`.** Useful for diagnosing semantic errors after a module load — it returns module name, row, column, error type. Way more useful than the generic "errors in RAPID program" event log entry.
-
-- **`resetpp` (PP-to-Main) and `start_program` via RWS** — we couldn't find the right shape on OmniCore. Every variation returned 400 "semantic error" or 403. The installer falls back to telling the user to press PP-to-Main + Play on the pendant. If you crack the right URL, it would tighten the install flow.
-
-- **OmniCore C30 has no physical Auto/Manual key switch.** Mode is selected on the FlexPendant touchscreen (top status bar icon). Larger ABB controllers do have a key switch — don't assume.
+- **Mastership URL has action in the path, not the body.** OmniCore: `POST /rw/mastership/edit/request`. IRC5 was `POST /rw/mastership/edit` body `action=request`. Many other endpoints still use action-in-body — no consistent convention.
+- **RAPID symbol data URL needs the module name in the path.** OmniCore: `POST /rw/rapid/symbol/RAPID/{task}/{module}/{var}/data` body `value=...`. IRC5 was `POST /rw/rapid/symbol/data/RAPID/{task}/{var}?action=set`.
+- **Mastership orphans easily.** If a process holding mastership crashes, the controller thinks it's held until session timeout. Symptom: subsequent `request` calls 403. Fix: reboot from the pendant, or wait ~30s. `abb_rws.RWSClient.__post_init__` registers an `atexit` hook to release on clean exit.
+- **`MainModule` collision.** The GoFa ships with a `MainModule.mod` that has its own `PROC main()`. RAPID won't compile two `main`s — loading `PyEgm` logs "Errors in RAPID program" event 40160. The installer unloads it first via `POST /rw/rapid/tasks/T_ROB1/unloadmod` body `module=MainModule`.
+- **Build errors are visible at `/rw/rapid/tasks/T_ROB1/program/builderror`** — returns module name, row, column, error type. Far more useful than the generic event-log entry.
+- **`resetpp` (PP-to-Main) and `start_program` via RWS** — we couldn't find the right shape on OmniCore. Every variation returned 400 "semantic error" or 403. The installer falls back to telling the user to press PP-to-Main + Play on the pendant. Cracking the right URL would tighten the install.
+- **OmniCore C30 has no physical Auto/Manual key switch.** Mode is on the FlexPendant touchscreen (top status bar icon). Larger ABB controllers do have a key switch — don't assume.
 
 ---
 
 # Custom IK: `pyroki_snippets/_solve_ik_seeded.py`
 
-PyRoki's stock `solve_ik` snippet has no seed and no posture cost, so it returns *a* valid IK solution that often lives in a distant null-space branch (wrist flipped 180°, elbow on the wrong side, etc.). `solve_ik_seeded` adds:
-- `pk.costs.rest_cost(joint_var, q_seed, weight=rest_weight)` — pulls the solution toward `q_seed` (defaults to `rest_weight=2.0`).
-- `initial_vals=VarValues.make([joint_var.with_value(q_seed)])` — starts the optimizer at the seed instead of at zeros.
+PyRoki's stock `solve_ik` snippet has no seed and no posture cost, so it returns *a* valid IK solution often in a distant null-space branch (wrist flipped 180°, elbow on the wrong side). `solve_ik_seeded` adds:
+- `pk.costs.rest_cost(joint_var, q_seed, weight=rest_weight)` — pulls the solution toward `q_seed` (default `rest_weight=2.0`).
+- `initial_vals=VarValues.make([joint_var.with_value(q_seed)])` — starts the optimizer at the seed, not at zeros.
 
-Trade-off: at `rest_weight=2.0` the pose error is ~0.5 mm. Raise to 5–10 if the IK still picks wrong branches; the gizmo target then drifts more but stays in the same kinematic family.
-
-Used by both `teleop_ur15.py` and `teleop_gofa_egm.py`.
+Trade-off: at `rest_weight=2.0` pose error is ~0.5 mm. Raise to 5–10 if IK still picks wrong branches; the target drifts more but stays in the same kinematic family. Used by both teleop scripts.
 
 ---
 
 # Other gotchas
 
-- **Boost 1.90 breaks ur_rtde on macOS.** Boost made `Boost.System` header-only in 1.87+, so homebrew Boost 1.90 ships no `boost_system-*-Config.cmake` and ur_rtde's `find_package(boost_system CONFIG)` dies. Fix: `brew install boost@1.85` (keg-only, doesn't shadow 1.90), then build ur_rtde with `BOOST_ROOT=/opt/homebrew/opt/boost@1.85 CMAKE_PREFIX_PATH=/opt/homebrew/opt/boost@1.85 pip install ur_rtde`. Already done in `robot_control/`.
-
+- **Boost 1.90 breaks ur_rtde on macOS.** Boost made `Boost.System` header-only in 1.87+, so homebrew Boost 1.90 ships no `boost_system-*-Config.cmake` and ur_rtde's `find_package(boost_system CONFIG)` dies. Fix: `brew install boost@1.85` (keg-only, doesn't shadow 1.90), then `BOOST_ROOT=/opt/homebrew/opt/boost@1.85 CMAKE_PREFIX_PATH=/opt/homebrew/opt/boost@1.85 pip install ur_rtde`. Already done in `robot_control/`.
 - **`pip install pyroki` doesn't exist.** Install from source: `git clone https://github.com/chungmin99/pyroki.git pyroki_src && ./robot_control/bin/pip install -e ./pyroki_src`. Already done.
-
-- **PyRoki's `solve_ik` lives in `examples/pyroki_snippets/`, not the package itself.** It's NOT installed by `pip install -e .`. Workaround: the `pyroki_snippets/` directory in the project root is a copy of `pyroki_src/examples/pyroki_snippets/` plus our `_solve_ik_seeded.py`, and every `scripts/` script's bootstrap adds the repo root (and `lib/`) to `sys.path` so `import pyroki_snippets` works.
-
-- **First IK call takes ~800 ms (JAX JIT compile); subsequent calls are milliseconds.** Both teleop scripts call `_warmup_ik()` at launch (a no-op IK at the current pose) to pay this cost during startup instead of on the first Plan click — so launch prints "Warming up IK solver…" and takes ~800 ms longer, but the first real Plan is fast.
-
+- **PyRoki's `solve_ik` lives in `examples/pyroki_snippets/`, not the package** — NOT installed by `pip install -e .`. The `pyroki_snippets/` dir in the project root is a copy of `pyroki_src/examples/pyroki_snippets/` plus our `_solve_ik_seeded.py`; every script's bootstrap adds the repo root to `sys.path` so `import pyroki_snippets` works.
+- **First IK call takes ~800 ms (JAX JIT compile); subsequent calls are ms.** Both teleop scripts call `_warmup_ik()` at launch (a no-op IK at the current pose) to pay this during startup instead of on the first Plan click.
 - **UR15 model is brand new.** It postdates a lot of training data — if Claude says "there's no UR15", point at https://www.universal-robots.com/products/ur15/. The official ROS2 description repo supports `ur_type:=ur15`.
-
-- **yourdfpy + `file://` URIs.** When `xacrodoc` processes a xacro to URDF, it resolves `package://` URIs into absolute `file://...` paths. yourdfpy's `filename_handler` callback only fires for unresolved URIs (`package://`, plain paths) — `file://` is passed straight to trimesh which can't open them. Fix: strip `file://` prefix from the URDF after xacro processing. The GoFa URDF was generated this way.
-
-- **ABB `abb-robot-client` (Python) only supports IRC5.** Despite being the most-starred ABB python lib, it doesn't work on OmniCore. We wrote `abb_rws.py` ourselves; see [OmniCore RWS gotchas](#omnicore-rws-gotchas).
+- **yourdfpy + `file://` URIs.** When `xacrodoc` processes a xacro to URDF, it resolves `package://` into absolute `file://...` paths. yourdfpy's `filename_handler` only fires for unresolved URIs (`package://`, plain paths) — `file://` is passed straight to trimesh, which can't open it. Fix: strip the `file://` prefix from the URDF after xacro processing. Both local URDFs are generated this way.
+- **ABB `abb-robot-client` (Python) only supports IRC5.** Despite being the most-starred ABB python lib, it doesn't work on OmniCore. We wrote `abb_rws.py` ourselves; see the OmniCore RWS gotchas.
