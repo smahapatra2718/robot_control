@@ -74,10 +74,43 @@ def test_ur_move():
     print("PASS test_ur_move")
 
 
+def test_ur_play_gripper():
+    robot_sim.install("ur15")
+    from control import make_controller
+    c = make_controller("ur15")
+    c.connect()
+    try:
+        cid = c.play("_sample_ur15", speed=5.0)
+        assert c.wait(cid, timeout=40.0) == "done", "play did not complete"
+        import robot_common as rc
+        wps = rc.load_trajectory("_sample_ur15")["waypoints"]
+        q_final = wps[-1]["q"]
+        st = c.get_state()
+        assert max(abs(a - b) for a, b in zip(st.q, q_final)) < 1e-6, "play did not reach final waypoint"
+        # the play's gripper-on-change should leave the tracked grip at the final waypoint's grip
+        expected_grip = rc.norm_grip(wps[-1].get("grip"))
+        if expected_grip is not None:
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline and abs(c.get_state().gripper_frac - expected_grip) > 1e-9:
+                time.sleep(0.02)
+            assert abs(c.get_state().gripper_frac - expected_grip) < 1e-9, "play did not leave gripper at final grip"
+        gid = c.set_gripper(0.5)
+        assert c.wait(gid, timeout=10.0) == "done"
+        # state is eventually-consistent at POLL_HZ — let the poll thread catch up
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and abs(c.get_state().gripper_frac - 0.5) > 1e-9:
+            time.sleep(0.02)
+        assert abs(c.get_state().gripper_frac - 0.5) < 1e-9, "set_gripper did not update state"
+    finally:
+        c.close()
+    print("PASS test_ur_play_gripper")
+
+
 def main():
     test_state_dataclass()
     test_ur_connect_state()
     test_ur_move()
+    test_ur_play_gripper()
     print("ALL CONTROL SMOKE TESTS PASSED")
 
 

@@ -22,6 +22,8 @@ _UR_SAFETY_MODES = {
     8: "VIOLATION", 9: "FAULT", 10: "VALIDATE_JOINT_ID", 11: "UNDEFINED",
 }
 
+_GRIPPER_MOVE_S = 0.8   # empirical Hand-E finger-travel settle after a move command
+
 
 class URController(RobotController):
     robot_name = "ur15"
@@ -55,12 +57,16 @@ class URController(RobotController):
         try:
             self._gripper = hande_gripper.HandEGripper(rc.UR_ROBOT_IP, hande_gripper.DEFAULT_PORT)
             self._gripper.connect()
-            self._gripper.activate()
+            # Force a clean ACT 0->1 calibration so grip actions act on a calibrated
+            # gripper (matches the headless player's bring-up).
+            self._gripper.reset(timeout=5.0)
+            self._gripper.activate(timeout=20.0)
             self._gripper.open()
+            self._gripper.wait_until_idle(timeout=10.0)
             self._grip_frac = 0.0
         except Exception as e:
             self._gripper = None
-            print(f"Hand-E unavailable ({e}); viz/move only.")
+            print(f"Hand-E unavailable ({e}); move-only.")
 
     def _close(self) -> None:
         for fn in (lambda: self._c.servoStop(rc.UR_SERVO_STOP_DECEL),
@@ -101,6 +107,14 @@ class URController(RobotController):
     def _gripper_frac(self):
         return self._grip_frac
 
+    def _gripper_blocking(self, frac, progress_cb) -> None:
+        frac = max(0.0, min(1.0, float(frac)))
+        if self._gripper is not None:
+            self._gripper.move(frac)
+            time.sleep(_GRIPPER_MOVE_S)   # let the fingers move
+        self._grip_frac = frac
+        progress_cb(1.0)
+
     # ---- stops ----
     def _graceful_stop(self) -> None:
         try:
@@ -118,6 +132,7 @@ class URController(RobotController):
     def _run_play(self, segments, speed, progress_cb) -> None:
         dt = 1.0 / rc.UR_STREAM_HZ
         n = len(segments)
+        cur_grip = self._grip_frac
         for seg_idx, (q_start, q_goal, _grip) in enumerate(segments):
             if self._cmd_stop.is_set():
                 break
@@ -131,6 +146,18 @@ class URController(RobotController):
                 self._c.servoJ(q.tolist(), 0.0, 0.0, dt, rc.UR_SERVO_LOOKAHEAD, rc.UR_SERVO_GAIN)
                 time.sleep(dt)
                 alpha = min(1.0, alpha + dt * speed / seg_dur)
+            grip = segments[seg_idx][2]
+            if not self._cmd_stop.is_set() and grip is not None and abs(grip - cur_grip) > rc.GRIP_EPS:
+                for _ in range(int(rc.GRIP_PREDELAY_S * rc.UR_STREAM_HZ)):   # settle before actuating
+                    if self._cmd_stop.is_set():
+                        break
+                    self._c.servoJ(q_goal.tolist(), 0.0, 0.0, dt, rc.UR_SERVO_LOOKAHEAD, rc.UR_SERVO_GAIN)
+                    time.sleep(dt)
+                if self._gripper is not None:
+                    self._gripper.move(grip)
+                    time.sleep(_GRIPPER_MOVE_S)   # let the fingers move
+                self._grip_frac = grip
+                cur_grip = grip
             if not self._cmd_stop.is_set() and seg_idx < n - 1:
                 hold = max(0.0, rc.DWELL_S / max(0.1, speed))
                 for _ in range(int(hold * rc.UR_STREAM_HZ)):
