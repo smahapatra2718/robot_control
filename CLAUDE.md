@@ -38,7 +38,8 @@ abb_foga/
 │   ├── egm_pb2.py / egm.proto  #   EGM protobuf bindings + the schema they're generated from
 │   ├── hande_gripper.py        #   minimal Hand-E URCap-socket client
 │   ├── robot_sim.py            #   offline sim: SimWorld + fake transports + install() (sys.modules shim)
-│   └── dispatch.py             #   shared target->script map + dispatch() for real.py / sim.py
+│   ├── dispatch.py             #   shared target->script map + dispatch() for real.py / sim.py
+│   └── control/                #   RobotController core (state.py, base.py, ur.py, gofa.py) — one motion impl
 │
 │   # ── assets ──
 ├── urdf/                       # generated robot models (crb15000_5_95.urdf, hande.urdf)
@@ -109,6 +110,25 @@ waypoint**, **Live**, or **Plan**. The headless `teleop.py` recorder runs (UI,
 keys, save all work) but captured points stay at the home pose — a plumbing test,
 not realistic authoring. Home poses (`UR_HOME` / `GOFA_HOME` / `NEUTRAL_HOME`)
 are tunable constants in `lib/robot_sim.py`.
+
+## RobotController core — `lib/control/`
+
+One thread-safe motion implementation behind every surface. `make_controller("ur15"|"gofa")`
+returns a controller that owns the hardware client and exposes async high-level commands —
+`move_to_joints` / `move_to_pose` / `play` / `set_gripper` / `stop` / `estop` (each returns a
+command id; `wait(id)` blocks for the result) — plus `get_state() -> RobotState` (joints, FK
+pose, gripper, safety, activity) from a background state-poll thread, and `grasp_pose` /
+`start_freedrive` / `stop_freedrive` / `adjust_grip` for the recorder. The headless players
+(`play_trajectory.py`, `teleop.py`) run on it; the viser teleops and the remote API are next.
+Because it uses the same hardware clients the sim fakes shadow, the whole core runs offline —
+`./robot_control/bin/python scripts/control_smoketest.py` exercises it (move/play/stop/gripper/
+state/free-drive) against `lib/robot_sim.py` with no robot.
+
+Subclasses (`URController`, `GoFaController`) implement the hardware primitives (`_read_q`,
+`_servo`-style `_run_play`, `_ik`, `_graceful_stop`/`_hard_stop`, …); the base owns the command
+executor (one motion at a time; a submit while busy raises `Busy`; `stop`/`estop` preempt), the
+state loop, and segment building. The motion loops are lifted verbatim from the tuned teleop
+scripts, so behavior is identical.
 
 # UR15
 
