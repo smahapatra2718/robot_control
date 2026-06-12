@@ -25,7 +25,7 @@ The `robot_control/` virtualenv is **not** committed (655M, machine-specific). R
 ```bash
 python3.13 -m venv robot_control
 ./robot_control/bin/pip install numpy viser yourdfpy jaxlie jax jaxlib \
-    robot_descriptions xacrodoc requests urllib3
+    robot_descriptions xacrodoc requests urllib3 fastapi "uvicorn[standard]"
 
 # pyroki — install from the vendored source (no PyPI package exists)
 ./robot_control/bin/pip install -e ./pyroki_src
