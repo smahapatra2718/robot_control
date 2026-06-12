@@ -11,6 +11,7 @@ latest RobotState fresh for get_state() and (later) telemetry.
 """
 from __future__ import annotations
 
+import collections
 import copy
 import itertools
 import threading
@@ -35,6 +36,7 @@ class RobotController:
     robot_name: str = "?"
     NUM_JOINTS: int = 6
     POLL_HZ: float = 30.0
+    _CMD_HISTORY_MAX: int = 64
 
     def __init__(self) -> None:
         self._lock = threading.Lock()            # guards _state
@@ -43,6 +45,7 @@ class RobotController:
         self._cmd_stop = threading.Event()       # preempts the active command (stop/estop)
         self._cmd_lock = threading.Lock()        # guards _active + command start
         self._active: dict | None = None         # {"id","kind","status","progress","error"}
+        self._cmd_history: "collections.OrderedDict[int, dict]" = collections.OrderedDict()
         self._cmd_counter = itertools.count(1)
         self._state_thread: threading.Thread | None = None
         self._cmd_thread: threading.Thread | None = None
@@ -139,6 +142,9 @@ class RobotController:
                 self._active["error"] = err
                 if status == "done":
                     self._active["progress"] = 1.0
+                self._cmd_history[cid] = dict(self._active)
+                while len(self._cmd_history) > self._CMD_HISTORY_MAX:
+                    self._cmd_history.popitem(last=False)
 
     def _progress_cb(self, cid: int):
         def cb(frac: float) -> None:
@@ -151,19 +157,22 @@ class RobotController:
         with self._cmd_lock:
             if self._active is not None and self._active["id"] == cid:
                 return dict(self._active)
+            if cid in self._cmd_history:
+                return dict(self._cmd_history[cid])
         return None
 
     def wait(self, cid: int, timeout: float = 30.0) -> str:
         """Block until command `cid` reaches a terminal status; returns the status
-        ("done"/"failed"/"stopped"), "timeout", or "gone" if the command is no longer
-        tracked (only the most recent command is retained, so a newer command having
-        started means `cid` already finished — its terminal status is no longer known)."""
+        ("done"/"failed"/"stopped"), "timeout", or "gone" if `cid` was never issued or
+        has been evicted from the bounded command history (_CMD_HISTORY_MAX deep)."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self._cmd_lock:
                 a = self._active
                 if a is not None and a["id"] == cid and a["status"] != "running":
                     return a["status"]
+                if cid in self._cmd_history:
+                    return self._cmd_history[cid]["status"]
                 if a is None or a["id"] > cid:
                     return "gone"
             time.sleep(0.02)

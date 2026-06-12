@@ -169,6 +169,25 @@ def test_controller_freedrive_grasp():
     print("PASS test_controller_freedrive_grasp")
 
 
+def test_command_history():
+    robot_sim.install("ur15")
+    from control import make_controller
+    c = make_controller("ur15")
+    c.connect()
+    try:
+        cid1 = c.move_to_joints([0.0, -1.4, 1.4, -1.4, -1.4, 0.1], speed=5.0)
+        assert c.wait(cid1, timeout=20.0) == "done"
+        cid2 = c.move_to_joints(robot_sim.UR_HOME, speed=5.0)
+        assert c.wait(cid2, timeout=20.0) == "done"
+        # cid1 finished and was superseded by cid2 — its result must still be queryable
+        st1 = c.command_status(cid1)
+        assert st1 is not None and st1["status"] == "done", "command history not retained"
+        assert c.wait(cid1, timeout=1.0) == "done", "wait() should resolve a retained finished command"
+    finally:
+        c.close()
+    print("PASS test_command_history")
+
+
 def main():
     test_state_dataclass()
     test_ur_connect_state()
@@ -177,6 +196,7 @@ def main():
     test_gofa_connect_state()
     test_gofa_move_play()
     test_controller_freedrive_grasp()
+    test_command_history()
     print("ALL CONTROL SMOKE TESTS PASSED")
 
 
