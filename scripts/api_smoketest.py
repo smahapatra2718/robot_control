@@ -54,8 +54,36 @@ def test_state_and_auth():
     print("PASS test_state_and_auth")
 
 
+def test_lease():
+    client, c = _client("ur15")
+    try:
+        r = client.post("/control/acquire", headers=_auth())
+        assert r.status_code == 200, r.text
+        lease_token = r.json()["lease_token"]
+        assert lease_token
+        # second acquire without force -> 409
+        assert client.post("/control/acquire", headers=_auth()).status_code == 409
+        # force acquire -> new token
+        r2 = client.post("/control/acquire", headers=_auth(), json={"force": True})
+        assert r2.status_code == 200 and r2.json()["lease_token"] != lease_token
+        # force-steal invalidated the original token: releasing with it -> 423
+        assert client.post("/control/release",
+                           headers={**_auth(), "X-Lease": lease_token}).status_code == 423
+        # release with no X-Lease header -> 423
+        assert client.post("/control/release", headers=_auth()).status_code == 423
+        # release with the (new) lease
+        rel = client.post("/control/release", headers={**_auth(), "X-Lease": r2.json()["lease_token"]})
+        assert rel.status_code == 200
+        # after release, acquire works again
+        assert client.post("/control/acquire", headers=_auth()).status_code == 200
+    finally:
+        c.close()
+    print("PASS test_lease")
+
+
 def main():
     test_state_and_auth()
+    test_lease()
     print("ALL API SMOKE TESTS PASSED")
 
 
