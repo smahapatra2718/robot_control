@@ -81,9 +81,76 @@ def test_lease():
     print("PASS test_lease")
 
 
+def _poll_command(client, cid, timeout=20.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        r = client.get(f"/command/{cid}", headers=_auth())
+        assert r.status_code == 200, r.text
+        st = r.json()
+        if st["status"] != "running":
+            return st["status"]
+        time.sleep(0.05)
+    return "timeout"
+
+
+def test_commands():
+    client, c = _client("ur15")
+    try:
+        lease = client.post("/control/acquire", headers=_auth()).json()["lease_token"]
+        h = {**_auth(), "X-Lease": lease}
+        # move without lease header -> 423
+        assert client.post("/move/joints", headers=_auth(),
+                           json={"q": robot_sim.UR_HOME, "speed": 5.0}).status_code == 423
+        # malformed q (wrong length) -> 422 (must not reach servoJ)
+        assert client.post("/move/joints", headers=h,
+                           json={"q": [0.0, 1.0, 2.0], "speed": 1.0}).status_code == 422
+        # move with lease -> 202 + command_id, completes, state reaches target
+        target = [0.0, -1.4, 1.4, -1.4, -1.4, 0.2]
+        r = client.post("/move/joints", headers=h, json={"q": target, "speed": 5.0})
+        assert r.status_code == 202, r.text
+        cid = r.json()["command_id"]
+        assert _poll_command(client, cid) == "done"
+        st = client.get("/state", headers=_auth()).json()
+        assert max(abs(a - b) for a, b in zip(st["q"], target)) < 1e-6
+        # play by name -> done
+        rp = client.post("/play", headers=h, json={"name": "_sample_ur15", "speed": 5.0})
+        assert rp.status_code == 202
+        assert _poll_command(client, rp.json()["command_id"]) == "done"
+        # gripper -> done
+        rg = client.post("/gripper", headers=h, json={"frac": 0.5})
+        assert rg.status_code == 202
+        assert _poll_command(client, rg.json()["command_id"]) == "done"
+        # stop (no lease needed) returns 200
+        assert client.post("/stop", headers=_auth()).status_code == 200
+        # unknown command id -> 404
+        assert client.get("/command/999999", headers=_auth()).status_code == 404
+    finally:
+        c.close()
+    print("PASS test_commands")
+
+
+def test_gofa_no_gripper():
+    client, c = _client("gofa")
+    try:
+        lease = client.post("/control/acquire", headers=_auth()).json()["lease_token"]
+        h = {**_auth(), "X-Lease": lease}
+        # GoFa has no gripper -> 400
+        assert client.post("/gripper", headers=h, json={"frac": 0.5}).status_code == 400
+        # but a move works
+        r = client.post("/move/joints", headers=h,
+                        json={"q": [0.0, 0.1, 0.0, 0.0, 1.5708, 0.0], "speed": 5.0})
+        assert r.status_code == 202
+        assert _poll_command(client, r.json()["command_id"]) == "done"
+    finally:
+        c.close()
+    print("PASS test_gofa_no_gripper")
+
+
 def main():
     test_state_and_auth()
     test_lease()
+    test_commands()
+    test_gofa_no_gripper()
     print("ALL API SMOKE TESTS PASSED")
 
 

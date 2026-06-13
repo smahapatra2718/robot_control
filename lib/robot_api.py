@@ -8,6 +8,7 @@ owner; this module only adapts it to HTTP/WS.
 from __future__ import annotations
 
 import asyncio
+import math
 import secrets
 import threading
 import time
@@ -69,5 +70,78 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
             check_lease(x_lease)
             lease["token"] = None
         return {"released": True}
+
+    def _submit(fn):
+        try:
+            return {"command_id": fn()}
+        except Busy as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+    def _check_vec(name: str, v, n: int) -> None:
+        if not isinstance(v, list) or len(v) != n:
+            raise HTTPException(status_code=422, detail=f"{name} must be a list of {n} numbers")
+        if any(not isinstance(x, (int, float)) or math.isnan(x) or math.isinf(x) for x in v):
+            raise HTTPException(status_code=422, detail=f"{name} has non-finite or non-numeric values")
+
+    @app.post("/move/joints", status_code=202)
+    def move_joints(authorization: str = Header(None), x_lease: str = Header(None),
+                    q: list = Body(...), speed: float = Body(1.0)):
+        check_auth(authorization)
+        _check_vec("q", q, controller.NUM_JOINTS)
+        with _lease_lock:                       # validate lease + submit atomically (vs force-steal)
+            check_lease(x_lease)
+            return _submit(lambda: controller.move_to_joints(q, speed))
+
+    @app.post("/move/pose", status_code=202)
+    def move_pose(authorization: str = Header(None), x_lease: str = Header(None),
+                  pos: list = Body(...), wxyz: list = Body(...), speed: float = Body(1.0)):
+        check_auth(authorization)
+        _check_vec("pos", pos, 3)
+        _check_vec("wxyz", wxyz, 4)
+        with _lease_lock:
+            check_lease(x_lease)
+            return _submit(lambda: controller.move_to_pose(pos, wxyz, speed))
+
+    @app.post("/play", status_code=202)
+    def play(authorization: str = Header(None), x_lease: str = Header(None),
+             name: str = Body(None), waypoints: list = Body(None), speed: float = Body(1.0)):
+        check_auth(authorization)
+        target = name if name is not None else waypoints
+        if target is None:
+            raise HTTPException(status_code=400, detail="provide 'name' or 'waypoints'")
+        with _lease_lock:
+            check_lease(x_lease)
+            return _submit(lambda: controller.play(target, speed))
+
+    @app.post("/gripper", status_code=202)
+    def gripper(authorization: str = Header(None), x_lease: str = Header(None),
+                frac: float = Body(..., embed=True)):
+        check_auth(authorization)
+        # gripper capability is static (None for GoFa, never changes) — safe to check outside the lock
+        if controller.get_state().gripper_frac is None:
+            raise HTTPException(status_code=400, detail="this robot has no gripper")
+        with _lease_lock:
+            check_lease(x_lease)
+            return _submit(lambda: controller.set_gripper(frac))
+
+    @app.get("/command/{cid}")
+    def command(cid: int, authorization: str = Header(None)):
+        check_auth(authorization)
+        st = controller.command_status(cid)
+        if st is None:
+            raise HTTPException(status_code=404, detail="unknown command id")
+        return st
+
+    @app.post("/stop")
+    def stop(authorization: str = Header(None)):
+        check_auth(authorization)
+        controller.stop()
+        return {"stopped": True}
+
+    @app.post("/estop")
+    def estop(authorization: str = Header(None)):
+        check_auth(authorization)
+        controller.estop()
+        return {"estopped": True}
 
     return app
