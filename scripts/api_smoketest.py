@@ -201,6 +201,91 @@ def test_watchdog():
     print("PASS test_watchdog")
 
 
+def test_e2e_subprocess():
+    import signal
+    import socket
+    import subprocess
+    import httpx
+
+    port = 18021
+    # Kill any stray server left from a previous failed run on this port.
+    subprocess.run(
+        ["bash", "-c", f"lsof -ti:{port} | xargs kill -9 2>/dev/null; true"],
+        check=False, capture_output=True,
+    )
+    env = dict(os.environ, ROBOT_API_TOKEN=TOKEN)
+    proc = subprocess.Popen(
+        [os.path.join(_ROOT, "robot_control", "bin", "python"),
+         os.path.join(_ROOT, "scripts", "sim.py"), "api", "ur15", "--port", str(port)],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=_ROOT,
+    )
+    try:
+        # Wait until OUR subprocess's port is ready — poll the process to detect early exit,
+        # and verify the listening socket belongs to our PID (not a stale server).
+        deadline = time.monotonic() + 60.0
+        up = False
+        while time.monotonic() < deadline:
+            ret = proc.poll()
+            if ret is not None:
+                out = proc.stdout.read().decode(errors="replace")
+                raise RuntimeError(f"Server exited early (rc={ret}):\n{out}")
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                    up = True
+                    break
+            except OSError:
+                time.sleep(0.5)
+        if not up:
+            out = proc.stdout.read().decode(errors="replace")
+            raise AssertionError(f"API server did not come up within 60s. Output:\n{out}")
+        base = f"http://127.0.0.1:{port}"
+        auth = {"Authorization": f"Bearer {TOKEN}"}
+        with httpx.Client(base_url=base, timeout=10.0) as cl:
+            # Retry until the app returns a real HTTP response. Uvicorn may accept TCP
+            # connections before the ASGI app is fully initialized (while JAX/pyroki
+            # finish loading), causing connection resets for a few seconds.
+            http_deadline = time.monotonic() + 30.0
+            while True:
+                ret = proc.poll()
+                if ret is not None:
+                    out = proc.stdout.read().decode(errors="replace")
+                    raise RuntimeError(f"Server exited during HTTP wait (rc={ret}):\n{out}")
+                try:
+                    r = cl.get("/state")
+                    assert r.status_code == 401
+                    break
+                except (httpx.ReadError, httpx.ConnectError):
+                    if time.monotonic() >= http_deadline:
+                        out = proc.stdout.read().decode(errors="replace")
+                        raise AssertionError(
+                            f"Server did not serve HTTP within 30s. Output:\n{out}"
+                        )
+                    time.sleep(0.5)
+            assert cl.get("/state", headers=auth).json()["robot"] == "ur15"
+            lease = cl.post("/control/acquire", headers=auth).json()["lease_token"]
+            h = {**auth, "X-Lease": lease}
+            target = [0.0, -1.4, 1.4, -1.4, -1.4, 0.2]
+            cid = cl.post("/move/joints", headers=h,
+                          json={"q": target, "speed": 5.0}).json()["command_id"]
+            deadline = time.monotonic() + 20.0
+            status = "running"
+            while time.monotonic() < deadline:
+                status = cl.get(f"/command/{cid}", headers=auth).json()["status"]
+                if status != "running":
+                    break
+                time.sleep(0.1)
+            assert status == "done", f"e2e move status {status}"
+            st = cl.get("/state", headers=auth).json()
+            assert max(abs(a - b) for a, b in zip(st["q"], target)) < 1e-6
+    finally:
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    print("PASS test_e2e_subprocess")
+
+
 def main():
     test_state_and_auth()
     test_lease()
@@ -209,6 +294,7 @@ def main():
     test_telemetry_ws()
     test_telemetry_auth()
     test_watchdog()
+    test_e2e_subprocess()
     print("ALL API SMOKE TESTS PASSED")
 
 
