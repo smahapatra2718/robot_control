@@ -254,7 +254,7 @@ def test_e2e_subprocess():
                     r = cl.get("/state")
                     assert r.status_code == 401
                     break
-                except (httpx.ReadError, httpx.ConnectError):
+                except (httpx.ReadError, httpx.ConnectError, httpx.RemoteProtocolError):
                     if time.monotonic() >= http_deadline:
                         out = proc.stdout.read().decode(errors="replace")
                         raise AssertionError(
@@ -283,6 +283,8 @@ def test_e2e_subprocess():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait()          # reap so it doesn't linger as a zombie
+        proc.stdout.close()      # release the pipe FD
     print("PASS test_e2e_subprocess")
 
 
