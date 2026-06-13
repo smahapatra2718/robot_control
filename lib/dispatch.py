@@ -18,6 +18,7 @@ TARGETS = {
     "gofa": "teleop_gofa_egm.py",
     "play": "play_trajectory.py",
     "teleop": "teleop.py",
+    "api": "api_server.py",
 }
 
 
