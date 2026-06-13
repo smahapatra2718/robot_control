@@ -147,8 +147,9 @@ direct cable, set it — or make it required). All endpoints need `Authorization
   the current motion first).
 - `POST /move/joints` | `/move/pose` | `/play` | `/gripper` — **async**: validate + submit
   under the lease, return `202 {command_id}`. Poll `GET /command/{id}` or watch `WS /telemetry`
-  for completion. Joint/pose vectors are shape+finiteness checked (422 on a bad vector, so a
-  malformed `q` never reaches servoJ). `/gripper` 400s on a gripper-less arm (GoFa).
+  for completion. Joint/pose vectors are shape+finiteness checked and `speed` is capped to
+  `(0, 1.0]` (422 on a bad vector/speed, so a malformed `q` never reaches servoJ and the API
+  can't exceed `MAX_JOINT_SPEED`). `/gripper` 400s on a gripper-less arm (GoFa).
 - `POST /stop` | `/estop` — any authed client (no lease needed); the always-open safety path.
 - `WS /telemetry?token=…&lease=…` — streams `RobotState` at `telem_hz`; an open lease-matched
   WS is the **heartbeat**. If the lease holder goes silent while a motion is active, a watchdog
