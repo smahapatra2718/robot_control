@@ -144,4 +144,35 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
         controller.estop()
         return {"estopped": True}
 
+    @app.websocket("/telemetry")
+    async def telemetry(ws: WebSocket):
+        if token and ws.query_params.get("token") != token:
+            await ws.close(code=1008)
+            return
+        await ws.accept()
+        ws_lease = ws.query_params.get("lease")
+        try:
+            while True:
+                # an open WS from the lease holder is the heartbeat
+                if ws_lease and ws_lease == lease["token"]:
+                    lease["last_seen"] = time.monotonic()
+                await ws.send_json(controller.get_state().to_dict())
+                await asyncio.sleep(1.0 / telem_hz)
+        except WebSocketDisconnect:
+            pass
+
+    def _watchdog_loop():
+        # deadman: if the lease holder goes silent (no heartbeat WS, no commands)
+        # while a motion is active, stop the arm and release the lease.
+        while True:
+            time.sleep(0.1)
+            if lease["token"] is None:
+                continue
+            ac = controller.get_state().active_command
+            if (ac is not None and ac["status"] == "running"
+                    and (time.monotonic() - lease["last_seen"]) > watchdog_timeout_s):
+                controller.stop()       # deadman stop
+                lease["token"] = None    # release the lease
+    threading.Thread(target=_watchdog_loop, daemon=True, name="api-watchdog").start()
+
     return app

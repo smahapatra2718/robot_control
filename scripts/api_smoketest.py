@@ -19,8 +19,10 @@ import robot_sim  # noqa: E402
 TOKEN = "test-token"
 
 
-def _client(robot="ur15"):
-    """Build a TestClient over a sim-backed controller. Returns (client, controller)."""
+def _client(robot="ur15", watchdog_timeout_s=30.0):
+    """Build a TestClient over a sim-backed controller. Returns (client, controller).
+    Default watchdog_timeout_s is high so multi-second moves/plays in the command
+    tests aren't stopped by the deadman; test_watchdog overrides it to 0.5."""
     robot_sim.install(robot)
     # import after install() so the sim shim is already in sys.modules
     from control import make_controller
@@ -28,7 +30,7 @@ def _client(robot="ur15"):
     from robot_api import build_app
     c = make_controller(robot)
     c.connect()
-    app = build_app(c, token=TOKEN, telem_hz=50.0, watchdog_timeout_s=0.5)
+    app = build_app(c, token=TOKEN, telem_hz=50.0, watchdog_timeout_s=watchdog_timeout_s)
     return TestClient(app), c
 
 
@@ -146,11 +148,67 @@ def test_gofa_no_gripper():
     print("PASS test_gofa_no_gripper")
 
 
+def test_telemetry_ws():
+    client, c = _client("ur15")
+    try:
+        with client.websocket_connect(f"/telemetry?token={TOKEN}") as ws:
+            msg = ws.receive_json()
+            assert msg["robot"] == "ur15" and len(msg["q"]) == 6
+    finally:
+        c.close()
+    print("PASS test_telemetry_ws")
+
+
+def test_telemetry_auth():
+    client, c = _client("ur15")
+    try:
+        raised = False
+        try:
+            with client.websocket_connect("/telemetry?token=nope") as ws:
+                ws.receive_json()
+        except Exception:
+            raised = True
+        assert raised, "WS with bad token should be rejected"
+    finally:
+        c.close()
+    print("PASS test_telemetry_auth")
+
+
+def test_watchdog():
+    # short watchdog so the deadman fires quickly; all other tests use the default 30 s
+    client, c = _client("ur15", watchdog_timeout_s=0.5)
+    try:
+        lease = client.post("/control/acquire", headers=_auth()).json()["lease_token"]
+        h = {**_auth(), "X-Lease": lease}
+        far = [v + 0.8 for v in robot_sim.UR_HOME]
+        r = client.post("/move/joints", headers=h, json={"q": far, "speed": 0.05})
+        assert r.status_code == 202
+        cid = r.json()["command_id"]
+        # do NOT open the telemetry WS and send no further commands: the lease goes
+        # stale and the watchdog must stop the active motion within ~timeout.
+        deadline = time.monotonic() + 5.0
+        status = "running"
+        while time.monotonic() < deadline:
+            status = client.get(f"/command/{cid}", headers=_auth()).json()["status"]
+            if status != "running":
+                break
+            time.sleep(0.1)
+        assert status == "stopped", f"watchdog should have stopped the motion, got {status}"
+        # lease was auto-released
+        assert client.post("/control/acquire", headers=_auth()).status_code == 200
+    finally:
+        c.close()
+    print("PASS test_watchdog")
+
+
 def main():
     test_state_and_auth()
     test_lease()
     test_commands()
     test_gofa_no_gripper()
+    test_telemetry_ws()
+    test_telemetry_auth()
+    test_watchdog()
     print("ALL API SMOKE TESTS PASSED")
 
 
