@@ -23,7 +23,8 @@ from robot_api import build_app  # noqa: E402
 def main() -> None:
     ap = argparse.ArgumentParser(description="Remote control API server (UR15 / GoFa).")
     ap.add_argument("robot", choices=["ur15", "gofa"], help="which arm to serve")
-    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--host", default="0.0.0.0",
+                    help="bind address (default 0.0.0.0 = all interfaces; use 127.0.0.1 for loopback only)")
     ap.add_argument("--port", type=int, default=8000)
     args = ap.parse_args()
 
