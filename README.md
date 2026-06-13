@@ -16,6 +16,8 @@ Both teleop scripts share the same UI (viser scene + 6-DoF gizmo + waypoints), t
 ./robot_control/bin/python scripts/sim.py  ur15      # same targets — runs the real scripts vs a fake arm
 ```
 
+Remote control API (offline): `ROBOT_API_TOKEN=secret ./robot_control/bin/python scripts/sim.py api ur15` → HTTP+WebSocket on `:8000` (see `CLAUDE.md` → Remote API).
+
 Then open the printed `http://localhost:8080`. The four scripts (`teleop_ur15.py`, `teleop_gofa_egm.py`, `play_trajectory.py`, `teleop.py`) still run directly too.
 
 ## Setup (rebuild the venv)

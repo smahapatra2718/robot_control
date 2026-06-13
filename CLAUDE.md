@@ -29,7 +29,9 @@ abb_foga/
 │   ├── verify_hande.py         #   one-shot Hand-E gripper comms probe (run before trusting control)
 │   ├── real.py                 #   dispatcher: real.py <ur15|gofa|play|teleop> [args] on real hardware
 │   ├── sim.py                  #   dispatcher: sim.py  <ur15|gofa|play|teleop> [args] offline (fake arm)
-│   └── sim_smoketest.py        #   stdlib-assert smoke test for the sim fakes + EGM handshake
+│   ├── sim_smoketest.py        #   stdlib-assert smoke test for the sim fakes + EGM handshake
+│   ├── api_server.py           #   remote control API server: real.py/sim.py api <ur15|gofa>
+│   └── api_smoketest.py        #   stdlib-assert API test (TestClient + real-subprocess e2e)
 │
 ├── lib/                        # importable modules (on sys.path via the scripts/ bootstrap)
 │   ├── robot_common.py         #   shared config (UR_*/GOFA_* constants) + pure helpers
@@ -39,7 +41,8 @@ abb_foga/
 │   ├── hande_gripper.py        #   minimal Hand-E URCap-socket client
 │   ├── robot_sim.py            #   offline sim: SimWorld + fake transports + install() (sys.modules shim)
 │   ├── dispatch.py             #   shared target->script map + dispatch() for real.py / sim.py
-│   └── control/                #   RobotController core (state.py, base.py, ur.py, gofa.py) — one motion impl
+│   ├── control/                #   RobotController core (state.py, base.py, ur.py, gofa.py) — one motion impl
+│   └── robot_api.py            #   FastAPI app over a RobotController (build_app) — the remote API
 │
 │   # ── assets ──
 ├── urdf/                       # generated robot models (crb15000_5_95.urdf, hande.urdf)
@@ -129,6 +132,31 @@ Subclasses (`URController`, `GoFaController`) implement the hardware primitives 
 executor (one motion at a time; a submit while busy raises `Busy`; `stop`/`estop` preempt), the
 state loop, and segment building. The motion loops are lifted verbatim from the tuned teleop
 scripts, so behavior is identical.
+
+## Remote API — `scripts/api_server.py`
+
+`real.py api <ur15|gofa>` (or `sim.py api <ur15|gofa>` offline) serves a FastAPI
+HTTP+WebSocket remote API over the controller (`lib/robot_api.py`, `build_app`). High-level
+goals only — the network carries commands + telemetry, never the servo loop. Bearer token
+from `ROBOT_API_TOKEN` (defaults to `changeme` with a startup warning; for anything past a
+direct cable, set it — or make it required). All endpoints need `Authorization: Bearer $TOKEN`:
+
+- `GET /state`, `/health` — `RobotState` snapshot + liveness.
+- `POST /control/acquire` | `/control/release` — single write **lease** → `lease_token`, sent
+  as the `X-Lease` header on writes. `acquire` 409s if held; `{"force": true}` steals (stops
+  the current motion first).
+- `POST /move/joints` | `/move/pose` | `/play` | `/gripper` — **async**: validate + submit
+  under the lease, return `202 {command_id}`. Poll `GET /command/{id}` or watch `WS /telemetry`
+  for completion. Joint/pose vectors are shape+finiteness checked (422 on a bad vector, so a
+  malformed `q` never reaches servoJ). `/gripper` 400s on a gripper-less arm (GoFa).
+- `POST /stop` | `/estop` — any authed client (no lease needed); the always-open safety path.
+- `WS /telemetry?token=…&lease=…` — streams `RobotState` at `telem_hz`; an open lease-matched
+  WS is the **heartbeat**. If the lease holder goes silent while a motion is active, a watchdog
+  stops the arm and releases the lease (deadman).
+
+Runs fully offline: `./robot_control/bin/python scripts/api_smoketest.py` exercises every
+endpoint in-process (FastAPI `TestClient`) plus a real `sim.py api` subprocess over HTTP — no
+robot. The embedded viser viewer + Live control are a follow-on.
 
 # UR15
 
