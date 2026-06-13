@@ -163,16 +163,25 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
 
     def _watchdog_loop():
         # deadman: if the lease holder goes silent (no heartbeat WS, no commands)
-        # while a motion is active, stop the arm and release the lease.
-        while True:
+        # while a motion is active, stop the arm and release the lease. Exits when the
+        # controller is closed. (lease[...] accesses are single dict ops — GIL-atomic.)
+        while not controller.closed:
             time.sleep(0.1)
-            if lease["token"] is None:
+            tok = lease["token"]
+            if tok is None:
                 continue
             ac = controller.get_state().active_command
-            if (ac is not None and ac["status"] == "running"
-                    and (time.monotonic() - lease["last_seen"]) > watchdog_timeout_s):
-                controller.stop()       # deadman stop
-                lease["token"] = None    # release the lease
+            if ac is None or ac["status"] != "running":
+                continue
+            if (time.monotonic() - lease["last_seen"]) <= watchdog_timeout_s:
+                continue
+            with _lease_lock:
+                # re-validate under the lock: only fire if it's still the same stale
+                # lease (a force-acquire since our check would have changed token + last_seen)
+                if (lease["token"] == tok
+                        and (time.monotonic() - lease["last_seen"]) > watchdog_timeout_s):
+                    controller.stop()       # deadman stop
+                    lease["token"] = None    # release the lease
     threading.Thread(target=_watchdog_loop, daemon=True, name="api-watchdog").start()
 
     return app

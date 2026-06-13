@@ -68,6 +68,11 @@ class RobotController:
             self._state_thread.join(timeout=1.0)
         self._close()
 
+    @property
+    def closed(self) -> bool:
+        """True once close() has been called (the shutdown event is set)."""
+        return self._stop_evt.is_set()
+
     # ---------- state ----------
     def _state_loop(self) -> None:
         period = 1.0 / self.POLL_HZ
