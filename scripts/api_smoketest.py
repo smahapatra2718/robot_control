@@ -102,26 +102,32 @@ def test_commands():
         h = {**_auth(), "X-Lease": lease}
         # move without lease header -> 423
         assert client.post("/move/joints", headers=_auth(),
-                           json={"q": robot_sim.UR_HOME, "speed": 5.0}).status_code == 423
+                           json={"q": robot_sim.UR_HOME, "speed": 1.0}).status_code == 423
         # malformed q (wrong length) -> 422 (must not reach servoJ)
         assert client.post("/move/joints", headers=h,
                            json={"q": [0.0, 1.0, 2.0], "speed": 1.0}).status_code == 422
         # move with lease -> 202 + command_id, completes, state reaches target
         target = [0.0, -1.4, 1.4, -1.4, -1.4, 0.2]
-        r = client.post("/move/joints", headers=h, json={"q": target, "speed": 5.0})
+        r = client.post("/move/joints", headers=h, json={"q": target, "speed": 1.0})
         assert r.status_code == 202, r.text
         cid = r.json()["command_id"]
         assert _poll_command(client, cid) == "done"
         st = client.get("/state", headers=_auth()).json()
         assert max(abs(a - b) for a, b in zip(st["q"], target)) < 1e-6
         # play by name -> done
-        rp = client.post("/play", headers=h, json={"name": "_sample_ur15", "speed": 5.0})
+        rp = client.post("/play", headers=h, json={"name": "_sample_ur15", "speed": 1.0})
         assert rp.status_code == 202
         assert _poll_command(client, rp.json()["command_id"]) == "done"
         # gripper -> done
         rg = client.post("/gripper", headers=h, json={"frac": 0.5})
         assert rg.status_code == 202
         assert _poll_command(client, rg.json()["command_id"]) == "done"
+        # speed out of (0, 1.0] -> 422 (no zero/negative loop-wedge; no exceeding the joint-speed cap)
+        for bad in (0, -1.0, 5.0):
+            assert client.post("/move/joints", headers=h,
+                               json={"q": target, "speed": bad}).status_code == 422, f"speed={bad}"
+        # play with an unknown trajectory name -> 400, not a 500
+        assert client.post("/play", headers=h, json={"name": "__nope__"}).status_code == 400
         # stop (no lease needed) returns 200
         assert client.post("/stop", headers=_auth()).status_code == 200
         # unknown command id -> 404
@@ -140,7 +146,7 @@ def test_gofa_no_gripper():
         assert client.post("/gripper", headers=h, json={"frac": 0.5}).status_code == 400
         # but a move works
         r = client.post("/move/joints", headers=h,
-                        json={"q": [0.0, 0.1, 0.0, 0.0, 1.5708, 0.0], "speed": 5.0})
+                        json={"q": [0.0, 0.1, 0.0, 0.0, 1.5708, 0.0], "speed": 1.0})
         assert r.status_code == 202
         assert _poll_command(client, r.json()["command_id"]) == "done"
     finally:
@@ -264,9 +270,12 @@ def test_e2e_subprocess():
             assert cl.get("/state", headers=auth).json()["robot"] == "ur15"
             lease = cl.post("/control/acquire", headers=auth).json()["lease_token"]
             h = {**auth, "X-Lease": lease}
-            target = [0.0, -1.4, 1.4, -1.4, -1.4, 0.2]
+            # small move from the sim home so it completes well within the server's
+            # 2s watchdog (this e2e doesn't hold a telemetry-WS heartbeat; the watchdog
+            # deadman is tested separately in test_watchdog).
+            target = [0.0, -1.0, 1.0, 0.0, 1.0, 0.2]
             cid = cl.post("/move/joints", headers=h,
-                          json={"q": target, "speed": 5.0}).json()["command_id"]
+                          json={"q": target, "speed": 1.0}).json()["command_id"]
             deadline = time.monotonic() + 20.0
             status = "running"
             while time.monotonic() < deadline:

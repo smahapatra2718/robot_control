@@ -76,6 +76,9 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
             return {"command_id": fn()}
         except Busy as e:
             raise HTTPException(status_code=409, detail=str(e))
+        except (FileNotFoundError, KeyError, ValueError) as e:
+            # bad trajectory name / malformed waypoint / bad value caught before motion
+            raise HTTPException(status_code=400, detail=f"bad command: {e}")
 
     def _check_vec(name: str, v, n: int) -> None:
         if not isinstance(v, list) or len(v) != n:
@@ -83,11 +86,18 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
         if any(not isinstance(x, (int, float)) or math.isnan(x) or math.isinf(x) for x in v):
             raise HTTPException(status_code=422, detail=f"{name} has non-finite or non-numeric values")
 
+    def _check_speed(speed) -> None:
+        # cap at 1.0 so the API can't exceed MAX_JOINT_SPEED; reject <=0 (a negative/zero
+        # speed makes the alpha-profile loop never terminate, wedging the motion slot).
+        if not isinstance(speed, (int, float)) or not (0 < speed <= 1.0):
+            raise HTTPException(status_code=422, detail="speed must be a number in (0, 1.0]")
+
     @app.post("/move/joints", status_code=202)
     def move_joints(authorization: str = Header(None), x_lease: str = Header(None),
                     q: list = Body(...), speed: float = Body(1.0)):
         check_auth(authorization)
         _check_vec("q", q, controller.NUM_JOINTS)
+        _check_speed(speed)
         with _lease_lock:                       # validate lease + submit atomically (vs force-steal)
             check_lease(x_lease)
             return _submit(lambda: controller.move_to_joints(q, speed))
@@ -98,6 +108,7 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
         check_auth(authorization)
         _check_vec("pos", pos, 3)
         _check_vec("wxyz", wxyz, 4)
+        _check_speed(speed)
         with _lease_lock:
             check_lease(x_lease)
             return _submit(lambda: controller.move_to_pose(pos, wxyz, speed))
@@ -106,6 +117,7 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
     def play(authorization: str = Header(None), x_lease: str = Header(None),
              name: str = Body(None), waypoints: list = Body(None), speed: float = Body(1.0)):
         check_auth(authorization)
+        _check_speed(speed)
         target = name if name is not None else waypoints
         if target is None:
             raise HTTPException(status_code=400, detail="provide 'name' or 'waypoints'")
