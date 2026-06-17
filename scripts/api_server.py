@@ -15,9 +15,12 @@ for _p in (_ROOT, os.path.join(_ROOT, "lib")):
         sys.path.insert(0, _p)
 
 import uvicorn  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
 
 from control import make_controller  # noqa: E402
 from robot_api import build_app  # noqa: E402
+
+_DASHBOARD = os.path.join(_ROOT, "web", "dashboard.html")
 
 
 def main() -> None:
@@ -36,7 +39,14 @@ def main() -> None:
     controller = make_controller(args.robot)
     controller.connect()
     app = build_app(controller, token=token)
+
+    # Serve the static web console (talks to the robot only via the API endpoints).
+    @app.get("/", include_in_schema=False)
+    def dashboard():
+        return FileResponse(_DASHBOARD)
+
     print(f"Remote API on http://{args.host}:{args.port}  (robot={args.robot})")
+    print(f"Web console:  http://{args.host}:{args.port}/")
     try:
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     finally:

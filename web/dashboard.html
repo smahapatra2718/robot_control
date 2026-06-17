@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ROBOT · REMOTE CONSOLE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070809; --bg2:#0c0f12; --panel:#0e1216; --panel2:#11161b;
+    --line:#1d262e; --line2:#2a3640; --dim:#5d6b76; --txt:#c2ced6; --txt2:#8895a0;
+    --acid:#c6ff36; --cyan:#46e4ef; --amber:#ffb02e; --ok:#37d98a;
+    --danger:#ff3b30; --danger2:#ff6a52;
+    --mono:'IBM Plex Mono',ui-monospace,"Cascadia Code",Menlo,monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --cond:'IBM Plex Sans Condensed','IBM Plex Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(1200px 700px at 80% -10%, rgba(70,228,239,.05), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(198,255,54,.04), transparent 55%),
+      repeating-linear-gradient(0deg, transparent 0 39px, rgba(255,255,255,.012) 39px 40px),
+      repeating-linear-gradient(90deg, transparent 0 39px, rgba(255,255,255,.012) 39px 40px),
+      var(--bg);
+    color:var(--txt); font-family:var(--sans);
+    font-size:14px; line-height:1.4; -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:var(--mono)}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* ---------- top bar ---------- */
+  header{
+    display:flex;align-items:center;gap:18px;
+    padding:0 20px;height:58px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,var(--bg2),rgba(12,15,18,.4));
+    position:sticky;top:0;z-index:30;
+  }
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand b{font-family:var(--cond);font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;font-size:18px;color:#eef4f7}
+  .brand span{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.1em}
+  .robotchip{
+    font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--cyan);border:1px solid var(--line2);padding:4px 9px;border-radius:2px;
+    background:rgba(70,228,239,.06)}
+  .grow{flex:1}
+  .conn{display:flex;align-items:center;gap:9px;font-family:var(--mono);
+    font-size:11px;letter-spacing:.1em;color:var(--txt2);text-transform:uppercase}
+  .led{width:9px;height:9px;border-radius:50%;background:var(--dim);
+    box-shadow:0 0 0 0 rgba(0,0,0,0);transition:.2s}
+  .led.on{background:var(--ok);box-shadow:0 0 10px var(--ok);animation:pulse 2s infinite}
+  .led.warn{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+  .led.off{background:var(--danger);box-shadow:0 0 8px var(--danger)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+  /* ---------- buttons ---------- */
+  button{
+    font-family:var(--cond);font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+    font-size:12px;color:var(--txt);background:var(--panel2);
+    border:1px solid var(--line2);padding:9px 14px;border-radius:2px;cursor:pointer;
+    transition:.12s;position:relative}
+  button:hover:not(:disabled){border-color:var(--acid);color:var(--acid);
+    box-shadow:0 0 0 1px rgba(198,255,54,.25)}
+  button:active:not(:disabled){transform:translateY(1px)}
+  button:disabled{opacity:.32;cursor:not-allowed}
+  button.primary{background:rgba(198,255,54,.08);border-color:rgba(198,255,54,.4);color:var(--acid)}
+  button.primary:hover:not(:disabled){background:rgba(198,255,54,.16)}
+  button.ghost{background:transparent}
+  button.danger{color:var(--danger2);border-color:rgba(255,59,48,.45);background:rgba(255,59,48,.07)}
+  button.danger:hover:not(:disabled){border-color:var(--danger);color:#fff;
+    background:var(--danger);box-shadow:0 0 14px rgba(255,59,48,.5)}
+  .estop{font-size:13px;padding:11px 20px;letter-spacing:.16em}
+
+  /* ---------- layout ---------- */
+  main{max-width:1500px;margin:0 auto;padding:22px 20px 60px;
+    display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:18px}
+  @media (max-width:980px){main{grid-template-columns:1fr}}
+  .col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+  /* ---------- panel ---------- */
+  .panel{position:relative;background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1px solid var(--line);border-radius:3px;
+    opacity:0;transform:translateY(8px);animation:rise .5s forwards}
+  body.locked .panel{animation:none;opacity:.18;filter:saturate(.3)}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .panel::before,.panel::after{content:"";position:absolute;width:10px;height:10px;
+    border:1px solid var(--line2);pointer-events:none}
+  .panel::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+  .panel::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+  .phead{display:flex;align-items:center;gap:10px;padding:11px 15px;
+    border-bottom:1px solid var(--line);
+    font-family:var(--cond);font-weight:600;letter-spacing:.18em;
+    text-transform:uppercase;font-size:12.5px;color:#dfe8ee}
+  .phead .idx{font-family:var(--mono);font-size:10px;color:var(--acid);
+    letter-spacing:.1em;opacity:.8}
+  .phead .tag{margin-left:auto;font-family:var(--mono);font-size:10px;
+    letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+  .pbody{padding:15px}
+  .locked-tag{margin-left:auto;font-family:var(--mono);font-size:10px;
+    color:var(--amber);letter-spacing:.1em}
+
+  /* lock veil on lease-gated panels */
+  .gated{position:relative}
+  .gated[data-locked="1"]::after{content:"LEASE REQUIRED";position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--amber);
+    background:rgba(7,8,9,.66);backdrop-filter:blur(1px);border-radius:3px;z-index:5}
+  .gated[data-locked="1"] .pbody{opacity:.25;pointer-events:none}
+
+  /* ---------- telemetry readouts ---------- */
+  .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
+  .stat{border:1px solid var(--line);background:var(--bg2);border-radius:2px;padding:9px 10px}
+  .stat .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+    color:var(--dim);text-transform:uppercase}
+  .stat .v{font-family:var(--mono);font-size:15px;margin-top:4px;color:var(--txt);
+    text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .v.acid{color:var(--acid)} .v.cyan{color:var(--cyan)} .v.amber{color:var(--amber)}
+  .v.ok{color:var(--ok)} .v.danger{color:var(--danger2)}
+
+  .sect{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--dim);
+    text-transform:uppercase;margin:16px 0 9px;display:flex;gap:8px;align-items:center}
+  .sect::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .joint{display:grid;grid-template-columns:30px 1fr 78px 64px;align-items:center;
+    gap:10px;margin-bottom:7px}
+  .joint .jl{font-family:var(--mono);font-size:11px;color:var(--cyan);letter-spacing:.05em}
+  .bar{position:relative;height:10px;background:var(--bg);border:1px solid var(--line);
+    border-radius:1px;overflow:hidden}
+  .bar .mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line2)}
+  .bar .fill{position:absolute;top:0;bottom:0;background:var(--acid);
+    box-shadow:0 0 8px rgba(198,255,54,.5);transition:width .12s linear,left .12s linear;opacity:.85}
+  .joint .jv{font-family:var(--mono);font-size:12px;text-align:right;color:var(--txt)}
+  .joint .jd{font-family:var(--mono);font-size:11px;text-align:right;color:var(--txt2)}
+
+  .poserow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
+  .cell{border:1px solid var(--line);background:var(--bg2);border-radius:2px;padding:8px 9px}
+  .cell .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--dim)}
+  .cell .v{font-family:var(--mono);font-size:14px;margin-top:3px;color:var(--cyan)}
+  .cell .u{font-size:9px;color:var(--dim)}
+  .quad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .quad .cell .v{color:var(--txt)}
+
+  .gripwrap{display:flex;align-items:center;gap:14px}
+  .gripbar{flex:1;height:14px;border:1px solid var(--line);background:var(--bg);
+    border-radius:2px;position:relative;overflow:hidden}
+  .gripbar .f{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--cyan),var(--acid));
+    transition:width .15s;opacity:.8}
+  .gripval{font-family:var(--mono);font-size:15px;color:var(--acid);min-width:64px;text-align:right}
+
+  /* active command */
+  .cmdrow{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .pill{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:3px 8px;border-radius:2px;border:1px solid var(--line2);color:var(--txt2)}
+  .pill.running{color:var(--amber);border-color:var(--amber);background:rgba(255,176,46,.08)}
+  .pill.done{color:var(--ok);border-color:var(--ok);background:rgba(55,217,138,.08)}
+  .pill.failed{color:var(--danger2);border-color:var(--danger);background:rgba(255,59,48,.08)}
+  .pill.stopped{color:var(--cyan);border-color:var(--cyan)}
+  .prog{flex:1;min-width:140px;height:8px;background:var(--bg);border:1px solid var(--line);
+    border-radius:1px;overflow:hidden}
+  .prog .f{height:100%;width:0;background:var(--amber);box-shadow:0 0 8px var(--amber);transition:width .2s}
+
+  /* ---------- forms ---------- */
+  label.fl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--dim);
+    text-transform:uppercase;display:block;margin-bottom:6px}
+  input[type=text],input[type=number],input[type=password]{
+    width:100%;background:var(--bg);border:1px solid var(--line2);color:var(--txt);
+    font-family:var(--mono);font-size:13px;padding:8px 10px;border-radius:2px;outline:none}
+  input:focus{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(70,228,239,.25)}
+  .jgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+  .jgrid .f label{font-family:var(--mono);font-size:9px;color:var(--cyan);
+    letter-spacing:.06em;margin-bottom:3px;display:block}
+  .row{display:flex;gap:10px;align-items:center;margin-top:13px;flex-wrap:wrap}
+  .row.end{justify-content:flex-end}
+
+  /* speed */
+  .speedbox{display:flex;align-items:center;gap:12px;padding:11px 15px;
+    border-bottom:1px solid var(--line)}
+  .speedbox .lab{font-family:var(--cond);font-weight:600;letter-spacing:.16em;
+    text-transform:uppercase;font-size:12px;color:#dfe8ee}
+  input[type=range]{flex:1;accent-color:var(--acid);height:4px}
+  .speedval{font-family:var(--mono);font-size:16px;color:var(--acid);min-width:52px;text-align:right}
+
+  /* lease state banner */
+  .leasebar{display:flex;align-items:center;gap:12px;margin-bottom:12px;
+    padding:10px 12px;border:1px solid var(--line2);border-radius:2px;background:var(--bg2)}
+  .leasebar .dot{width:10px;height:10px;border-radius:50%;background:var(--dim)}
+  .leasebar.held{border-color:var(--amber);background:rgba(255,176,46,.06)}
+  .leasebar.held .dot{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+  .leasebar .lt{font-family:var(--mono);font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+  .leasebar .lt b{color:var(--amber)}
+  .leasebar .tok{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim)}
+
+  /* console */
+  .console{height:170px;overflow:auto;background:var(--bg);border:1px solid var(--line);
+    border-radius:2px;padding:10px 12px;font-family:var(--mono);font-size:11.5px;line-height:1.65}
+  .console .ln{white-space:pre-wrap;word-break:break-word}
+  .console .t{color:var(--dim)}
+  .console .ln.in{color:var(--cyan)} .console .ln.out{color:var(--acid)}
+  .console .ln.err{color:var(--danger2)} .console .ln.sys{color:var(--txt2)}
+
+  /* ---------- gate ---------- */
+  .gate{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(900px 600px at 50% 30%, rgba(70,228,239,.06), transparent 60%),
+      rgba(5,6,7,.92);backdrop-filter:blur(3px);transition:opacity .35s}
+  .gate.hide{opacity:0;pointer-events:none}
+  .gatecard{width:420px;max-width:92vw;border:1px solid var(--line2);border-radius:4px;
+    background:linear-gradient(180deg,var(--panel),var(--bg2));
+    box-shadow:0 30px 80px rgba(0,0,0,.6);position:relative;overflow:hidden}
+  .gatecard::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,var(--acid),var(--cyan))}
+  .gatehead{padding:22px 24px 6px}
+  .gatehead .t1{font-family:var(--cond);font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;font-size:22px;color:#eef4f7}
+  .gatehead .t2{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.08em;margin-top:4px}
+  .gatebody{padding:16px 24px 24px;display:flex;flex-direction:column;gap:14px}
+  .gateerr{font-family:var(--mono);font-size:11px;color:var(--danger2);min-height:14px}
+  .adv{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;
+    cursor:pointer;user-select:none}
+  .adv:hover{color:var(--cyan)}
+  .advbox{display:none}.advbox.show{display:block}
+  .hintline{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.6}
+  .hintline b{color:var(--txt2)}
+</style>
+</head>
+<body class="locked">
+
+<header>
+  <div class="brand"><b>Robot</b><span>// REMOTE CONSOLE</span></div>
+  <div id="robotchip" class="robotchip" style="display:none">—</div>
+  <div class="grow"></div>
+  <div class="conn"><span id="led" class="led off"></span><span id="connText">OFFLINE</span></div>
+  <button id="disconnectBtn" class="ghost" style="display:none" onclick="disconnect()">Disconnect</button>
+  <button class="danger" onclick="halt('stop')" title="Graceful stop (no lease needed)">STOP</button>
+  <button class="danger estop" onclick="halt('estop')" title="Hard E-stop (no lease needed)">E-STOP</button>
+</header>
+
+<main>
+  <!-- LEFT: telemetry dashboard -->
+  <div class="col">
+    <section class="panel" style="animation-delay:.04s">
+      <div class="phead"><span class="idx">01</span> Telemetry <span id="staleTag" class="tag">—</span></div>
+      <div class="pbody">
+        <div class="statgrid">
+          <div class="stat"><div class="k">Activity</div><div id="m_activity" class="v acid">—</div></div>
+          <div class="stat"><div class="k">Safety</div><div id="m_safety" class="v">—</div></div>
+          <div class="stat"><div class="k">Controller</div><div id="m_ctrl" class="v">—</div></div>
+          <div class="stat"><div class="k">Link</div><div id="m_conn" class="v">—</div></div>
+        </div>
+
+        <div class="sect">Joints · rad / deg</div>
+        <div id="joints"></div>
+
+        <div class="sect">TCP Pose · position (m)</div>
+        <div class="poserow">
+          <div class="cell"><div class="k">X</div><div id="p_x" class="v">—</div><span class="u">m</span></div>
+          <div class="cell"><div class="k">Y</div><div id="p_y" class="v">—</div><span class="u">m</span></div>
+          <div class="cell"><div class="k">Z</div><div id="p_z" class="v">—</div><span class="u">m</span></div>
+        </div>
+        <div class="sect">Orientation · quaternion (w,x,y,z)</div>
+        <div class="quad">
+          <div class="cell"><div class="k">W</div><div id="q_w" class="v">—</div></div>
+          <div class="cell"><div class="k">X</div><div id="q_x" class="v">—</div></div>
+          <div class="cell"><div class="k">Y</div><div id="q_y" class="v">—</div></div>
+          <div class="cell"><div class="k">Z</div><div id="q_z" class="v">—</div></div>
+        </div>
+
+        <div class="sect">Gripper</div>
+        <div class="gripwrap">
+          <div class="gripbar"><div id="g_fill" class="f" style="width:0"></div></div>
+          <div id="g_val" class="gripval">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="animation-delay:.1s">
+      <div class="phead"><span class="idx">02</span> Active Command</div>
+      <div class="pbody">
+        <div class="cmdrow">
+          <span class="mono" id="ac_id" style="color:var(--txt2);font-size:12px">CMD —</span>
+          <span class="mono" id="ac_kind" style="color:var(--cyan);font-size:12px">idle</span>
+          <span id="ac_status" class="pill">none</span>
+          <div class="prog"><div id="ac_prog" class="f"></div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- RIGHT: controls -->
+  <div class="col">
+    <section class="panel" style="animation-delay:.06s">
+      <div class="phead"><span class="idx">03</span> Control Lease</div>
+      <div class="pbody">
+        <div id="leasebar" class="leasebar">
+          <span class="dot"></span>
+          <span class="lt" id="lt_text">NOT HELD — read-only</span>
+          <span class="tok" id="lt_tok"></span>
+        </div>
+        <div class="row">
+          <button id="acqBtn" class="primary" onclick="acquire(false)">Acquire</button>
+          <button id="forceBtn" onclick="acquire(true)" title="Steal the lease — stops the current holder's motion">Force acquire</button>
+          <button id="relBtn" onclick="release()" disabled>Release</button>
+        </div>
+        <div class="hintline" style="margin-top:10px">A single write lease gates all motion. The telemetry link doubles as a deadman: if it drops mid-motion, the arm stops in ~2&nbsp;s.</div>
+      </div>
+    </section>
+
+    <section class="panel speedpanel" style="animation-delay:.12s">
+      <div class="speedbox">
+        <span class="lab">Speed</span>
+        <input id="speed" type="range" min="0.05" max="1" step="0.05" value="0.5" oninput="document.getElementById('speedval').textContent=(+this.value).toFixed(2)">
+        <span id="speedval" class="speedval">0.50</span>
+      </div>
+      <div class="pbody hintline">Scales below the controller's hard speed cap (0,&nbsp;1.0]. Applies to every move &amp; play below.</div>
+    </section>
+
+    <section class="panel gated" data-locked="1" style="animation-delay:.16s">
+      <div class="phead"><span class="idx">04</span> Move · Joints <button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="loadJoints()">⟲ load current</button></div>
+      <div class="pbody">
+        <div class="jgrid" id="jointInputs"></div>
+        <div class="row end"><button class="primary" onclick="moveJoints()">Send /move/joints</button></div>
+      </div>
+    </section>
+
+    <section class="panel gated" data-locked="1" style="animation-delay:.2s">
+      <div class="phead"><span class="idx">05</span> Move · Pose <button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="loadPose()">⟲ load current</button></div>
+      <div class="pbody">
+        <label class="fl">Position — x, y, z (m)</label>
+        <div class="jgrid">
+          <div class="f"><input id="px" type="number" step="0.001" placeholder="x"></div>
+          <div class="f"><input id="py" type="number" step="0.001" placeholder="y"></div>
+          <div class="f"><input id="pz" type="number" step="0.001" placeholder="z"></div>
+        </div>
+        <label class="fl" style="margin-top:12px">Orientation — quaternion w, x, y, z</label>
+        <div class="jgrid" style="grid-template-columns:repeat(4,1fr)">
+          <div class="f"><input id="qw" type="number" step="0.0001" placeholder="w"></div>
+          <div class="f"><input id="qx" type="number" step="0.0001" placeholder="x"></div>
+          <div class="f"><input id="qy" type="number" step="0.0001" placeholder="y"></div>
+          <div class="f"><input id="qz" type="number" step="0.0001" placeholder="z"></div>
+        </div>
+        <div class="row end"><button class="primary" onclick="movePose()">Send /move/pose</button></div>
+      </div>
+    </section>
+
+    <section class="panel gated" data-locked="1" style="animation-delay:.24s">
+      <div class="phead"><span class="idx">06</span> Play Trajectory</div>
+      <div class="pbody">
+        <label class="fl">Saved trajectory name (trajectories/&lt;name&gt;.json)</label>
+        <input id="trajName" type="text" placeholder="e.g. _sample_ur15">
+        <div class="row end"><button class="primary" onclick="play()">Send /play</button></div>
+      </div>
+    </section>
+
+    <section class="panel gated" id="gripperPanel" data-locked="1" style="animation-delay:.28s">
+      <div class="phead"><span class="idx">07</span> Gripper <span id="gripTag" class="tag">—</span></div>
+      <div class="pbody">
+        <div class="gripwrap">
+          <input id="gripIn" type="range" min="0" max="1" step="0.01" value="0"
+                 oninput="document.getElementById('gripInVal').textContent=Math.round(this.value*100)+'%'">
+          <span id="gripInVal" class="gripval">0%</span>
+        </div>
+        <div class="row end"><button class="primary" onclick="setGripper()">Send /gripper</button></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<section class="panel" style="max-width:1500px;margin:0 auto 50px;animation-delay:.32s">
+  <div class="phead"><span class="idx">08</span> Console <button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="document.getElementById('console').innerHTML=''">clear</button></div>
+  <div class="pbody" style="padding:10px"><div id="console" class="console"></div></div>
+</section>
+
+<!-- ---------- connection gate ---------- -->
+<div id="gate" class="gate">
+  <div class="gatecard">
+    <div class="gatehead">
+      <div class="t1">Remote Console</div>
+      <div class="t2">// authenticate to the robot API</div>
+    </div>
+    <div class="gatebody">
+      <div>
+        <label class="fl">Secret — bearer token</label>
+        <input id="tokenIn" type="password" placeholder="ROBOT_API_TOKEN" autocomplete="off"
+               onkeydown="if(event.key==='Enter')connect()">
+      </div>
+      <div class="adv" onclick="document.getElementById('advbox').classList.toggle('show')">▸ advanced — API base URL</div>
+      <div id="advbox" class="advbox">
+        <input id="baseIn" type="text" placeholder="http://host:8000">
+      </div>
+      <div id="gateErr" class="gateerr"></div>
+      <button class="primary" style="width:100%;padding:12px" onclick="connect()">Connect</button>
+      <div class="hintline">
+        Talks only to the documented API endpoints: <b>/health · /state · /control · /move · /play · /gripper · /stop · /estop · /telemetry</b>.
+        The secret is held in this tab only and sent as <b>Authorization: Bearer</b>.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const NJ = 6;                       // both arms are 6-DOF
+let token = "", base = "", lease = null;
+let ws = null, wsIntentional = false, connected = false;
+let lastState = null, prefilled = false;
+const tracked = new Set();
+
+// ---------- build joint widgets ----------
+(function(){
+  const j = $("joints"), inp = $("jointInputs");
+  for(let i=0;i<NJ;i++){
+    const r = document.createElement("div"); r.className="joint";
+    r.innerHTML = `<span class="jl">J${i+1}</span>
+      <div class="bar"><div class="mid"></div><div class="fill" id="jb${i}"></div></div>
+      <span class="jv num" id="jv${i}">—</span><span class="jd num" id="jd${i}">—</span>`;
+    j.appendChild(r);
+    const f = document.createElement("div"); f.className="f";
+    f.innerHTML = `<label>J${i+1}</label><input id="ji${i}" type="number" step="0.001" placeholder="0.000">`;
+    inp.appendChild(f);
+  }
+})();
+
+// ---------- console ----------
+function log(kind, msg){
+  const c = $("console");
+  const ts = new Date().toISOString().substr(11,8);
+  const ln = document.createElement("div");
+  ln.className = "ln "+kind;
+  ln.innerHTML = `<span class="t">${ts}</span>  ${msg.replace(/</g,"&lt;")}`;
+  c.appendChild(ln); c.scrollTop = c.scrollHeight;
+  while(c.childElementCount>300) c.removeChild(c.firstChild);
+}
+
+// ---------- HTTP helper ----------
+async function api(path, {method="GET", body=null, lease:withLease=false}={}){
+  const headers = {"Authorization":"Bearer "+token};
+  if(body!==null) headers["Content-Type"]="application/json";
+  if(withLease){ if(!lease) throw {detail:"no local lease"}; headers["X-Lease"]=lease; }
+  const res = await fetch(base+path, {method, headers, body: body!==null?JSON.stringify(body):null});
+  let data=null; try{ data = await res.json(); }catch(e){}
+  if(!res.ok){ throw {status:res.status, detail:(data&&data.detail)||res.statusText}; }
+  return data;
+}
+
+// ---------- connect / disconnect ----------
+async function connect(){
+  token = $("tokenIn").value.trim();
+  base  = ($("baseIn").value.trim()) || location.origin;
+  $("gateErr").textContent = "";
+  if(!token){ $("gateErr").textContent = "enter the bearer token"; return; }
+  try{
+    const h = await api("/health");
+    connected = true;
+    $("robotchip").style.display=""; $("robotchip").textContent = h.robot || "robot";
+    $("disconnectBtn").style.display="";
+    $("gate").classList.add("hide");
+    document.body.classList.remove("locked");
+    setLed("on","ONLINE");
+    log("sys","connected · robot="+h.robot);
+    prefilled = false;
+    openWS();
+  }catch(e){
+    $("gateErr").textContent = "auth failed ["+(e.status||"net")+"]: "+(e.detail||"unreachable");
+  }
+}
+
+function disconnect(){
+  wsIntentional = true; if(ws) ws.close();
+  if(lease){ api("/control/release",{method:"POST",lease:true}).catch(()=>{}); }
+  connected=false; lease=null; lastState=null;
+  $("gate").classList.remove("hide");
+  document.body.classList.add("locked");
+  $("disconnectBtn").style.display="none"; $("robotchip").style.display="none";
+  setLed("off","OFFLINE"); updateLeaseUI(); log("sys","disconnected");
+}
+
+// ---------- telemetry websocket (also the deadman heartbeat when lease held) ----------
+function openWS(){
+  wsIntentional = true; if(ws){ try{ws.close();}catch(e){} }
+  let u;
+  try{ u = new URL(base); }catch(e){ u = new URL(location.origin); }
+  u.protocol = u.protocol==="https:" ? "wss:" : "ws:";
+  u.pathname = "/telemetry"; u.search = "";
+  u.searchParams.set("token", token);
+  if(lease) u.searchParams.set("lease", lease);
+  ws = new WebSocket(u.toString());
+  wsIntentional = false;
+  ws.onopen = ()=> log("sys", "telemetry stream open"+(lease?" · heartbeat armed":""));
+  ws.onmessage = ev => { try{ render(JSON.parse(ev.data)); }catch(e){} };
+  ws.onclose = ()=>{
+    if(!connected || wsIntentional) return;
+    setLed("warn","LINK LOST");
+    setTimeout(()=>{ if(connected) openWS(); }, 1000);
+  };
+}
+
+// ---------- render telemetry ----------
+function render(s){
+  lastState = s;
+  setLed(s.conn_ok?"on":"warn", s.conn_ok?"ONLINE":"ARM LINK?");
+  $("staleTag").textContent = "rx "+new Date().toISOString().substr(11,8);
+
+  setStat("m_activity", (s.activity||"—").toUpperCase(), activityColor(s.activity));
+  setStat("m_safety", (s.safety_state||"—"));
+  setStat("m_ctrl", (s.controller_state||"—"));
+  setStat("m_conn", s.conn_ok?"OK":"DOWN", s.conn_ok?"ok":"danger");
+
+  const q = s.q||[];
+  for(let i=0;i<NJ;i++){
+    const v = (typeof q[i]==="number")?q[i]:null;
+    if(v===null) continue;
+    $("jv"+i).textContent = v.toFixed(4);
+    $("jd"+i).textContent = (v*180/Math.PI).toFixed(1)+"°";
+    const r = Math.max(-1,Math.min(1, v/Math.PI));      // bipolar, clamp at ±π
+    const fb = $("jb"+i);
+    if(r>=0){ fb.style.left="50%"; fb.style.width=(r*50)+"%"; }
+    else    { fb.style.left=(50+r*50)+"%"; fb.style.width=(-r*50)+"%"; }
+  }
+
+  const p = (s.pose&&s.pose.pos)||[];
+  ["x","y","z"].forEach((a,i)=> $("p_"+a).textContent = (typeof p[i]==="number")?p[i].toFixed(4):"—");
+  const w = (s.pose&&s.pose.wxyz)||[];
+  ["w","x","y","z"].forEach((a,i)=> $("q_"+a).textContent = (typeof w[i]==="number")?w[i].toFixed(4):"—");
+
+  // gripper
+  const hasGrip = s.gripper_frac !== null && s.gripper_frac !== undefined;
+  if(hasGrip){
+    $("g_fill").style.width = (s.gripper_frac*100)+"%";
+    $("g_val").textContent = Math.round(s.gripper_frac*100)+"%";
+    $("gripperPanel").dataset.locked = lease?"0":"1";
+    $("gripTag").textContent = "";
+  }else{
+    $("g_fill").style.width="0"; $("g_val").textContent="N/A";
+    $("gripperPanel").dataset.locked = "blocked";
+    $("gripTag").textContent = "no gripper";
+  }
+
+  // active command
+  const ac = s.active_command;
+  if(ac){
+    $("ac_id").textContent = "CMD #"+ac.id;
+    $("ac_kind").textContent = ac.kind||"—";
+    const st = ac.status||"none";
+    $("ac_status").className = "pill "+st; $("ac_status").textContent = st;
+    $("ac_prog").style.width = Math.round((ac.progress||0)*100)+"%";
+  }
+
+  if(!prefilled){ prefilled=true; loadJoints(); loadPose(); }
+}
+
+function activityColor(a){ return a==="moving"||a==="playing"?"amber":a==="stopped"?"danger":"acid"; }
+function setStat(id,val,cls){ const e=$(id); e.textContent=val; e.className="v"+(cls?" "+cls:""); }
+function setLed(state,text){ $("led").className="led "+state; $("connText").textContent=text; }
+
+// ---------- lease ----------
+async function acquire(force){
+  try{
+    const r = await api("/control/acquire", {method:"POST", body:{force:!!force}});
+    lease = r.lease_token;
+    log("out", (force?"force-":"")+"acquired lease "+lease.substr(0,8)+"…");
+    updateLeaseUI(); openWS();      // reopen WS with &lease so it acts as the heartbeat
+  }catch(e){
+    if(e.status===409) log("err","lease held by another client — use FORCE to steal");
+    else log("err","acquire failed: "+(e.detail||e));
+  }
+}
+async function release(){
+  try{ await api("/control/release",{method:"POST",lease:true}); log("out","lease released"); }
+  catch(e){ log("err","release: "+(e.detail||e)); }
+  lease=null; updateLeaseUI(); openWS();
+}
+function updateLeaseUI(){
+  const held = !!lease;
+  const bar = $("leasebar");
+  bar.className = "leasebar"+(held?" held":"");
+  $("lt_text").innerHTML = held ? "<b>HELD BY YOU</b> — writes enabled" : "NOT HELD — read-only";
+  $("lt_tok").textContent = held ? lease.substr(0,8)+"…" : "";
+  $("acqBtn").disabled = held; $("relBtn").disabled = !held;
+  document.querySelectorAll(".gated").forEach(p=>{
+    if(p.id==="gripperPanel" && p.dataset.locked==="blocked") return; // gripperless stays blocked
+    p.dataset.locked = held ? "0" : "1";
+  });
+}
+
+// ---------- commands ----------
+const speed = ()=> +$("speed").value;
+
+async function submit(label, fn){
+  try{
+    const r = await fn();
+    log("out", label+" → 202 cmd #"+r.command_id);
+    track(r.command_id);
+  }catch(e){
+    log("err", label+" → ["+(e.status||"err")+"] "+(e.detail||e));
+  }
+}
+function track(id){
+  if(tracked.has(id)) return; tracked.add(id);
+  const poll = async ()=>{
+    try{
+      const st = await api("/command/"+id);
+      if(st.status!=="running"){
+        log(st.status==="failed"?"err":"in", "cmd #"+id+" "+st.status+(st.error?": "+st.error:""));
+        tracked.delete(id); return;
+      }
+    }catch(e){ tracked.delete(id); return; }
+    setTimeout(poll, 350);
+  };
+  setTimeout(poll, 300);
+}
+
+function readVec(ids){
+  return ids.map(id=>{ const v=parseFloat($(id).value); if(!isFinite(v)) throw "field '"+id+"' is empty/invalid"; return v; });
+}
+function moveJoints(){
+  let q; try{ q = readVec(Array.from({length:NJ},(_,i)=>"ji"+i)); }
+  catch(e){ log("err",e); return; }
+  submit("move/joints", ()=> api("/move/joints",{method:"POST",lease:true,body:{q,speed:speed()}}));
+}
+function movePose(){
+  let pos,wxyz; try{ pos=readVec(["px","py","pz"]); wxyz=readVec(["qw","qx","qy","qz"]); }
+  catch(e){ log("err",e); return; }
+  submit("move/pose", ()=> api("/move/pose",{method:"POST",lease:true,body:{pos,wxyz,speed:speed()}}));
+}
+function play(){
+  const name = $("trajName").value.trim();
+  if(!name){ log("err","enter a trajectory name"); return; }
+  submit("play", ()=> api("/play",{method:"POST",lease:true,body:{name,speed:speed()}}));
+}
+function setGripper(){
+  const frac = +$("gripIn").value;
+  submit("gripper", ()=> api("/gripper",{method:"POST",lease:true,body:{frac}}));
+}
+
+// ---------- stops (no lease needed) ----------
+async function halt(which){
+  try{ await api("/"+which,{method:"POST"}); log("err", which.toUpperCase()+" issued"); }
+  catch(e){ log("err", which+" failed: "+(e.detail||e)); }
+}
+
+// ---------- prefill helpers ----------
+function loadJoints(){
+  if(!lastState||!lastState.q) return;
+  lastState.q.forEach((v,i)=>{ if($("ji"+i)) $("ji"+i).value = v.toFixed(4); });
+}
+function loadPose(){
+  if(!lastState||!lastState.pose) return;
+  const p=lastState.pose.pos||[], w=lastState.pose.wxyz||[];
+  ["px","py","pz"].forEach((id,i)=>{ if(p[i]!=null) $(id).value=p[i].toFixed(4); });
+  ["qw","qx","qy","qz"].forEach((id,i)=>{ if(w[i]!=null) $(id).value=w[i].toFixed(4); });
+}
+
+window.addEventListener("DOMContentLoaded", ()=> $("tokenIn").focus());
+</script>
+</body>
+</html>
