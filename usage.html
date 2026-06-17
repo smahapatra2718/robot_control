@@ -181,7 +181,7 @@
       <table>
         <tr><th>Surface</th><th>What it is</th><th>Run with</th></tr>
         <tr><td><strong>Teleop UI</strong></td><td>Viser browser app: drag a gizmo, plan, play, live-follow, free-drive teach</td><td><code>real.py ur15</code> / <code>gofa</code></td></tr>
-        <tr><td><strong>Headless player</strong></td><td>Replay a saved trajectory from the CLI</td><td><code>real.py play &lt;name&gt;</code></td></tr>
+        <tr><td><strong>Headless player</strong></td><td>Replay a saved trajectory from the CLI</td><td><code>real.py play &lt;robot&gt;/&lt;name&gt;</code></td></tr>
         <tr><td><strong>Headless recorder</strong></td><td>Hand-guide + keypress capture to a trajectory file</td><td><code>real.py teleop</code></td></tr>
         <tr><td><strong>Remote API</strong></td><td>HTTP + WebSocket control for a remote service</td><td><code>real.py api ur15</code> / <code>gofa</code></td></tr>
       </table>
@@ -209,7 +209,7 @@
               <option value="api ur15">api ur15 — remote API</option>
               <option value="api gofa">api gofa — remote API</option>
               <option value="api">api — remote API (both arms)</option>
-              <option value="play _sample_ur15">play — replay a trajectory</option>
+              <option value="play ur15/_sample_ur15">play — replay a trajectory</option>
               <option value="teleop">teleop — headless recorder</option>
             </select>
           </label>
@@ -279,7 +279,7 @@
       <p>Tick <strong>"Free-drive"</strong> to hand-guide the arm (UR zero-g <code class="inline">teachMode</code>; GoFa software lead-through over RWS). <em>Capture</em> records hand-moved poses. Mutually exclusive with Plan/Play/Live; Stop or un-tick releases it.</p>
 
       <h3>Save &amp; load trajectories</h3>
-      <p>Waypoint lists save to <code class="inline">trajectories/&lt;name&gt;.json</code> (tracked in the repo, so they sync across machines). Load repopulates the waypoints and frames; then Plan to replay.</p>
+      <p>Waypoint lists save to <code class="inline">trajectories/&lt;robot&gt;/&lt;name&gt;.json</code>, foldered by arm (each teleop reads/writes its own arm's folder, so you just type the name). Tracked in the repo, so they sync across machines. Load repopulates the waypoints and frames; then Plan to replay.</p>
     </section>
 
     <!-- HEADLESS -->
@@ -287,9 +287,9 @@
       <h2>Headless tools</h2>
 
       <h3>Replay — <code class="inline">play_trajectory.py</code></h3>
-      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/play_trajectory.py <span class="k">&lt;name&gt;</span> [more names...] \
+      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/play_trajectory.py <span class="k">&lt;robot&gt;/&lt;name&gt;</span> [more...] \
     [<span class="k">--speed</span> S] [<span class="k">--dry-run</span>] [<span class="k">--no-confirm</span>]</pre></div>
-      <p>Auto-detects the robot from the file's <code class="inline">"robot"</code> field and plays after a <code class="inline">[y/N]</code> confirm. Every waypoint must already carry <code class="inline">"q"</code> (it's IK-solver-free) — capture taught joints, or Plan-and-save in viser first.</p>
+      <p>Name the trajectory with an explicit <code class="inline">&lt;robot&gt;/</code> prefix (e.g. <code class="inline">ur15/pickplace</code>) — this headless entry point has no arm context, so the prefix picks both the folder and the controller. Plays after a <code class="inline">[y/N]</code> confirm. Every waypoint must already carry <code class="inline">"q"</code> (it's IK-solver-free) — capture taught joints, or Plan-and-save in viser first.</p>
       <ul>
         <li><code class="inline">--dry-run</code> — print the plan (segments + estimated duration) and exit.</li>
         <li><code class="inline">--no-confirm</code> — skip the confirmation prompt.</li>
@@ -517,7 +517,7 @@ auth = {<span class="s">"Authorization"</span>: <span class="s">f"Bearer {TOK}"<
       <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/sim.py ur15                       <span class="c"># UR15 teleop, simulated</span>
 ./robot_control/bin/python scripts/sim.py gofa                       <span class="c"># GoFa teleop, simulated</span>
 ./robot_control/bin/python scripts/sim.py api ur15                   <span class="c"># remote API, simulated</span>
-./robot_control/bin/python scripts/sim.py play _sample_ur15 <span class="k">--no-confirm</span></pre></div>
+./robot_control/bin/python scripts/sim.py play ur15/_sample_ur15 <span class="k">--no-confirm</span></pre></div>
       <div class="warn"><strong>One limitation:</strong> there's no physical arm to hand-guide, so free-drive/teach <em>capture</em> just re-grabs the current pose. Author offline with the gizmo, Live, or Plan instead.</div>
 
       <h3>Run the test suites (offline)</h3>
@@ -535,9 +535,9 @@ auth = {<span class="s">"Authorization"</span>: <span class="s">f"Bearer {TOK}"<
         <tr><td>Try the GoFa UI offline</td><td><code>sim.py gofa</code></td></tr>
         <tr><td>Drive the real UR15</td><td><code>real.py ur15</code></td></tr>
         <tr><td>Serve the remote API</td><td><code>real.py api ur15</code> → localhost:8000</td></tr>
-        <tr><td>Replay a trajectory</td><td><code>real.py play &lt;name&gt;</code></td></tr>
+        <tr><td>Replay a trajectory</td><td><code>real.py play &lt;robot&gt;/&lt;name&gt;</code></td></tr>
         <tr><td>Record by hand-guiding</td><td><code>real.py teleop</code></td></tr>
-        <tr><td>Preview a plan, no motion</td><td><code>… play &lt;name&gt; --dry-run</code></td></tr>
+        <tr><td>Preview a plan, no motion</td><td><code>… play &lt;robot&gt;/&lt;name&gt; --dry-run</code></td></tr>
       </table>
       <p style="color:var(--muted);font-size:13px;margin-top:24px">Controller bring-up, firewall/port setup, EGM install and RWS gotchas live in <code class="inline">CLAUDE.md</code>. The machine-readable API contract is in <code class="inline">API.md</code>.</p>
     </section>

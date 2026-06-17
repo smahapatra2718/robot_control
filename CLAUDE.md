@@ -47,7 +47,7 @@ robot_control/                  # (repo name; the local dev folder may differ)
 │   # ── assets ──
 ├── urdf/                       # generated robot models (crb15000_5_95.urdf, hande.urdf)
 ├── egm/                        # GoFa controller EGM config (EGM_COMM.cfg, EGM_MOC.cfg) — reference
-├── trajectories/               # saved teach trajectories (<name>.json)
+├── trajectories/               # saved teach trajectories, foldered by arm (<robot>/<name>.json)
 │
 │   # ── vendored third-party (see README "Vendored third-party sources") ──
 ├── pyroki_src/                 # git clone of chungmin99/pyroki, installed -e (don't move: editable install)
@@ -77,7 +77,7 @@ URDFs — all generated via `xacrodoc`, then mesh URIs rewritten to `package://`
 One stdlib-only module holds what the four entry points used to duplicate. Kept stdlib-only on purpose so importing it never drags in the heavy jax stack.
 
 - **Config constants:** `UR_*` (IP, servoJ/settle params, Hand-E geometry + payload) and `GOFA_*` (IP, RWS creds, RAPID module/flags, EGM port, TCP-speed cap, hold time), plus shared trapezoidal-profile knobs (`RAMP_FRAC`, `MIN_SEG_DURATION_S`, `DWELL_S`, `GRIP_PREDELAY_S`, `GRIP_EPS`) and `TRAJ_DIR` / `TARGET_LINK`.
-- **Pure helpers:** `alpha_to_s` (trapezoidal velocity profile), `norm_grip` (legacy `"open"`/`"close"` → fraction), `make_mesh_resolver` (`package://` → local-path `filename_handler` factory), `load_trajectory` / `save_trajectory` (the `trajectories/<name>.json` read/write).
+- **Pure helpers:** `alpha_to_s` (trapezoidal velocity profile), `norm_grip` (legacy `"open"`/`"close"` → fraction), `make_mesh_resolver` (`package://` → local-path `filename_handler` factory), `load_trajectory` / `save_trajectory` (the `trajectories/<robot>/<name>.json` read/write — `robot` is a required arg).
 
 Teleop scripts bind these to short local names (`ROBOT_IP = rc.UR_ROBOT_IP`, …) so the large hardware-loop bodies are unchanged; `play_trajectory.py` / `teleop.py` `from robot_common import` the `UR_*`/`GOFA_*` names directly. Script-specific tunables stay local (e.g. UR-only `MAX_JOINT_ACCEL`, `LIVE_HZ`, `POLL_HZ`).
 
@@ -100,7 +100,7 @@ differ only in that `sim.py` installs the shim first.
 ```bash
 ./robot_control/bin/python scripts/sim.py ur15                         # UR15 teleop, simulated
 ./robot_control/bin/python scripts/sim.py gofa                         # GoFa teleop, simulated
-./robot_control/bin/python scripts/sim.py play _sample_ur15 --no-confirm
+./robot_control/bin/python scripts/sim.py play ur15/_sample_ur15 --no-confirm
 ./robot_control/bin/python scripts/sim_smoketest.py                    # fast fakes + handshake check
 ```
 
@@ -274,22 +274,22 @@ Hand-guide the arm, capture poses, save/replay. UR15 has the full version (softw
 - **Free-drive** checkbox → UR `teachMode()` (zero-g hand-guiding); untick/Stop → `endTeachMode()`. Mutually exclusive with Plan/Play/Live. **`teachMode` must be ended before any `servoJ`** or the control mode conflicts — every exit path does this.
 - **Capture waypoint** snapshots live joints + FK grasp pose; **Add waypoint** captures the gizmo pose. Both record the current `gripper_frac` automatically.
 - **Waypoint model:** `{"q": [6]|None, "pos", "wxyz", "grip"}`. Capture fills `q` (taught joints); gizmo-add leaves `q=None` and Plan backfills via IK. At Plan a waypoint **with `q` replays those joints exactly** (no IK); without `q` it IKs from the Cartesian pose (sequential seed). `plan_segments` is `(q_start, q_goal, grip)`; `_play` actuates the gripper only when state differs, settling `GRIP_PREDELAY_S` first (real gripper only on an executed play, viz tweens either way).
-- **Save/Load:** `trajectories/<name>.json` = `{robot, created, waypoints}`. Load clears + repopulates the waypoint list and frames; then Plan to replay. (Tracked, not gitignored — they sync across machines via the repo.)
+- **Save/Load:** `trajectories/<robot>/<name>.json` = `{robot, created, waypoints}` (foldered by arm; each teleop reads/writes its own arm's folder, so the name field is just `<name>`). Load clears + repopulates the waypoint list and frames; then Plan to replay. (Tracked, not gitignored — they sync across machines via the repo.)
 - **GoFa software free-drive:** the **"Free-drive (lead-through)"** checkbox flips a `lead_go` flag over RWS; `PyEgm.mod` calls `SetLeadThrough \On` and holds the arm compliant until you untick (`SetLeadThrough \Off`). Mutually exclusive with Plan/Play/Live; Stop/untick release it; the controller auto-clears on motors-off. The **physical lead-through button** still works too. Capture reads the hand-moved joints via RWS polling. No gripper actions. **Requires re-running `install_gofa_egm.py`** to push the updated supervisor (see PyEgm.mod lead-through caveats).
 
 ## Headless replay — `play_trajectory.py`
 
 ```bash
-./robot_control/bin/python scripts/play_trajectory.py <name> [more names...] [--speed S] [--dry-run] [--no-confirm]
+./robot_control/bin/python scripts/play_trajectory.py <robot>/<name> [more...] [--speed S] [--dry-run] [--no-confirm]
 ```
 
-Reads `trajectories/<name>.json`, auto-detects the robot from its `"robot"` field, executes after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits. **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. First segment moves from the current pose to waypoint 1. UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). GoFa path imports pyroki for FK **only** to enforce the `MAX_TCP_SPEED` cap, then streams over the existing EGM supervisor (PyEgm parked at `WaitUntil egm_go`). Profile + connection constants come from `robot_common.py`, so retuning a teleop script updates this one too.
+Reads `trajectories/<robot>/<name>.json` — the **`<robot>/` prefix is required** (this entry point has no arm context, so the prefix picks both the folder and the controller; e.g. `ur15/pickplace`). It then executes after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits. **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. First segment moves from the current pose to waypoint 1. UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). GoFa path imports pyroki for FK **only** to enforce the `MAX_TCP_SPEED` cap, then streams over the existing EGM supervisor (PyEgm parked at `WaitUntil egm_go`). Profile + connection constants come from `robot_common.py`, so retuning a teleop script updates this one too.
 
 **Chaining.** Pass several names to play them back-to-back as **one continuous motion**: waypoint lists are concatenated, so each seam is just another move segment and gripper state carries across. One confirm, one Hand-E calibration at the start (the slow part), one final settle. All chained trajectories must target the same robot (mixing UR15 + GoFa aborts). Implemented purely in `main()` — builds a synthetic combined `{robot, waypoints}` for the unchanged single-trajectory player.
 
 ## Headless recording — `teleop.py`
 
-The record-side counterpart to `play_trajectory.py`; same `trajectories/<name>.json` format, replays unchanged.
+The record-side counterpart to `play_trajectory.py`; same `trajectories/<robot>/<name>.json` format, replays unchanged.
 
 ```bash
 ./robot_control/bin/python scripts/teleop.py [name] [--robot ur|gofa]

@@ -83,7 +83,7 @@ def test_ur_play_gripper():
         cid = c.play("_sample_ur15", speed=5.0)
         assert c.wait(cid, timeout=40.0) == "done", "play did not complete"
         import robot_common as rc
-        wps = rc.load_trajectory("_sample_ur15")["waypoints"]
+        wps = rc.load_trajectory("_sample_ur15", "ur15")["waypoints"]
         q_final = wps[-1]["q"]
         st = c.get_state()
         assert max(abs(a - b) for a, b in zip(st.q, q_final)) < 1e-6, "play did not reach final waypoint"
@@ -136,7 +136,7 @@ def test_gofa_move_play():
         pid = c.play("_sample_gofa", speed=5.0)
         assert c.wait(pid, timeout=40.0) == "done", "gofa play did not complete"
         import robot_common as rc
-        q_final = rc.load_trajectory("_sample_gofa")["waypoints"][-1]["q"]
+        q_final = rc.load_trajectory("_sample_gofa", "gofa")["waypoints"][-1]["q"]
         deadline = time.monotonic() + 1.0
         while time.monotonic() < deadline and \
                 max(abs(a - b) for a, b in zip(c.get_state().q, q_final)) > 1e-6:

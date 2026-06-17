@@ -11,7 +11,7 @@ Both teleop scripts share the same UI (viser scene + 6-DoF gizmo + waypoints), t
 
 ```bash
 # real hardware:
-./robot_control/bin/python scripts/real.py ur15      # or: gofa | play <name> | teleop
+./robot_control/bin/python scripts/real.py ur15      # or: gofa | play <robot>/<name> | teleop
 # offline simulation (no robot, no network):
 ./robot_control/bin/python scripts/sim.py  ur15      # same targets — runs the real scripts vs a fake arm
 ```

@@ -1,10 +1,12 @@
 """Headless replay of a saved teach trajectory on the UR15 or GoFa.
 
-Reads trajectories/<name>.json, auto-detects the robot from its "robot" field,
-and replays the stored joint waypoints on the real arm (after a confirm prompt)
--- no viser. IK-solver-free: every waypoint must already carry "q" (from Capture
-or Plan-and-save in viser). The GoFa path imports pyroki for forward kinematics
-only, to enforce the MAX_TCP_SPEED collaborative cap.
+Reads trajectories/<robot>/<name>.json and replays the stored joint waypoints on
+the real arm (after a confirm prompt) -- no viser. The trajectory is named with an
+explicit robot prefix (ur15/<name> or gofa/<name>), since this entry point has no
+arm context; that prefix picks both the folder and the controller. IK-solver-free:
+every waypoint must already carry "q" (from Capture or Plan-and-save in viser). The
+GoFa path imports pyroki for forward kinematics only, to enforce the MAX_TCP_SPEED
+collaborative cap.
 
 Pass several names to chain them: they play back-to-back as one continuous
 motion (each trajectory's last waypoint -> the next's first becomes a normal
@@ -12,7 +14,7 @@ move segment), the Hand-E is calibrated ONCE at the start (not between
 trajectories), and the gripper state carries across the seam. All chained
 trajectories must target the same robot.
 
-  ./robot_control/bin/python scripts/play_trajectory.py <name> [more names...] [--speed S] [--dry-run] [--no-confirm]
+  ./robot_control/bin/python scripts/play_trajectory.py <robot>/<name> [more...] [--speed S] [--dry-run] [--no-confirm]
 """
 
 import argparse
@@ -50,15 +52,34 @@ def confirm(prompt: str) -> bool:
     return input(prompt).strip().lower() == "y"
 
 
-def load_trajectory(name: str) -> dict:
-    data = rc.load_trajectory(name)
+def parse_ref(ref: str) -> tuple[str, str]:
+    """Split an explicit 'robot/name' reference. The robot prefix is required here
+    because the headless player has no arm context to fall back on."""
+    robot, sep, name = ref.partition("/")
+    if not sep or not name:
+        raise SystemExit(
+            f"trajectory must be qualified as <robot>/<name> (e.g. ur15/{ref or 'pickplace'}): got {ref!r}")
+    if robot not in ("ur15", "gofa"):
+        raise SystemExit(f"unknown robot {robot!r} in {ref!r}; use ur15/<name> or gofa/<name>")
+    return robot, name
+
+
+def load_trajectory(robot: str, name: str) -> dict:
+    try:
+        data = rc.load_trajectory(name, robot)
+    except FileNotFoundError:
+        raise SystemExit(f"no trajectory at trajectories/{robot}/{name}.json")
+    if data.get("robot") not in (None, robot):
+        raise SystemExit(
+            f"{robot}/{name}.json is filed under {robot}/ but its 'robot' field is "
+            f"{data.get('robot')!r} -- it is in the wrong folder.")
     wps = data.get("waypoints", [])
     if not wps:
-        raise SystemExit(f"{name}.json has no waypoints.")
+        raise SystemExit(f"{robot}/{name}.json has no waypoints.")
     for i, wp in enumerate(wps):
         if wp.get("q") is None:
             raise SystemExit(
-                f"waypoint {i} in {name}.json has no joints -- open '{name}' in viser, "
+                f"waypoint {i} in {robot}/{name}.json has no joints -- open '{name}' in viser, "
                 f"Plan, and re-save (the CLI replays stored joints, it does not run IK)."
             )
     return data
@@ -102,19 +123,18 @@ def print_plan(robot: str, segments, speed: float) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Headless trajectory replay (UR15 / GoFa).")
     ap.add_argument("name", nargs="+",
-                    help="trajectory name(s) (trajectories/<name>.json); multiple play in order")
+                    help="trajectory reference(s) as <robot>/<name> (e.g. ur15/pickplace); multiple play in order")
     ap.add_argument("--speed", type=float, default=1.0, help="playback speed scale (default 1.0)")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and exit, no motion")
     ap.add_argument("--no-confirm", action="store_true", help="skip the confirmation prompt")
     args = ap.parse_args()
 
-    datas = [load_trajectory(n) for n in args.name]
-    robots = {d.get("robot") for d in datas}
+    refs = [parse_ref(n) for n in args.name]
+    robots = {r for r, _ in refs}
     if len(robots) > 1:
         raise SystemExit(f"cannot chain different robots in one run: {sorted(robots)}")
-    robot = datas[0].get("robot")
-    if robot not in ("ur15", "gofa"):
-        raise SystemExit(f"unknown robot {robot!r} in {args.name[0]}.json")
+    robot = refs[0][0]
+    datas = [load_trajectory(r, n) for r, n in refs]
 
     # Concatenate every trajectory's waypoints into one continuous list. The
     # players already calibrate the gripper once and replay a single waypoint

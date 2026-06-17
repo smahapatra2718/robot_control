@@ -22,7 +22,7 @@ import os
 # resolve against the root from __file__, independent of the caller's CWD.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Saved teach trajectories: trajectories/<name>.json (shared by every script).
+# Saved teach trajectories: trajectories/<robot>/<name>.json (shared by every script).
 TRAJ_DIR = os.path.join(_ROOT, "trajectories")
 TARGET_LINK = "tool0"            # FK link both arms target
 
@@ -105,9 +105,10 @@ def make_mesh_resolver(prefix: str):
 
 
 def save_trajectory(name: str, robot: str, waypoints: list, traj_dir: str = TRAJ_DIR) -> str:
-    """Write trajectories/<name>.json in the shared format. Returns the path."""
-    os.makedirs(traj_dir, exist_ok=True)
-    path = os.path.join(traj_dir, f"{name}.json")
+    """Write trajectories/<robot>/<name>.json in the shared format. Returns the path."""
+    folder = os.path.join(traj_dir, robot)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{name}.json")
     data = {
         "robot": robot,
         "created": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -118,7 +119,7 @@ def save_trajectory(name: str, robot: str, waypoints: list, traj_dir: str = TRAJ
     return path
 
 
-def load_trajectory(name: str, traj_dir: str = TRAJ_DIR) -> dict:
-    """Read and parse trajectories/<name>.json (no validation)."""
-    with open(os.path.join(traj_dir, f"{name}.json")) as f:
+def load_trajectory(name: str, robot: str, traj_dir: str = TRAJ_DIR) -> dict:
+    """Read and parse trajectories/<robot>/<name>.json (no validation)."""
+    with open(os.path.join(traj_dir, robot, f"{name}.json")) as f:
         return json.load(f)

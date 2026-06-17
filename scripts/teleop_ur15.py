@@ -802,14 +802,14 @@ def _(_):
 def _(_):
     name = (gui_traj_name.value or "traj").strip()
     rc.save_trajectory(name, "ur15", waypoints)
-    gui_status.value = f"Saved {len(waypoints)} waypoint(s) -> {name}.json"
+    gui_status.value = f"Saved {len(waypoints)} waypoint(s) -> ur15/{name}.json"
 
 
 @gui_load.on_click
 def _(_):
     name = (gui_traj_name.value or "traj").strip()
     try:
-        data = rc.load_trajectory(name)
+        data = rc.load_trajectory(name, "ur15")
     except Exception as e:
         gui_status.value = f"Load failed: {e}"
         return

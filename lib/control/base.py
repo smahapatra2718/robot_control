@@ -297,7 +297,7 @@ class RobotController:
 
     def _load_waypoints(self, waypoints_or_name) -> list[dict]:
         if isinstance(waypoints_or_name, str):
-            data = rc.load_trajectory(waypoints_or_name)
+            data = rc.load_trajectory(waypoints_or_name, self.robot_name)
             return data.get("waypoints", [])
         return list(waypoints_or_name)
 

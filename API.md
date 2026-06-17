@@ -212,8 +212,9 @@ curl -s -X POST localhost:8000/move/pose \
 ```
 
 ### POST /play
-Body: provide **one** of `name` (a `trajectories/<name>.json`) or `waypoints`
-(an inline list), plus optional `speed`.
+Body: provide **one** of `name` (resolved as `trajectories/<robot>/<name>.json`,
+where `<robot>` is this endpoint's arm) or `waypoints` (an inline list), plus
+optional `speed`.
 ```bash
 curl -s -X POST localhost:8000/play \
      -H "Authorization: Bearer $TOK" -H "X-Lease: $LEASE" \
