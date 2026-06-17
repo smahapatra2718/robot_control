@@ -162,9 +162,15 @@ direct cable, set it — or make it required). All endpoints need `Authorization
   can't exceed `MAX_JOINT_SPEED`). `/move/pose` and `/play` move the tip along a straight
 Cartesian line; `/move/joints` interpolates in joint space. `/gripper` 400s on a gripper-less
 arm (GoFa).
+- `POST /freedrive` — lease-gated **synchronous** mode toggle (`{on}`), not an async command:
+  engages/releases hand-guiding (UR `teachMode` / GoFa lead-through) and reports `activity:
+  "freedrive"`. Mutually exclusive with motion (the command endpoints 409 while engaged; engaging
+  409s mid-motion). `/stop` · `/estop` · force-steal · the deadman · `/control/release` all end it
+  — a compliant arm never outlives its lease.
 - `POST /stop` | `/estop` — any authed client (no lease needed); the always-open safety path.
 - `WS /telemetry?token=…&lease=…` — streams `RobotState` at `telem_hz`; an open lease-matched
-  WS is the **heartbeat**. If the lease holder goes silent while a motion is active, a watchdog
+  WS is the **heartbeat**. If the lease holder goes silent while the arm is live (a motion running
+  or free-drive engaged), a watchdog
   stops the arm and releases the lease (deadman).
 
 **Both arms from one server** — run `api` with **no arm** (`real.py api` / `sim.py api`) and
@@ -179,8 +185,11 @@ keeps its own lease/watchdog/telemetry. Single-arm servers (`api ur15`) stay at 
 Open `http://<host>:<port>/`, type the bearer token, and it drives the arm **purely through the
 API endpoints**: a connection gate, live telemetry (joints as bipolar bars, TCP pose/quaternion,
 gripper, safety/activity, active-command progress) off the `WS /telemetry` stream, lease
-acquire/force/release, `/move/joints` · `/move/pose` · `/play` · `/gripper` forms (lease-gated;
-gripper panel auto-disables on a gripper-less arm), always-live STOP/E-STOP, and a console log
+acquire/force/release, a unified **Teleop** box (a `[Joints | Pose]` header toggle picks the
+`/move/joints` vs `/move/pose` target, with a ⟲ load-current button and a **Free-drive** checkbox
+that calls `/freedrive` and snapshots the live state into the fields on each click — mirrors
+`activity:"freedrive"` and disables the toggle/Send while compliant), plus `/play` · `/gripper`
+forms (all lease-gated; gripper panel auto-disables on a gripper-less arm), always-live STOP/E-STOP, and a console log
 that polls `/command/{id}` to completion. The open WS carries the lease so it doubles as the
 deadman heartbeat. Vanilla HTML/JS, no build step.
 

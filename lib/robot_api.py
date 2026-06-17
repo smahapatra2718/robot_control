@@ -69,6 +69,9 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
         with _lease_lock:
             check_lease(x_lease)
             lease["token"] = None
+        # free-drive only lives with the lease — relinquishing control drops a compliant arm
+        if controller.get_state().activity == "freedrive":
+            controller.stop_freedrive()
         return {"released": True}
 
     def _submit(fn):
@@ -136,6 +139,21 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
             check_lease(x_lease)
             return _submit(lambda: controller.set_gripper(frac))
 
+    @app.post("/freedrive")
+    def freedrive(authorization: str = Header(None), x_lease: str = Header(None),
+                  on: bool = Body(..., embed=True)):
+        # Hand-guiding is a lease-gated mode toggle, not an async command (no command_id).
+        # It's mutually exclusive with motion: starting it 409s if a command is running,
+        # and while it's on the command endpoints 409 with "busy with free-drive".
+        check_auth(authorization)
+        with _lease_lock:
+            check_lease(x_lease)
+            try:
+                controller.start_freedrive() if on else controller.stop_freedrive()
+            except Busy as e:
+                raise HTTPException(status_code=409, detail=str(e))
+        return {"freedrive": bool(on)}
+
     @app.get("/command/{cid}")
     def command(cid: int, authorization: str = Header(None)):
         check_auth(authorization)
@@ -174,16 +192,19 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
             pass
 
     def _watchdog_loop():
-        # deadman: if the lease holder goes silent (no heartbeat WS, no commands)
-        # while a motion is active, stop the arm and release the lease. Exits when the
-        # controller is closed. (lease[...] accesses are single dict ops — GIL-atomic.)
+        # deadman: if the lease holder goes silent (no heartbeat WS, no commands) while the
+        # arm is "live" — a motion running OR free-drive engaged — stop the arm and release
+        # the lease. Exits when the controller is closed. (lease[...] accesses are single
+        # dict ops — GIL-atomic.)
         while not controller.closed:
             time.sleep(0.1)
             tok = lease["token"]
             if tok is None:
                 continue
-            ac = controller.get_state().active_command
-            if ac is None or ac["status"] != "running":
+            st = controller.get_state()
+            ac = st.active_command
+            live = (ac is not None and ac["status"] == "running") or st.activity == "freedrive"
+            if not live:
                 continue
             if (time.monotonic() - lease["last_seen"]) <= watchdog_timeout_s:
                 continue
@@ -192,7 +213,7 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
                 # lease (a force-acquire since our check would have changed token + last_seen)
                 if (lease["token"] == tok
                         and (time.monotonic() - lease["last_seen"]) > watchdog_timeout_s):
-                    controller.stop()       # deadman stop
+                    controller.stop()       # deadman stop (also ends free-drive)
                     lease["token"] = None    # release the lease
     threading.Thread(target=_watchdog_loop, daemon=True, name="api-watchdog").start()
 

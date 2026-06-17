@@ -154,6 +154,54 @@ def test_gofa_no_gripper():
     print("PASS test_gofa_no_gripper")
 
 
+def _wait_activity(client, pred, timeout=2.0):
+    # activity comes from the background state-poll loop, so it lags a synchronous
+    # toggle by up to one poll period — give it a beat to settle.
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        last = client.get("/state", headers=_auth()).json()["activity"]
+        if pred(last):
+            return last
+        time.sleep(0.02)
+    return last
+
+
+def test_freedrive():
+    client, c = _client("ur15")
+    try:
+        # free-drive is a lease-gated write -> 423 without the lease
+        assert client.post("/freedrive", headers=_auth(), json={"on": True}).status_code == 423
+        lease = client.post("/control/acquire", headers=_auth()).json()["lease_token"]
+        h = {**_auth(), "X-Lease": lease}
+        # engage -> 200 + activity becomes "freedrive"
+        r = client.post("/freedrive", headers=h, json={"on": True})
+        assert r.status_code == 200 and r.json()["freedrive"] is True, r.text
+        assert _wait_activity(client, lambda a: a == "freedrive") == "freedrive"
+        # motion is mutually exclusive with free-drive -> 409 (flag is set synchronously)
+        assert client.post("/move/joints", headers=h,
+                           json={"q": robot_sim.UR_HOME, "speed": 1.0}).status_code == 409
+        # disengage -> leaves free-drive, and a move works again
+        assert client.post("/freedrive", headers=h, json={"on": False}).status_code == 200
+        assert _wait_activity(client, lambda a: a != "freedrive") != "freedrive"
+        rm = client.post("/move/joints", headers=h, json={"q": robot_sim.UR_HOME, "speed": 1.0})
+        assert rm.status_code == 202 and _poll_command(client, rm.json()["command_id"]) == "done"
+        # /stop ends free-drive
+        client.post("/freedrive", headers=h, json={"on": True})
+        assert _wait_activity(client, lambda a: a == "freedrive") == "freedrive"
+        assert client.post("/stop", headers=_auth()).status_code == 200
+        assert _wait_activity(client, lambda a: a != "freedrive") != "freedrive"
+        # releasing the lease while compliant also drops free-drive (lease-only invariant).
+        # /stop doesn't release the lease, so the original one is still held here.
+        client.post("/freedrive", headers=h, json={"on": True})
+        assert _wait_activity(client, lambda a: a == "freedrive") == "freedrive"
+        assert client.post("/control/release", headers=h).status_code == 200
+        assert _wait_activity(client, lambda a: a != "freedrive") != "freedrive"
+    finally:
+        c.close()
+    print("PASS test_freedrive")
+
+
 def test_multi_arm():
     """No-arm `api` mode: build_multi_app serves both arms under /<name>, advertises
     the roster at /robots, and gives each arm its own namespaced state/lease/telemetry."""
@@ -347,6 +395,7 @@ def main():
     test_lease()
     test_commands()
     test_gofa_no_gripper()
+    test_freedrive()
     test_multi_arm()
     test_telemetry_ws()
     test_telemetry_auth()

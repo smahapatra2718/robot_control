@@ -128,6 +128,20 @@
     border:1px solid rgba(255,176,46,.45);background:rgba(255,176,46,.10)}
   .gated[data-locked="1"] .lockflag::before{content:"lease required"}
 
+  /* teleop: segmented mode toggle + free-drive checkbox (both live in the phead) */
+  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:2px;overflow:hidden}
+  .seg .segbtn{border:0;border-radius:0;padding:5px 13px;background:transparent;
+    font-size:11px;letter-spacing:.12em}
+  .seg .segbtn:hover:not(:disabled){color:var(--acid);box-shadow:none}
+  .seg .segbtn.active{background:rgba(224,88,79,.14);color:var(--acid)}
+  .fdcheck{margin-left:auto;display:inline-flex;align-items:center;gap:7px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--txt2);cursor:pointer}
+  .fdcheck.on{color:var(--cyan)}
+  .fdcheck input{accent-color:var(--acid);cursor:pointer;width:14px;height:14px}
+  .fdcheck input:disabled{cursor:not-allowed}
+  .fdcheck.dis{opacity:.4;cursor:not-allowed}
+
   /* ---------- telemetry readouts ---------- */
   .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
   .stat{border:1px solid var(--line);background:var(--bg2);border-radius:2px;padding:9px 10px}
@@ -345,45 +359,50 @@
       <div class="pbody hintline">Scales below the controller's hard speed cap (0,&nbsp;1.0]. Applies to every move &amp; play below.</div>
     </section>
 
-    <section class="panel gated" data-locked="1" style="animation-delay:.16s">
-      <div class="phead"><span class="idx">04</span> Move · Joints <span class="lockflag"></span><button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="loadJoints()">⟲ load current</button></div>
-      <div class="pbody">
-        <div class="jgrid" id="jointInputs"></div>
-        <div class="row end"><button class="primary" onclick="moveJoints()">Send /move/joints</button></div>
+    <section class="panel gated" id="teleopPanel" data-locked="1" style="animation-delay:.16s">
+      <div class="phead"><span class="idx">04</span> Teleop
+        <div class="seg" id="modeSeg">
+          <button class="segbtn active" data-mode="joints" onclick="setMode('joints')">Joints</button>
+          <button class="segbtn" data-mode="pose" onclick="setMode('pose')">Pose</button>
+        </div>
+        <span class="lockflag"></span>
+        <label class="fdcheck" id="fdLabel"><input id="fdChk" type="checkbox" onchange="toggleFreedrive(this.checked)">Free-drive</label>
+        <button class="ghost" style="padding:4px 8px" onclick="loadCurrent()" title="Fill fields from the arm's current state">⟲ load</button>
       </div>
-    </section>
-
-    <section class="panel gated" data-locked="1" style="animation-delay:.2s">
-      <div class="phead"><span class="idx">05</span> Move · Pose <span class="lockflag"></span><button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="loadPose()">⟲ load current</button></div>
       <div class="pbody">
-        <label class="fl">Position — x, y, z (m)</label>
-        <div class="jgrid">
-          <div class="f"><input id="px" type="number" step="0.001" placeholder="x"></div>
-          <div class="f"><input id="py" type="number" step="0.001" placeholder="y"></div>
-          <div class="f"><input id="pz" type="number" step="0.001" placeholder="z"></div>
+        <div id="jointsGroup">
+          <div class="jgrid" id="jointInputs"></div>
         </div>
-        <label class="fl" style="margin-top:12px">Orientation — quaternion w, x, y, z</label>
-        <div class="jgrid" style="grid-template-columns:repeat(4,1fr)">
-          <div class="f"><input id="qw" type="number" step="0.0001" placeholder="w"></div>
-          <div class="f"><input id="qx" type="number" step="0.0001" placeholder="x"></div>
-          <div class="f"><input id="qy" type="number" step="0.0001" placeholder="y"></div>
-          <div class="f"><input id="qz" type="number" step="0.0001" placeholder="z"></div>
+        <div id="poseGroup" style="display:none">
+          <label class="fl">Position — x, y, z (m)</label>
+          <div class="jgrid">
+            <div class="f"><input id="px" type="number" step="0.001" placeholder="x"></div>
+            <div class="f"><input id="py" type="number" step="0.001" placeholder="y"></div>
+            <div class="f"><input id="pz" type="number" step="0.001" placeholder="z"></div>
+          </div>
+          <label class="fl" style="margin-top:12px">Orientation — quaternion w, x, y, z</label>
+          <div class="jgrid" style="grid-template-columns:repeat(4,1fr)">
+            <div class="f"><input id="qw" type="number" step="0.0001" placeholder="w"></div>
+            <div class="f"><input id="qx" type="number" step="0.0001" placeholder="x"></div>
+            <div class="f"><input id="qy" type="number" step="0.0001" placeholder="y"></div>
+            <div class="f"><input id="qz" type="number" step="0.0001" placeholder="z"></div>
+          </div>
         </div>
-        <div class="row end"><button class="primary" onclick="movePose()">Send /move/pose</button></div>
+        <div class="row end"><button class="primary" id="teleopSend" onclick="teleopSend()">Send /move/joints</button></div>
       </div>
     </section>
 
     <section class="panel gated" data-locked="1" style="animation-delay:.24s">
-      <div class="phead"><span class="idx">06</span> Play Trajectory <span class="lockflag"></span></div>
+      <div class="phead"><span class="idx">05</span> Play Trajectory <span class="lockflag"></span></div>
       <div class="pbody">
-        <label class="fl">Saved trajectory name (trajectories/&lt;name&gt;.json)</label>
+        <label class="fl">Saved trajectory name (trajectories/&lt;robot&gt;/&lt;name&gt;.json)</label>
         <input id="trajName" type="text" placeholder="e.g. _sample_ur15">
         <div class="row end"><button class="primary" onclick="play()">Send /play</button></div>
       </div>
     </section>
 
     <section class="panel gated" id="gripperPanel" data-locked="1" style="animation-delay:.28s">
-      <div class="phead"><span class="idx">07</span> Gripper <span class="lockflag"></span><span id="gripTag" class="tag">—</span></div>
+      <div class="phead"><span class="idx">06</span> Gripper <span class="lockflag"></span><span id="gripTag" class="tag">—</span></div>
       <div class="pbody">
         <div class="gripwrap">
           <input id="gripIn" type="range" min="0" max="1" step="0.01" value="0"
@@ -439,6 +458,7 @@ const leases = {};                 // arm -> lease token
 const streams = {};                // arm -> WebSocket
 const lastStates = {};             // arm -> last RobotState
 let prefilled = false;
+let mode = "joints";                // teleop box: "joints" | "pose"
 const tracked = new Set();
 
 const armPrefix = name => multi ? "/"+name : "";
@@ -648,9 +668,10 @@ function render(s){
   }
 
   if(!prefilled){ prefilled=true; loadJoints(); loadPose(); }
+  refreshTeleop();
 }
 
-function activityColor(a){ return a==="moving"||a==="playing"?"amber":a==="stopped"?"danger":"acid"; }
+function activityColor(a){ return a==="freedrive"?"cyan":a==="moving"||a==="playing"?"amber":a==="stopped"?"danger":"acid"; }
 function setStat(id,val,cls){ const e=$(id); e.textContent=val; e.className="v"+(cls?" "+cls:""); }
 function setLed(state,text){ $("led").className="led "+state; $("connText").textContent=text; }
 
@@ -684,6 +705,7 @@ function updateLeaseUI(){
     if(p.id==="gripperPanel" && p.dataset.locked==="blocked") return; // gripperless stays blocked
     p.dataset.locked = held ? "0" : "1";
   });
+  refreshTeleop();
 }
 
 // ---------- commands ----------
@@ -729,6 +751,42 @@ function movePose(){
   let pos,wxyz; try{ pos=readVec(["px","py","pz"]); wxyz=readVec(["qw","qx","qy","qz"]); }
   catch(e){ log("err",e); return; }
   submit("move/pose", ()=> api("/move/pose",{method:"POST",lease:true,body:{pos,wxyz,speed:speed()}}));
+}
+
+// ---------- teleop box: joints/pose mode, load-current, free-drive ----------
+function setMode(m){
+  mode = m;
+  document.querySelectorAll("#modeSeg .segbtn").forEach(b=> b.classList.toggle("active", b.dataset.mode===m));
+  $("jointsGroup").style.display = m==="joints" ? "" : "none";
+  $("poseGroup").style.display   = m==="pose"   ? "" : "none";
+  $("teleopSend").textContent = "Send /move/"+m;
+}
+function loadCurrent(){ mode==="joints" ? loadJoints() : loadPose(); }
+function teleopSend(){ mode==="joints" ? moveJoints() : movePose(); }
+
+async function toggleFreedrive(on){
+  loadCurrent();                                   // snapshot the live state into the fields on every click
+  try{
+    await api("/freedrive",{method:"POST",lease:true,body:{on}});
+    log("out","free-drive "+(on?"ON":"OFF")+(multi&&active?" · "+active.toUpperCase():""));
+  }catch(e){
+    $("fdChk").checked = !on;                       // request refused — revert the box
+    log("err","free-drive "+(on?"on":"off")+" → ["+(e.status||"err")+"] "+(e.detail||e));
+  }
+}
+// reflect robot state + lease onto the teleop controls (called from render/lease/arm-switch)
+function refreshTeleop(){
+  const s = active ? lastStates[active] : null;
+  const ac = s && s.active_command;
+  const fd = !!s && s.activity==="freedrive";
+  const running = !!(ac && ac.status==="running");
+  const fdChk = $("fdChk");
+  if(document.activeElement!==fdChk) fdChk.checked = fd;   // don't fight a mid-click toggle
+  fdChk.disabled = !curLease() || running;                // need the lease; can't grab mid-motion
+  $("fdLabel").classList.toggle("on", fd);
+  $("fdLabel").classList.toggle("dis", fdChk.disabled);
+  $("teleopSend").disabled = fd;                          // can't command a compliant arm
+  document.querySelectorAll("#modeSeg .segbtn").forEach(b=> b.disabled = fd);
 }
 function play(){
   const name = $("trajName").value.trim();

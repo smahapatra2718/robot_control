@@ -104,8 +104,9 @@ class RobotController:
         self._state: RobotState | None = None
         self._stop_evt = threading.Event()       # shuts the state loop down (close)
         self._cmd_stop = threading.Event()       # preempts the active command (stop/estop)
-        self._cmd_lock = threading.Lock()        # guards _active + command start
+        self._cmd_lock = threading.Lock()        # guards _active + command start + _freedrive
         self._active: dict | None = None         # {"id","kind","status","progress","error"}
+        self._freedrive = False                  # hand-guiding active (mutually exclusive w/ commands)
         self._cmd_history: "collections.OrderedDict[int, dict]" = collections.OrderedDict()
         self._cmd_counter = itertools.count(1)
         self._state_thread: threading.Thread | None = None
@@ -168,6 +169,8 @@ class RobotController:
         # transiently inconsistent by one poll cycle at a stop/start boundary.
         if active is not None and active["status"] == "running":
             return active["kind"]
+        if self._freedrive:
+            return "freedrive"
         if self._cmd_stop.is_set():
             return "stopped"
         return "idle"
@@ -183,6 +186,8 @@ class RobotController:
         """Start a motion if free. `run` is a callable(progress_cb) doing the motion.
         Returns the command id; raises Busy if a motion is already running."""
         with self._cmd_lock:
+            if self._freedrive:
+                raise Busy("busy with free-drive (stop free-drive before commanding motion)")
             if self._active is not None and self._active["status"] == "running":
                 raise Busy(f"busy with command {self._active['id']}")
             self._cmd_stop.clear()   # clear any stale stop atomically with claiming the command
@@ -268,10 +273,14 @@ class RobotController:
 
     def stop(self) -> None:
         self._cmd_stop.set()
+        if self._freedrive:
+            self.stop_freedrive()    # release a compliant arm too
         self._graceful_stop()
 
     def estop(self) -> None:
         self._cmd_stop.set()
+        if self._freedrive:
+            self.stop_freedrive()
         self._hard_stop()
 
     def grasp_pose(self, q):
@@ -279,12 +288,21 @@ class RobotController:
         return self._fk_pose(np.asarray(q, dtype=float))
 
     def start_freedrive(self) -> None:
-        """Enter hand-guiding (UR teachMode / GoFa lead-through). Bypasses the command
-        executor, so the CALLER must ensure no motion command is active first — mixing
-        free-drive with an active servoJ/EGM stream conflicts at the controller."""
-        self._start_freedrive()
+        """Enter hand-guiding (UR teachMode / GoFa lead-through). Mutually exclusive with
+        the command executor: raises Busy if a motion is running, and while free-drive is
+        on _submit refuses, so a servoJ/EGM stream can't fight the compliant arm."""
+        with self._cmd_lock:
+            if self._active is not None and self._active["status"] == "running":
+                raise Busy(f"busy with command {self._active['id']}")
+            self._freedrive = True
+        try:
+            self._start_freedrive()
+        except Exception:
+            self._freedrive = False   # hardware refused — don't leave the flag stuck on
+            raise
 
     def stop_freedrive(self) -> None:
+        self._freedrive = False
         self._stop_freedrive()
 
     def adjust_grip(self, delta):

@@ -100,8 +100,8 @@ curl -s localhost:8000/state -H "Authorization: Bearer $ROBOT_API_TOKEN"
 ### Single-writer lease
 
 Reads and the safety path are open to any authenticated client. **All writes**
-(`/move/*`, `/play`, `/gripper`) require a **lease** — only one client holds it at
-a time, so two operators can't fight over the arm.
+(`/move/*`, `/play`, `/gripper`, `/freedrive`) require a **lease** — only one
+client holds it at a time, so two operators can't fight over the arm.
 
 1. `POST /control/acquire` → `{"lease_token": "…"}`. Returns **`409`** if already held.
 2. Send the token as the **`X-Lease`** header on every write.
@@ -109,7 +109,8 @@ a time, so two operators can't fight over the arm.
 
 Acquire with `{"force": true}` **steals** a held lease (stopping the current
 motion first) and invalidates the previous token. A write without a valid
-`X-Lease` returns **`423 Locked`**.
+`X-Lease` returns **`423 Locked`**. Releasing or losing the lease (force-steal,
+deadman) also ends free-drive — a compliant arm never outlives its lease.
 
 ### Async commands
 
@@ -126,8 +127,9 @@ Track completion two ways:
 An open telemetry WebSocket whose `?lease=` matches the current lease is a
 **heartbeat**. A background watchdog stops the arm and releases the lease if the
 lease holder goes silent (no heartbeat, no writes) for `watchdog_timeout_s`
-(**default 2.0 s**) **while a motion is running**. This is a deadman: if your
-client crashes or the network drops mid-move, the arm stops on its own.
+(**default 2.0 s**) **while the arm is live — a motion running or free-drive
+engaged**. This is a deadman: if your client crashes or the network drops mid-move
+(or while the arm is compliant), the arm stops / releases on its own.
 
 > Hold the telemetry WS open (with your `lease`) for the duration of any motion —
 > at 20 Hz it refreshes the heartbeat automatically. Discrete writes also refresh
@@ -153,6 +155,7 @@ the arm. `/stop` is a graceful decelerated stop; `/estop` is a hard stop.
 | `POST` | `/move/pose` | ✔ | `202` | Move to a Cartesian pose (MoveL) |
 | `POST` | `/play` | ✔ | `202` | Play a saved/inline trajectory |
 | `POST` | `/gripper` | ✔ | `202` | Set gripper opening (UR only) |
+| `POST` | `/freedrive` | ✔ | `200` | Engage/release hand-guiding (`{on}`) |
 | `GET`  | `/command/{id}` | — | `200` | Status of a submitted command |
 | `POST` | `/stop` | — | `200` | Graceful stop |
 | `POST` | `/estop` | — | `200` | Hard stop |
@@ -235,6 +238,20 @@ curl -s -X POST localhost:8000/gripper \
      -H 'Content-Type: application/json' -d '{"frac": 0.5}'
 ```
 
+### POST /freedrive
+Body: `{"on": true|false}`. Engages (`true`) or releases (`false`) hand-guiding
+(UR `teachMode` / GoFa lead-through). Unlike the motion endpoints this is a
+**synchronous mode toggle**, not an async command — it returns `200 {"freedrive":
+bool}`, no `command_id`. While engaged the arm shows `activity: "freedrive"` and
+**all motion endpoints return `409`** (mutually exclusive); engaging it `409`s if a
+motion is already running. `/stop`, `/estop`, a force-steal, the deadman, and
+`/control/release` all end it.
+```bash
+curl -s -X POST localhost:8000/freedrive \
+     -H "Authorization: Bearer $TOK" -H "X-Lease: $LEASE" \
+     -H 'Content-Type: application/json' -d '{"on": true}'      # {"freedrive": true}
+```
+
 ### GET /command/{id}
 Returns the [command object](#command-object). Unknown or evicted id → `404`
 (history is bounded at the 64 most-recent commands).
@@ -293,7 +310,7 @@ Returned by `GET /state` and streamed over `/telemetry`.
   "gripper_frac": 0.0,                 // 0=open .. 1=closed; null if no gripper (GoFa)
   "safety_state": "NORMAL",            // robot-reported safety state
   "controller_state": "ok",            // robot-reported controller/exec state
-  "activity": "idle",                  // "idle" | "moving" | "playing" | "stopped"
+  "activity": "idle",                  // "idle" | "moving" | "playing" | "freedrive" | "stopped"
   "active_command": null,              // command object (below) or null
   "conn_ok": true,                     // last hardware read succeeded
   "health": {}                         // transport-specific extras

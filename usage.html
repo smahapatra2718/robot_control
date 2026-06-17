@@ -358,7 +358,7 @@ ROBOT_API_TOKEN=<span class="s">'a-long-random-secret'</span> \
   <span class="s">"q"</span>: [0.0, -1.4, 1.4, -1.4, -1.4, 0.2],   <span class="c">// 6 joints (rad)</span>
   <span class="s">"pose"</span>: { <span class="s">"pos"</span>: [0.40, 0.10, 0.30], <span class="s">"wxyz"</span>: [0,1,0,0] },
   <span class="s">"gripper_frac"</span>: 0.0,        <span class="c">// 0 open .. 1 closed; null on GoFa</span>
-  <span class="s">"activity"</span>: <span class="s">"idle"</span>,       <span class="c">// idle | moving | playing | stopped</span>
+  <span class="s">"activity"</span>: <span class="s">"idle"</span>,       <span class="c">// idle | moving | playing | freedrive | stopped</span>
   <span class="s">"active_command"</span>: null,
   <span class="s">"conn_ok"</span>: true
 }</pre></div></div>
@@ -407,6 +407,13 @@ ROBOT_API_TOKEN=<span class="s">'a-long-random-secret'</span> \
         <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/gripper \
   -H <span class="s">"Authorization: Bearer $TOK"</span> -H <span class="s">"X-Lease: $LEASE"</span> \
   -H <span class="s">'Content-Type: application/json'</span> -d <span class="s">'{"frac": 0.5}'</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb post">POST</span><span class="path">/freedrive</span><span class="blurb">engage/release hand-guiding</span></summary>
+        <div class="body"><p>Lease: <span class="lease-y">required</span>. Body <code class="inline">{"on": true|false}</code>. A <strong>synchronous mode toggle</strong> (not an async command — returns <code class="inline">{"freedrive": bool}</code>, no <code class="inline">command_id</code>): engages UR <code class="inline">teachMode</code> / GoFa lead-through. While on, <code class="inline">activity</code> is <code class="inline">"freedrive"</code> and every motion endpoint → <code class="inline">409</code>; engaging while a motion runs → <code class="inline">409</code>. STOP / E-STOP / force-steal / the deadman / releasing the lease all end it.</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/freedrive \
+  -H <span class="s">"Authorization: Bearer $TOK"</span> -H <span class="s">"X-Lease: $LEASE"</span> \
+  -H <span class="s">'Content-Type: application/json'</span> -d <span class="s">'{"on": true}'</span></pre></div></div>
       </details>
 
       <details class="ep"><summary><span class="verb get">GET</span><span class="path">/command/{id}</span><span class="blurb">command status</span></summary>
@@ -462,7 +469,7 @@ curl -s -X POST localhost:8000/estop -H <span class="s">"Authorization: Bearer $
       <div class="warn"><strong>Not shown in Swagger:</strong> the <code class="inline">WS /telemetry</code> stream — WebSockets aren't part of OpenAPI. Use a WebSocket client for telemetry / the heartbeat (see the next section).</div>
 
       <h3>Bundled remote console</h3>
-      <p>For a full control panel — not just the schema explorer — open <code class="inline">web/dashboard.html</code> in a browser. It's a single self-contained page that speaks only the documented API: live telemetry (joints, pose, gripper, safety), the control lease, joint/pose/play/gripper commands, STOP / E-STOP, and a command console. Enter your bearer token (and the API base URL if it isn't same-origin) to connect; the telemetry stream it opens doubles as the deadman heartbeat.</p>
+      <p>For a full control panel — not just the schema explorer — open <code class="inline">web/dashboard.html</code> in a browser. It's a single self-contained page that speaks only the documented API: live telemetry (joints, pose, gripper, safety), the control lease, a unified <strong>Teleop</strong> box (a <code class="inline">Joints / Pose</code> header toggle picks the move target, a ⟲ load-current button fills the fields from the live arm, and a <strong>Free-drive</strong> checkbox engages hand-guiding and snapshots the current state on each click), the play/gripper commands, STOP / E-STOP, and a command console. Enter your bearer token (and the API base URL if it isn't same-origin) to connect; the telemetry stream it opens doubles as the deadman heartbeat.</p>
       <div class="note"><strong>Both arms at once:</strong> start the API with <em>no arm</em> (<code class="inline">api</code> instead of <code class="inline">api ur15</code>) and it serves the UR15 and GoFa together. The console then shows a <strong>UR15 / GoFa switcher</strong> with a live indicator per arm; the selected arm drives the panels, lease, commands and STOP / E-STOP. Startup is tolerant — an unreachable arm just shows offline.</div>
     </section>
 

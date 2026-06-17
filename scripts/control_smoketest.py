@@ -151,14 +151,24 @@ def test_gofa_move_play():
 def test_controller_freedrive_grasp():
     for robot in ("ur15", "gofa"):
         robot_sim.install(robot)
-        from control import make_controller
+        from control import make_controller, Busy
         c = make_controller(robot)
         c.connect()
         try:
             pos, wxyz = c.grasp_pose(c.get_state().q)
             assert len(pos) == 3 and len(wxyz) == 4, f"{robot} grasp_pose shape"
             c.start_freedrive()   # must not raise (no-op-ish in sim)
+            # free-drive is mutually exclusive with the command executor
+            try:
+                c.move_to_joints(c.get_state().q)
+                raised = False
+            except Busy:
+                raised = True
+            assert raised, f"{robot}: motion during free-drive must raise Busy"
             c.stop_freedrive()
+            # after stopping free-drive, motion is accepted again
+            cid = c.move_to_joints(c.get_state().q)
+            assert c.wait(cid, timeout=20.0) == "done", f"{robot}: move after free-drive"
             g = c.adjust_grip(0.1)
             if robot == "ur15":
                 assert g is not None and abs(g - 0.1) < 1e-9, "ur adjust_grip should step the grip"
