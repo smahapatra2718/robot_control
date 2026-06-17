@@ -29,12 +29,27 @@ since both drive the same controller.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `robot` (positional) | — | `ur15` or `gofa` |
+| `robot` (positional) | *(both)* | `ur15` or `gofa`; **omit to serve both arms** (see below). |
 | `--host` | `0.0.0.0` | All interfaces. Use `127.0.0.1` for loopback only. |
 | `--port` | `8000` | TCP port. |
 
-The server connects to the arm at startup and **aborts if it can't reach it**.
+A single-arm server connects to that arm at startup and **aborts if it can't reach it**.
 On a clean shutdown (Ctrl-C / SIGINT) it closes the controller (stopping any motion).
+
+### Serving both arms
+
+Run `api` with **no arm** to serve the UR15 and GoFa from one server. Startup is
+**tolerant** — it starts even if only one arm is reachable; an unreachable arm is
+listed as unavailable rather than aborting.
+
+- `GET /robots` → `{"robots": [{"name": "ur15", "available": true}, …]}`, and `/health`
+  gains `"multi": true`. (Single-arm servers have neither — that's how a client detects the mode.)
+- **Every per-arm endpoint is namespaced under `/<robot>`** — `GET /ur15/state`,
+  `POST /gofa/move/joints`, `WS /ur15/telemetry`, etc. Each arm keeps its **own
+  independent lease, watchdog and telemetry**. Each also has its own Swagger at `/<robot>/docs`.
+- The bundled web console auto-detects this mode and shows a per-arm switcher.
+
+Single-arm servers (`api ur15`) keep everything at the root (`/state`, `/move/joints`, …) — unchanged.
 
 ### Auth token
 

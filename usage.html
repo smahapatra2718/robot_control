@@ -208,6 +208,7 @@
               <option value="gofa">gofa — GoFa teleop UI</option>
               <option value="api ur15">api ur15 — remote API</option>
               <option value="api gofa">api gofa — remote API</option>
+              <option value="api">api — remote API (both arms)</option>
               <option value="play _sample_ur15">play — replay a trajectory</option>
               <option value="teleop">teleop — headless recorder</option>
             </select>
@@ -462,6 +463,7 @@ curl -s -X POST localhost:8000/estop -H <span class="s">"Authorization: Bearer $
 
       <h3>Bundled remote console</h3>
       <p>For a full control panel — not just the schema explorer — open <code class="inline">web/dashboard.html</code> in a browser. It's a single self-contained page that speaks only the documented API: live telemetry (joints, pose, gripper, safety), the control lease, joint/pose/play/gripper commands, STOP / E-STOP, and a command console. Enter your bearer token (and the API base URL if it isn't same-origin) to connect; the telemetry stream it opens doubles as the deadman heartbeat.</p>
+      <div class="note"><strong>Both arms at once:</strong> start the API with <em>no arm</em> (<code class="inline">api</code> instead of <code class="inline">api ur15</code>) and it serves the UR15 and GoFa together. The console then shows a <strong>UR15 / GoFa switcher</strong> with a live indicator per arm; the selected arm drives the panels, lease, commands and STOP / E-STOP. Startup is tolerant — an unreachable arm just shows offline.</div>
     </section>
 
     <!-- TELEMETRY -->

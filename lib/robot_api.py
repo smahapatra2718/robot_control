@@ -197,3 +197,38 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
     threading.Thread(target=_watchdog_loop, daemon=True, name="api-watchdog").start()
 
     return app
+
+
+def build_multi_app(controllers: dict, token: str, telem_hz: float = 20.0,
+                    watchdog_timeout_s: float = 2.0, unavailable=()) -> FastAPI:
+    """Serve several arms from one server: mount build_app(ctrl) at /<name> for each
+    connected controller, and advertise the roster (incl. arms that failed to connect)
+    at /robots so a client can render a per-arm switcher. Each arm keeps its own
+    independent lease, watchdog and telemetry — this is just a parent that namespaces
+    them. Single-arm servers keep using build_app at the root; this is only the no-arm
+    `api` mode."""
+    app = FastAPI(title="robot-control-api (multi)")
+    _order = {"ur15": 0, "gofa": 1}
+    roster = ([{"name": n, "available": True} for n in controllers]
+              + [{"name": n, "available": False} for n in unavailable])
+    roster.sort(key=lambda r: _order.get(r["name"], 9))
+
+    def _auth(authorization: str | None) -> None:
+        if token and (not authorization
+                      or not secrets.compare_digest(authorization, f"Bearer {token}")):
+            raise HTTPException(status_code=401, detail="bad or missing token",
+                                headers={"WWW-Authenticate": "Bearer"})
+
+    @app.get("/health")
+    def health(authorization: str = Header(None)):
+        _auth(authorization)
+        return {"ok": True, "multi": True, "robots": roster}
+
+    @app.get("/robots")
+    def robots(authorization: str = Header(None)):
+        _auth(authorization)
+        return {"robots": roster}
+
+    for name, ctrl in controllers.items():
+        app.mount(f"/{name}", build_app(ctrl, token, telem_hz, watchdog_timeout_s))
+    return app

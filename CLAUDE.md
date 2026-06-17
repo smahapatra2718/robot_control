@@ -167,6 +167,13 @@ arm (GoFa).
   WS is the **heartbeat**. If the lease holder goes silent while a motion is active, a watchdog
   stops the arm and releases the lease (deadman).
 
+**Both arms from one server** — run `api` with **no arm** (`real.py api` / `sim.py api`) and
+`build_multi_app` mounts a full `build_app` under `/ur15` and `/gofa`, advertises the roster at
+`GET /robots` (+ `"multi": true` on `/health`), and serves the dashboard at `/`. Startup is
+**tolerant**: one unreachable arm is listed unavailable, not fatal. Every per-arm endpoint is
+namespaced (`/ur15/state`, `/gofa/move/joints`, `/ur15/telemetry`, even `/ur15/docs`); each arm
+keeps its own lease/watchdog/telemetry. Single-arm servers (`api ur15`) stay at the root, unchanged.
+
 **Web console** — `api_server.py` also serves a static dashboard at `GET /` (the file
 `web/dashboard.html`, served same-origin so there's no CORS and the token never leaves the tab).
 Open `http://<host>:<port>/`, type the bearer token, and it drives the arm **purely through the

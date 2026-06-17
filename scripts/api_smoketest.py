@@ -83,10 +83,10 @@ def test_lease():
     print("PASS test_lease")
 
 
-def _poll_command(client, cid, timeout=20.0):
+def _poll_command(client, cid, timeout=20.0, prefix=""):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        r = client.get(f"/command/{cid}", headers=_auth())
+        r = client.get(f"{prefix}/command/{cid}", headers=_auth())
         assert r.status_code == 200, r.text
         st = r.json()
         if st["status"] != "running":
@@ -152,6 +152,51 @@ def test_gofa_no_gripper():
     finally:
         c.close()
     print("PASS test_gofa_no_gripper")
+
+
+def test_multi_arm():
+    """No-arm `api` mode: build_multi_app serves both arms under /<name>, advertises
+    the roster at /robots, and gives each arm its own namespaced state/lease/telemetry."""
+    robot_sim.install("api")
+    from control import make_controller
+    from fastapi.testclient import TestClient
+    from robot_api import build_multi_app
+    ctrls = {}
+    for n in ("ur15", "gofa"):
+        c = make_controller(n)
+        c.connect()
+        ctrls[n] = c
+    app = build_multi_app(ctrls, token=TOKEN, telem_hz=50.0, watchdog_timeout_s=30.0)
+    client = TestClient(app)
+    try:
+        assert client.get("/health").status_code == 401            # auth required
+        h = client.get("/health", headers=_auth()).json()
+        assert h["multi"] is True
+        assert [r["name"] for r in h["robots"]] == ["ur15", "gofa"]
+        assert all(r["available"] for r in h["robots"])
+        assert [r["name"] for r in client.get("/robots", headers=_auth()).json()["robots"]] == ["ur15", "gofa"]
+        # state is namespaced per arm
+        assert client.get("/ur15/state", headers=_auth()).json()["robot"] == "ur15"
+        assert client.get("/gofa/state", headers=_auth()).json()["robot"] == "gofa"
+        # independent leases — holding ur15 doesn't gate gofa
+        lu = client.post("/ur15/control/acquire", headers=_auth()).json()["lease_token"]
+        lg = client.post("/gofa/control/acquire", headers=_auth()).json()["lease_token"]
+        assert lu and lg and lu != lg
+        # a namespaced move under the ur15 lease completes
+        r = client.post("/ur15/move/joints", headers={**_auth(), "X-Lease": lu},
+                        json={"q": [0.0, -1.0, 1.0, 0.0, 1.0, 0.2], "speed": 1.0})
+        assert r.status_code == 202, r.text
+        assert _poll_command(client, r.json()["command_id"], prefix="/ur15") == "done"
+        # gofa still has no gripper
+        assert client.post("/gofa/gripper", headers={**_auth(), "X-Lease": lg}, json={"frac": 0.5}).status_code == 400
+        # per-arm telemetry + always-open stop
+        with client.websocket_connect(f"/ur15/telemetry?token={TOKEN}") as ws:
+            assert ws.receive_json()["robot"] == "ur15"
+        assert client.post("/gofa/stop", headers=_auth()).status_code == 200
+    finally:
+        for c in ctrls.values():
+            c.close()
+    print("PASS test_multi_arm")
 
 
 def test_telemetry_ws():
@@ -302,6 +347,7 @@ def main():
     test_lease()
     test_commands()
     test_gofa_no_gripper()
+    test_multi_arm()
     test_telemetry_ws()
     test_telemetry_auth()
     test_watchdog()
