@@ -1,4 +1,4 @@
-# abb_foga — robot teleop scaffold
+# robot_control — robot teleop scaffold
 
 Browser-based teleop for two arms on a shared viser + pyroki stack:
 
@@ -19,7 +19,7 @@ Open the printed `http://localhost:8080`. Each script connects to its controller
 Runnable scripts in `scripts/`, importable modules in `lib/`, assets/vendored trees in their own folders. Each `scripts/` script bootstraps the repo root (for `pyroki_snippets`) and `lib/` onto `sys.path`, so it imports `robot_common` / `abb_rws` / … by bare name from anywhere. Asset paths resolve from `robot_common._ROOT` (= parent of `lib/`), so scripts work regardless of cwd.
 
 ```
-abb_foga/
+robot_control/                  # (repo name; the local dev folder may differ)
 ├── scripts/                    # entry points — run with ./robot_control/bin/python scripts/<script>
 │   ├── teleop_ur15.py          #   UR15 teleop: viser + RTDE/servoJ + Hand-E gripper
 │   ├── teleop_gofa_egm.py      #   GoFa teleop: viser + EGM joint streaming

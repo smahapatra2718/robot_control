@@ -3,19 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>abb_foga — Usage Guide</title>
+<title>robot_control — Usage Guide</title>
 <style>
   :root{
     --bg:#f6f7fb; --panel:#ffffff; --ink:#1b1e2b; --muted:#5b6071; --line:#e4e7ef;
-    --accent:#4f46e5; --accent-soft:#eef0fe; --code-bg:#1b1d2a; --code-ink:#e7e9f5;
+    --oracle-red:#b3261e;
+    --accent:#b3261e; --accent-soft:#fbeceb; --code-bg:#1b1d2a; --code-ink:#e7e9f5;
     --get:#15803d; --get-bg:#dcfce7; --post:#1d4ed8; --post-bg:#dbeafe;
-    --ws:#7c3aed; --ws-bg:#ede9fe; --warn:#b45309; --warn-bg:#fef3c7;
+    --ws:#b3261e; --ws-bg:#f7e0dd; --warn:#b45309; --warn-bg:#fef3c7;
     --radius:12px;
   }
   body.dark{
     --bg:#12141d; --panel:#1b1e2b; --ink:#e8eaf3; --muted:#9aa0b4; --line:#2a2e3e;
-    --accent:#8b87f5; --accent-soft:#23263a; --code-bg:#0e0f17; --code-ink:#e7e9f5;
-    --get-bg:#10331f; --post-bg:#11244a; --ws-bg:#241a42; --warn-bg:#3a2c0a;
+    --oracle-red:#e0584f;
+    --accent:#e0584f; --accent-soft:#2c1614; --code-bg:#0e0f17; --code-ink:#e7e9f5;
+    --get-bg:#10331f; --post-bg:#11244a; --ws:#e0584f; --ws-bg:#371613; --warn-bg:#3a2c0a;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
@@ -33,7 +35,17 @@
   nav{
     width:248px; flex:0 0 248px; position:sticky; top:0; height:100vh; overflow-y:auto;
     background:var(--panel); border-right:1px solid var(--line); padding:22px 16px;
+    display:flex; flex-direction:column;
   }
+  .nav-footer{
+    margin-top:auto; padding:16px 8px 4px; display:flex; align-items:center; gap:11px;
+    border-top:1px solid var(--line);
+  }
+  .nav-footer svg{flex:0 0 auto; display:block}
+  .nav-footer svg ellipse{stroke:var(--oracle-red)}
+  .nav-footer .ock{display:flex; flex-direction:column; line-height:1.2}
+  .nav-footer .ock b{font-size:12px; letter-spacing:.24em; color:var(--oracle-red); font-weight:800}
+  .nav-footer .ock small{font-size:10px; color:var(--muted); letter-spacing:.04em}
   nav .brand{font-weight:700; font-size:17px; letter-spacing:.2px; margin:0 8px 2px}
   nav .brand span{color:var(--accent)}
   nav .tag{color:var(--muted); font-size:12px; margin:0 8px 18px}
@@ -135,7 +147,7 @@
 <body>
 <div class="wrap">
   <nav id="nav">
-    <p class="brand">abb<span>_foga</span></p>
+    <p class="brand">robot<span>_control</span></p>
     <p class="tag">teleop &amp; remote control — usage</p>
     <a href="#overview">Overview</a>
     <a href="#quickstart">Quick start</a>
@@ -146,17 +158,24 @@
     <div class="grp">Remote control</div>
     <a href="#api">Remote API</a>
     <a href="#endpoints">Endpoints</a>
+    <a href="#webui">Web UI (/docs)</a>
     <a href="#telemetry">Telemetry &amp; deadman</a>
     <div class="grp">Reference</div>
     <a href="#motion">Motion model</a>
     <a href="#sim">Simulation</a>
     <a href="#cheatsheet">Cheat sheet</a>
+    <div class="nav-footer">
+      <svg width="44" height="28" viewBox="0 0 44 28" role="img" aria-label="Oracle">
+        <ellipse cx="22" cy="14" rx="18.5" ry="10.5" fill="none" stroke-width="3.8"/>
+      </svg>
+      <span class="ock"><b>ORACLE</b><small>project</small></span>
+    </div>
   </nav>
 
   <main>
     <header class="top">
       <div>
-        <h1>abb_foga usage guide</h1>
+        <h1>robot_control usage guide</h1>
         <p class="lede">Browser-based teleop and a remote HTTP/WebSocket API for two arms — a Universal Robots <strong>UR15</strong> and an ABB <strong>GoFa CRB&nbsp;15000</strong> — on a shared viser&nbsp;+&nbsp;pyroki stack.</p>
       </div>
       <button class="toggle" id="theme">🌙 Dark</button>
@@ -427,6 +446,29 @@ curl -s -X POST localhost:8000/estop -H <span class="s">"Authorization: Bearer $
       </table>
     </section>
 
+    <!-- WEB UI -->
+    <section id="webui">
+      <h2>Interactive web UI <span class="pill">in-browser</span></h2>
+      <p>The server auto-generates a browser-based API explorer — nothing extra to install. Start the API (<code class="inline">real.py api ur15</code> or <code class="inline">sim.py api ur15</code>) and open one of these:</p>
+      <table>
+        <tr><th>URL</th><th>What it is</th></tr>
+        <tr><td><code>localhost:8000/docs</code></td><td><strong>Swagger UI</strong> — every endpoint with live "try it out" request forms</td></tr>
+        <tr><td><code>localhost:8000/redoc</code></td><td><strong>ReDoc</strong> — a clean, read-only reference rendering of the same schema</td></tr>
+        <tr><td><code>localhost:8000/openapi.json</code></td><td>The raw <strong>OpenAPI</strong> schema — import into Postman / Insomnia, or feed a client generator</td></tr>
+      </table>
+
+      <h3>Using Swagger UI with auth + the lease</h3>
+      <p>Auth here is a per-request header field (there's no global "Authorize" lock button — the token is a plain header, not a declared security scheme). So on each endpoint you expand:</p>
+      <ol>
+        <li>Click <strong>Try it out</strong>.</li>
+        <li>Put <code class="inline">Bearer &lt;your-token&gt;</code> in the <code class="inline">authorization</code> field.</li>
+        <li>For writes, also paste your lease into the <code class="inline">X-Lease</code> field.</li>
+        <li>Edit the JSON body and hit <strong>Execute</strong> — the response (and the equivalent <code class="inline">curl</code>) appears below.</li>
+      </ol>
+      <div class="note"><strong>Typical flow:</strong> run <code class="inline">POST /control/acquire</code> first, copy <code class="inline">lease_token</code> from the response, then paste it into <code class="inline">X-Lease</code> on <code class="inline">/move/*</code> · <code class="inline">/play</code> · <code class="inline">/gripper</code>. Watch progress with <code class="inline">GET /command/{id}</code> or <code class="inline">GET /state</code>.</div>
+      <div class="warn"><strong>Not shown in Swagger:</strong> the <code class="inline">WS /telemetry</code> stream — WebSockets aren't part of OpenAPI. Use a WebSocket client for telemetry / the heartbeat (see the next section).</div>
+    </section>
+
     <!-- TELEMETRY -->
     <section id="telemetry">
       <h2>Telemetry &amp; the deadman watchdog</h2>
@@ -524,9 +566,9 @@ auth = {<span class="s">"Authorization"</span>: <span class="s">f"Bearer {TOK}"<
   function applyTheme(d){
     document.body.classList.toggle('dark', d);
     tbtn.textContent = d ? '☀︎ Light' : '🌙 Dark';
-    try{ localStorage.setItem('abbfoga-theme', d ? 'dark' : 'light'); }catch(e){}
+    try{ localStorage.setItem('robotcontrol-theme', d ? 'dark' : 'light'); }catch(e){}
   }
-  applyTheme((function(){ try{ return localStorage.getItem('abbfoga-theme') === 'dark'; }catch(e){ return false; } })());
+  applyTheme((function(){ try{ return localStorage.getItem('robotcontrol-theme') === 'dark'; }catch(e){ return false; } })());
   tbtn.addEventListener('click', function(){ applyTheme(!document.body.classList.contains('dark')); });
 
   // ---- command builder ----

@@ -47,6 +47,21 @@ ROBOT_API_TOKEN='a-long-random-secret' ./robot_control/bin/python scripts/real.p
 If unset it defaults to `changeme` and prints a startup warning. **Set it for
 anything past a direct cable.**
 
+### Interactive docs (in-browser)
+
+FastAPI serves an auto-generated API explorer — open it once the server is up:
+
+| URL | What |
+|---|---|
+| `http://<host>:8000/docs` | **Swagger UI** — every endpoint with "try it out" forms |
+| `http://<host>:8000/redoc` | **ReDoc** — clean read-only reference |
+| `http://<host>:8000/openapi.json` | raw **OpenAPI** schema (Postman / codegen) |
+
+Auth is a per-request header field (no global "Authorize" button — it's a plain
+header, not a declared security scheme): put `Bearer <token>` in `authorization`,
+and your lease in `X-Lease` for writes. The `WS /telemetry` stream is **not** listed
+there — WebSockets aren't part of OpenAPI.
+
 ---
 
 ## 2. Authentication
