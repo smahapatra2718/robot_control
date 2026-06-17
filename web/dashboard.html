@@ -105,11 +105,17 @@
 
   /* lock veil on lease-gated panels */
   .gated{position:relative}
-  .gated[data-locked="1"]::after{content:"LEASE REQUIRED";position:absolute;inset:0;
+  .gated[data-locked="1"]::after{content:"LEASE REQUIRED";position:absolute;inset:0;z-index:5;
     display:flex;align-items:center;justify-content:center;
-    font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--amber);
-    background:rgba(7,8,9,.66);backdrop-filter:blur(1px);border-radius:3px;z-index:5}
-  .gated[data-locked="1"] .pbody{opacity:.25;pointer-events:none}
+    font-family:var(--cond);font-weight:600;font-size:11.5px;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--amber);background:rgba(255,176,46,.10);
+    border:1px solid rgba(255,176,46,.35);border-radius:3px;backdrop-filter:saturate(.5)}
+  .gated[data-locked="1"] .pbody{opacity:.5;pointer-events:none;filter:saturate(.35)}
+  .gated[data-locked="blocked"]::after{content:"NO GRIPPER ON THIS ARM";position:absolute;inset:0;z-index:5;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--cond);font-weight:600;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--dim);background:rgba(7,8,9,.5);border-radius:3px}
+  .gated[data-locked="blocked"] .pbody{opacity:.3;pointer-events:none}
 
   /* ---------- telemetry readouts ---------- */
   .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
@@ -185,14 +191,18 @@
   .speedval{font-family:var(--mono);font-size:16px;color:var(--acid);min-width:52px;text-align:right}
 
   /* lease state banner */
-  .leasebar{display:flex;align-items:center;gap:12px;margin-bottom:12px;
-    padding:10px 12px;border:1px solid var(--line2);border-radius:2px;background:var(--bg2)}
-  .leasebar .dot{width:10px;height:10px;border-radius:50%;background:var(--dim)}
-  .leasebar.held{border-color:var(--amber);background:rgba(255,176,46,.06)}
+  .leasebar{display:flex;align-items:center;gap:11px;margin-bottom:13px;position:relative;overflow:hidden;
+    padding:11px 13px 11px 16px;border:1px solid var(--line2);border-radius:3px;background:var(--bg2);transition:.2s}
+  .leasebar::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dim);transition:.2s}
+  .leasebar .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:0 0 auto}
+  .leasebar .lt{font-family:var(--cond);font-weight:600;font-size:12.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--txt2)}
+  .leasebar .lt b{color:var(--amber);font-weight:700}
+  .leasebar .tok{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.05em}
+  .leasebar.held{border-color:rgba(255,176,46,.5);background:rgba(255,176,46,.05)}
+  .leasebar.held::before{background:var(--amber);box-shadow:0 0 12px var(--amber)}
   .leasebar.held .dot{background:var(--amber);box-shadow:0 0 10px var(--amber)}
-  .leasebar .lt{font-family:var(--mono);font-size:12px;letter-spacing:.04em;text-transform:uppercase}
-  .leasebar .lt b{color:var(--amber)}
-  .leasebar .tok{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim)}
+  .leasebar.held .lt{color:#f2e6cf}
 
   /* console */
   .console{height:170px;overflow:auto;background:var(--bg);border:1px solid var(--line);
@@ -204,8 +214,8 @@
 
   /* ---------- gate ---------- */
   .gate{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
-    background:radial-gradient(900px 600px at 50% 30%, rgba(239,138,124,.06), transparent 60%),
-      rgba(5,6,7,.92);backdrop-filter:blur(3px);transition:opacity .35s}
+    background:radial-gradient(900px 600px at 50% 30%, rgba(239,138,124,.10), transparent 60%),
+      var(--bg);transition:opacity .35s}
   .gate.hide{opacity:0;pointer-events:none}
   .gatecard{width:420px;max-width:92vw;border:1px solid var(--line2);border-radius:4px;
     background:linear-gradient(180deg,var(--panel),var(--bg2));
@@ -368,7 +378,12 @@
                  oninput="document.getElementById('gripInVal').textContent=Math.round(this.value*100)+'%'">
           <span id="gripInVal" class="gripval">0%</span>
         </div>
-        <div class="row end"><button class="primary" onclick="setGripper()">Send /gripper</button></div>
+        <div class="row" style="margin-top:11px">
+          <button class="ghost" onclick="gripPreset(0)">Open · 0%</button>
+          <button class="ghost" onclick="gripPreset(0.5)">Half · 50%</button>
+          <button class="ghost" onclick="gripPreset(1)">Close · 100%</button>
+          <button class="primary" style="margin-left:auto" onclick="setGripper()">Send /gripper</button>
+        </div>
       </div>
     </section>
   </div>
@@ -637,6 +652,7 @@ function setGripper(){
   const frac = +$("gripIn").value;
   submit("gripper", ()=> api("/gripper",{method:"POST",lease:true,body:{frac}}));
 }
+function gripPreset(v){ $("gripIn").value=v; $("gripInVal").textContent=Math.round(v*100)+"%"; setGripper(); }
 
 // ---------- stops (no lease needed) ----------
 async function halt(which){
