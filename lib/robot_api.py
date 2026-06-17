@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import math
+import os
 import secrets
 import threading
 import time
 
 from fastapi import Body, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 
+import robot_common as rc
 from control import Busy
 
 
@@ -95,6 +97,28 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
         if not isinstance(speed, (int, float)) or not (0 < speed <= 1.0):
             raise HTTPException(status_code=422, detail="speed must be a number in (0, 1.0]")
 
+    def _check_name(name) -> None:
+        try:
+            rc.validate_traj_name(name)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+    def _check_waypoints(waypoints) -> None:
+        if not isinstance(waypoints, list) or not waypoints:
+            raise HTTPException(status_code=422, detail="waypoints must be a non-empty list")
+        for i, wp in enumerate(waypoints):
+            if not isinstance(wp, dict):
+                raise HTTPException(status_code=422, detail=f"waypoint {i} must be an object")
+            _check_vec(f"waypoint {i} pos", wp.get("pos"), 3)
+            _check_vec(f"waypoint {i} wxyz", wp.get("wxyz"), 4)
+            if wp.get("q") is not None:
+                _check_vec(f"waypoint {i} q", wp["q"], controller.NUM_JOINTS)
+            grip = wp.get("grip")
+            if grip is not None and (not isinstance(grip, (int, float))
+                                     or math.isnan(grip) or math.isinf(grip)):
+                raise HTTPException(status_code=422,
+                                    detail=f"waypoint {i} grip must be null or a finite number")
+
     @app.post("/move/joints", status_code=202)
     def move_joints(authorization: str = Header(None), x_lease: str = Header(None),
                     q: list = Body(...), speed: float = Body(1.0)):
@@ -153,6 +177,49 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
             except Busy as e:
                 raise HTTPException(status_code=409, detail=str(e))
         return {"freedrive": bool(on)}
+
+    # ---- trajectory authoring: list/load are auth-only reads; save/delete are
+    #      lease-gated file writes (they never touch the arm, but write control
+    #      should own the arm's trajectory set). Names are validated before any path
+    #      is built (path-traversal guard). All scoped to trajectories/<robot>/.
+    @app.get("/trajectories")
+    def list_trajs(authorization: str = Header(None)):
+        check_auth(authorization)
+        return {"trajectories": rc.list_trajectories(controller.robot_name)}
+
+    @app.get("/trajectories/{name}")
+    def get_traj(name: str, authorization: str = Header(None)):
+        check_auth(authorization)
+        _check_name(name)
+        try:
+            return rc.load_trajectory(name, controller.robot_name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404,
+                                detail=f"no trajectory {name!r} for {controller.robot_name}")
+
+    @app.post("/trajectories")
+    def save_traj(authorization: str = Header(None), x_lease: str = Header(None),
+                  name: str = Body(...), waypoints: list = Body(...)):
+        check_auth(authorization)
+        _check_name(name)
+        _check_waypoints(waypoints)
+        with _lease_lock:
+            check_lease(x_lease)
+            rc.save_trajectory(name, controller.robot_name, waypoints)
+        return {"saved": True, "name": name}
+
+    @app.delete("/trajectories/{name}")
+    def delete_traj(name: str, authorization: str = Header(None), x_lease: str = Header(None)):
+        check_auth(authorization)
+        _check_name(name)
+        with _lease_lock:
+            check_lease(x_lease)
+            path = os.path.join(rc.TRAJ_DIR, controller.robot_name, f"{name}.json")
+            if not os.path.exists(path):
+                raise HTTPException(status_code=404,
+                                    detail=f"no trajectory {name!r} for {controller.robot_name}")
+            os.remove(path)
+        return {"deleted": True, "name": name}
 
     @app.get("/command/{cid}")
     def command(cid: int, authorization: str = Header(None)):

@@ -100,8 +100,9 @@ curl -s localhost:8000/state -H "Authorization: Bearer $ROBOT_API_TOKEN"
 ### Single-writer lease
 
 Reads and the safety path are open to any authenticated client. **All writes**
-(`/move/*`, `/play`, `/gripper`, `/freedrive`) require a **lease** — only one
-client holds it at a time, so two operators can't fight over the arm.
+(`/move/*`, `/play`, `/gripper`, `/freedrive`, and saving/deleting trajectories)
+require a **lease** — only one client holds it at a time, so two operators can't
+fight over the arm. (Listing and loading trajectories are reads — auth only.)
 
 1. `POST /control/acquire` → `{"lease_token": "…"}`. Returns **`409`** if already held.
 2. Send the token as the **`X-Lease`** header on every write.
@@ -156,6 +157,10 @@ the arm. `/stop` is a graceful decelerated stop; `/estop` is a hard stop.
 | `POST` | `/play` | ✔ | `202` | Play a saved/inline trajectory |
 | `POST` | `/gripper` | ✔ | `202` | Set gripper opening (UR only) |
 | `POST` | `/freedrive` | ✔ | `200` | Engage/release hand-guiding (`{on}`) |
+| `GET`  | `/trajectories` | — | `200` | List saved trajectory names for the arm |
+| `GET`  | `/trajectories/{name}` | — | `200` | Load one trajectory's JSON |
+| `POST` | `/trajectories` | ✔ | `200` | Save `{name, waypoints}` |
+| `DELETE` | `/trajectories/{name}` | ✔ | `200` | Delete a saved trajectory |
 | `GET`  | `/command/{id}` | — | `200` | Status of a submitted command |
 | `POST` | `/stop` | — | `200` | Graceful stop |
 | `POST` | `/estop` | — | `200` | Hard stop |
@@ -250,6 +255,24 @@ motion is already running. `/stop`, `/estop`, a force-steal, the deadman, and
 curl -s -X POST localhost:8000/freedrive \
      -H "Authorization: Bearer $TOK" -H "X-Lease: $LEASE" \
      -H 'Content-Type: application/json' -d '{"on": true}'      # {"freedrive": true}
+```
+
+### Trajectories  ·  GET/POST/DELETE /trajectories
+Author and manage saved trajectories in `trajectories/<robot>/` (the arm is this
+endpoint's). Names are validated (`[A-Za-z0-9_][A-Za-z0-9._-]{0,63}`, no path
+separators) → bad name `422`. Capturing waypoints is done client-side off `/state`;
+these endpoints only list/load/save/delete the files.
+
+- `GET /trajectories` — auth only → `{"trajectories": ["_sample_ur15", …]}` (sorted).
+- `GET /trajectories/{name}` — auth only → the stored `{robot, created, waypoints}`; unknown → `404`.
+- `POST /trajectories` — **lease** → save (upsert) `{"name", "waypoints"}`; returns `{"saved": true, "name"}`. Each waypoint is validated (`pos[3]`, `wxyz[4]` finite; `q` `null`|`[6]`; `grip` `null`|number) → `422` on a bad shape or empty list.
+- `DELETE /trajectories/{name}` — **lease** → `{"deleted": true, "name"}`; unknown → `404`.
+```bash
+curl -s localhost:8000/trajectories -H "Authorization: Bearer $TOK"
+curl -s -X POST localhost:8000/trajectories \
+     -H "Authorization: Bearer $TOK" -H "X-Lease: $LEASE" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "pickplace", "waypoints": [{"q":[0,-1,1,0,1,0.2],"pos":[0.4,0,0.3],"wxyz":[0,1,0,0],"grip":0.0}]}'
 ```
 
 ### GET /command/{id}

@@ -15,8 +15,10 @@ to defer the ~800 ms JIT cost, which a shared FK helper would undermine.
 from __future__ import annotations
 
 import datetime
+import glob
 import json
 import os
+import re
 
 # Repo root = parent of lib/ (this module lives in lib/). Asset paths below
 # resolve against the root from __file__, independent of the caller's CWD.
@@ -104,8 +106,31 @@ def make_mesh_resolver(prefix: str):
     return _resolve
 
 
+# Trajectory names become file paths, so constrain them: letters/digits/._- only,
+# no leading dot, <=64 chars. This rejects "", "..", "a/b", "\\" etc. — i.e. path
+# traversal and hidden files — before any path is built from the name.
+_TRAJ_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$")
+
+
+def validate_traj_name(name: str) -> None:
+    """Raise ValueError unless `name` is a safe trajectory basename (no path parts)."""
+    if not isinstance(name, str) or not _TRAJ_NAME_RE.match(name):
+        raise ValueError(
+            f"invalid trajectory name {name!r} "
+            f"(allowed: letters, digits, . _ -, <=64 chars, no path separators)")
+
+
+def list_trajectories(robot: str, traj_dir: str = TRAJ_DIR) -> list[str]:
+    """Sorted basenames (no .json) of the saved trajectories in trajectories/<robot>/.
+    Empty list if the folder doesn't exist yet."""
+    folder = os.path.join(traj_dir, robot)
+    return sorted(os.path.splitext(os.path.basename(p))[0]
+                  for p in glob.glob(os.path.join(folder, "*.json")))
+
+
 def save_trajectory(name: str, robot: str, waypoints: list, traj_dir: str = TRAJ_DIR) -> str:
     """Write trajectories/<robot>/<name>.json in the shared format. Returns the path."""
+    validate_traj_name(name)
     folder = os.path.join(traj_dir, robot)
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, f"{name}.json")

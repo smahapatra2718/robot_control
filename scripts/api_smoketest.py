@@ -202,6 +202,67 @@ def test_freedrive():
     print("PASS test_freedrive")
 
 
+def test_traj_helpers():
+    import robot_common as rc
+    assert "_sample_ur15" in rc.list_trajectories("ur15")
+    assert "_sample_gofa" in rc.list_trajectories("gofa")
+    rc.validate_traj_name("pick_place-1")            # valid -> no raise
+    for bad in ("../evil", "a/b", "", ".hidden", "x" * 65):
+        try:
+            rc.validate_traj_name(bad)
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised, f"validate_traj_name should reject {bad!r}"
+    print("PASS test_traj_helpers")
+
+
+def test_trajectories():
+    import os as _os
+    import robot_common as rc
+    client, c = _client("ur15")
+    name = "_api_test_traj"
+    path = _os.path.join(rc.TRAJ_DIR, "ur15", f"{name}.json")
+    try:
+        # list is auth-only and includes the committed sample
+        assert client.get("/trajectories").status_code == 401
+        lst = client.get("/trajectories", headers=_auth())
+        assert lst.status_code == 200 and "_sample_ur15" in lst.json()["trajectories"]
+        # load one back; unknown -> 404
+        got = client.get("/trajectories/_sample_ur15", headers=_auth())
+        assert got.status_code == 200 and got.json()["robot"] == "ur15" and got.json()["waypoints"]
+        assert client.get("/trajectories/__nope__", headers=_auth()).status_code == 404
+        # save needs the lease
+        wps = [{"q": list(robot_sim.UR_HOME), "pos": [0.4, 0.0, 0.3], "wxyz": [0, 1, 0, 0], "grip": 0.0}]
+        assert client.post("/trajectories", headers=_auth(),
+                           json={"name": name, "waypoints": wps}).status_code == 423
+        lease = client.post("/control/acquire", headers=_auth()).json()["lease_token"]
+        h = {**_auth(), "X-Lease": lease}
+        r = client.post("/trajectories", headers=h, json={"name": name, "waypoints": wps})
+        assert r.status_code == 200 and r.json()["saved"] is True, r.text
+        # appears in the list and loads back unchanged
+        assert name in client.get("/trajectories", headers=_auth()).json()["trajectories"]
+        back = client.get(f"/trajectories/{name}", headers=_auth()).json()
+        assert len(back["waypoints"]) == 1 and back["waypoints"][0]["grip"] == 0.0
+        # bad name / malformed / empty waypoints -> 422
+        assert client.post("/trajectories", headers=h,
+                           json={"name": "../evil", "waypoints": wps}).status_code == 422
+        assert client.post("/trajectories", headers=h,
+                           json={"name": name, "waypoints": [{"pos": [1, 2]}]}).status_code == 422
+        assert client.post("/trajectories", headers=h,
+                           json={"name": name, "waypoints": []}).status_code == 422
+        # delete needs the lease; then the name is gone and a second delete -> 404
+        assert client.delete(f"/trajectories/{name}", headers=_auth()).status_code == 423
+        assert client.delete(f"/trajectories/{name}", headers=h).status_code == 200
+        assert name not in client.get("/trajectories", headers=_auth()).json()["trajectories"]
+        assert client.delete(f"/trajectories/{name}", headers=h).status_code == 404
+    finally:
+        if _os.path.exists(path):     # never leave a stray fixture in the repo
+            _os.remove(path)
+        c.close()
+    print("PASS test_trajectories")
+
+
 def test_multi_arm():
     """No-arm `api` mode: build_multi_app serves both arms under /<name>, advertises
     the roster at /robots, and gives each arm its own namespaced state/lease/telemetry."""
@@ -396,6 +457,8 @@ def main():
     test_commands()
     test_gofa_no_gripper()
     test_freedrive()
+    test_traj_helpers()
+    test_trajectories()
     test_multi_arm()
     test_telemetry_ws()
     test_telemetry_auth()

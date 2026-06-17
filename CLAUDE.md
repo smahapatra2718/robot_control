@@ -167,6 +167,11 @@ arm (GoFa).
   "freedrive"`. Mutually exclusive with motion (the command endpoints 409 while engaged; engaging
   409s mid-motion). `/stop` · `/estop` · force-steal · the deadman · `/control/release` all end it
   — a compliant arm never outlives its lease.
+- `GET /trajectories` | `GET /trajectories/{name}` (auth-only reads) | `POST /trajectories`
+  | `DELETE /trajectories/{name}` (lease-gated writes) — author/manage saved trajectories in
+  `trajectories/<robot>/` (arm = the endpoint). Names validated (`validate_traj_name`, no path
+  traversal); waypoints shape-checked. Capturing is client-side off `/state`; these just
+  list/load/save/delete the files. `/play` then takes a saved `name`.
 - `POST /stop` | `/estop` — any authed client (no lease needed); the always-open safety path.
 - `WS /telemetry?token=…&lease=…` — streams `RobotState` at `telem_hz`; an open lease-matched
   WS is the **heartbeat**. If the lease holder goes silent while the arm is live (a motion running
@@ -189,7 +194,10 @@ acquire/force/release, a unified **Teleop** box (a `[Joints | Pose]` header togg
 `/move/joints` vs `/move/pose` target, with a ⟲ load-current button and a **Free-drive** checkbox
 that calls `/freedrive` and snapshots the live state into the fields on each click — mirrors
 `activity:"freedrive"` and disables the toggle/Send while compliant), plus `/play` · `/gripper`
-forms (all lease-gated; gripper panel auto-disables on a gripper-less arm), always-live STOP/E-STOP, and a console log
+forms (all lease-gated; gripper panel auto-disables on a gripper-less arm), a **Record** panel
+(Capture snapshots the live `RobotState` into a client-side waypoint list you can delete from /
+load an existing trajectory into / Save — Save lease-gated), a **Play** picker that's a themed
+type-to-filter dropdown over `GET /trajectories`, always-live STOP/E-STOP, and a console log
 that polls `/command/{id}` to completion. The open WS carries the lease so it doubles as the
 deadman heartbeat. Vanilla HTML/JS, no build step.
 
