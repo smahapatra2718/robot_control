@@ -118,17 +118,15 @@
 
   /* lock veil on lease-gated panels */
   .gated{position:relative}
-  .gated[data-locked="1"]::after{content:"LEASE REQUIRED";position:absolute;inset:0;z-index:5;
-    display:flex;align-items:center;justify-content:center;
-    font-family:var(--cond);font-weight:600;font-size:11.5px;letter-spacing:.24em;text-transform:uppercase;
-    color:var(--amber);background:rgba(255,176,46,.10);
-    border:1px solid rgba(255,176,46,.35);border-radius:3px;backdrop-filter:saturate(.5)}
-  .gated[data-locked="1"] .pbody{opacity:.5;pointer-events:none;filter:saturate(.35)}
-  .gated[data-locked="blocked"]::after{content:"NO GRIPPER ON THIS ARM";position:absolute;inset:0;z-index:5;
-    display:flex;align-items:center;justify-content:center;
-    font-family:var(--cond);font-weight:600;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
-    color:var(--dim);background:rgba(7,8,9,.5);border-radius:3px}
-  .gated[data-locked="blocked"] .pbody{opacity:.3;pointer-events:none}
+  .gated[data-locked="1"] .pbody{opacity:.55;pointer-events:none}
+  .gated[data-locked="blocked"] .pbody{opacity:.4;pointer-events:none}
+  /* clean header status chip in place of a full-panel overlay */
+  .lockflag{display:none}
+  .phead .lockflag{margin-left:10px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;white-space:nowrap;padding:2px 7px;border-radius:2px}
+  .gated[data-locked="1"] .lockflag{display:inline-flex;align-items:center;color:var(--amber);
+    border:1px solid rgba(255,176,46,.45);background:rgba(255,176,46,.10)}
+  .gated[data-locked="1"] .lockflag::before{content:"lease required"}
 
   /* ---------- telemetry readouts ---------- */
   .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
@@ -348,7 +346,7 @@
     </section>
 
     <section class="panel gated" data-locked="1" style="animation-delay:.16s">
-      <div class="phead"><span class="idx">04</span> Move · Joints <button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="loadJoints()">⟲ load current</button></div>
+      <div class="phead"><span class="idx">04</span> Move · Joints <span class="lockflag"></span><button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="loadJoints()">⟲ load current</button></div>
       <div class="pbody">
         <div class="jgrid" id="jointInputs"></div>
         <div class="row end"><button class="primary" onclick="moveJoints()">Send /move/joints</button></div>
@@ -356,7 +354,7 @@
     </section>
 
     <section class="panel gated" data-locked="1" style="animation-delay:.2s">
-      <div class="phead"><span class="idx">05</span> Move · Pose <button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="loadPose()">⟲ load current</button></div>
+      <div class="phead"><span class="idx">05</span> Move · Pose <span class="lockflag"></span><button class="ghost" style="margin-left:auto;padding:4px 8px" onclick="loadPose()">⟲ load current</button></div>
       <div class="pbody">
         <label class="fl">Position — x, y, z (m)</label>
         <div class="jgrid">
@@ -376,7 +374,7 @@
     </section>
 
     <section class="panel gated" data-locked="1" style="animation-delay:.24s">
-      <div class="phead"><span class="idx">06</span> Play Trajectory</div>
+      <div class="phead"><span class="idx">06</span> Play Trajectory <span class="lockflag"></span></div>
       <div class="pbody">
         <label class="fl">Saved trajectory name (trajectories/&lt;name&gt;.json)</label>
         <input id="trajName" type="text" placeholder="e.g. _sample_ur15">
@@ -385,7 +383,7 @@
     </section>
 
     <section class="panel gated" id="gripperPanel" data-locked="1" style="animation-delay:.28s">
-      <div class="phead"><span class="idx">07</span> Gripper <span id="gripTag" class="tag">—</span></div>
+      <div class="phead"><span class="idx">07</span> Gripper <span class="lockflag"></span><span id="gripTag" class="tag">—</span></div>
       <div class="pbody">
         <div class="gripwrap">
           <input id="gripIn" type="range" min="0" max="1" step="0.01" value="0"
