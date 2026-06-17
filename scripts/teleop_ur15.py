@@ -43,6 +43,7 @@ for _p in (_ROOT, os.path.join(_ROOT, "lib")):  # repo root (pyroki_snippets) + 
 import hande_gripper  # noqa: E402
 import pyroki_snippets as pks  # noqa: E402
 import robot_common as rc  # noqa: E402
+from control.base import cartesian_q, step_pose_toward  # noqa: E402  (straight-line tool motion)
 
 # ---------- config (shared values live in robot_common.py) ----------
 ROBOT_IP = rc.UR_ROBOT_IP
@@ -74,6 +75,8 @@ PLAY_HZ = 60                    # viz refresh when idle
 LIVE_HZ = 125                   # live gizmo-follow: IK + servoJ rate (UR servoJ wants a fast, steady cadence)
 GIZMO_SNAP_TWEEN_S = 0.8        # slew the gizmo orientation when snapping in Live (in-place reorient)
 MAX_JOINT_ACCEL = 8.0           # rad/s^2 — accel limit for Live following (lower = smoother, laggier)
+LIVE_MAX_LIN = 0.25             # m/s — Live: cap the tool's straight-line speed toward the gizmo
+LIVE_MAX_ANG = 1.5              # rad/s — Live: cap the tool's reorientation speed toward the gizmo
 SETTLE_TOL_RAD = 0.0            # 0 = no "good enough" early-out; converge to the servoJ floor (plateau) or the cap
 GRIPPER_HOST = ROBOT_IP         # Robotiq Grippers URCap socket server (on the UR controller)
 GRIPPER_PORT = hande_gripper.DEFAULT_PORT
@@ -217,6 +220,22 @@ def _grasp_to_tool0(pos: np.ndarray, wxyz: np.ndarray) -> tuple[np.ndarray, np.n
     )
     T_tool0 = T_grasp.multiply(TOOL0_T_GRASP.inverse())
     return np.asarray(T_tool0.translation()), np.asarray(T_tool0.rotation().wxyz)
+
+
+def _grasp_fk(q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Grasp-point pose (pos, wxyz) for q — the frame the gizmo/waypoints live in.
+    Paired with _grasp_ik for straight-line tool interpolation (cartesian_q)."""
+    T = grasp_pose(q)
+    return np.asarray(T.translation()), np.asarray(T.rotation().wxyz)
+
+
+def _grasp_ik(pos: np.ndarray, wxyz: np.ndarray, q_seed: np.ndarray) -> np.ndarray:
+    """Seeded IK to a grasp-point target (maps grasp->tool0, so the IK model is unchanged)."""
+    pos_t, wxyz_t = _grasp_to_tool0(np.asarray(pos), np.asarray(wxyz))
+    return np.asarray(pks.solve_ik_seeded(
+        robot=robot, target_link_name=TARGET_LINK,
+        target_position=pos_t, target_wxyz=wxyz_t,
+        q_seed=q_seed, rest_weight=2.0))
 
 
 def _warmup_ik() -> None:
@@ -546,13 +565,15 @@ def _play() -> None:
             seg_duration = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / MAX_JOINT_SPEED)
             gui_status.value = f"Segment {seg_idx + 1}/{len(plan_segments)}"
 
+            # Straight-line tool motion (MoveL): interpolate the grasp pose, IK each tick.
+            at = cartesian_q(_grasp_fk, _grasp_ik, q_start, q_goal)
             alpha = 0.0
             while alpha < 1.0:
                 if stop_flag.is_set():
                     break
                 speed = float(gui_speed.value)
                 eased = _alpha_to_s(alpha)
-                q = q_start + delta * eased
+                q = at(eased)
                 viser_urdf.update_cfg(q)
                 _update_gripper_viz(q)
                 if execute:
@@ -664,9 +685,10 @@ def _(_):
 
 
 def _live_loop() -> None:
-    """Continuously chase the gizmo: solve IK each tick and servoJ there, with a
-    acceleration-limited follower so a fast drag or IK branch-flip can't make the
-    arm lurch — speed AND the rate speed can change are both bounded."""
+    """Continuously chase the gizmo with a straight-line tool path: each tick step the
+    commanded grasp pose a bounded amount straight toward the gizmo, IK that, and feed
+    the result through an acceleration-limited follower so a fast drag or IK branch-flip
+    can't make the arm lurch — tool speed, joint speed AND joint accel are all bounded."""
     dt = 1.0 / LIVE_HZ
     max_dv = MAX_JOINT_ACCEL * dt        # max change in joint velocity per tick (rad/s)
     viz_every = max(1, LIVE_HZ // 50)   # throttle browser viz to ~50 Hz; servoJ still runs every tick
@@ -679,7 +701,13 @@ def _live_loop() -> None:
             # initPeriod/waitPeriod hold an exact dt cadence; servoJ is sensitive to
             # jitter (time.sleep drifts by the IK compute time, which made it stutter).
             t_start = rtde_c.initPeriod()
-            pos_t, wxyz_t = _grasp_to_tool0(np.asarray(gizmo.position), np.asarray(gizmo.wxyz))
+            # straight-line reference: step the live grasp pose toward the gizmo by a
+            # bounded amount, so the tool tracks a line (not a joint-space arc) to it.
+            p_cur, w_cur = _grasp_fk(q_cmd)
+            p_ref, w_ref = step_pose_toward(
+                p_cur, w_cur, np.asarray(gizmo.position), np.asarray(gizmo.wxyz),
+                LIVE_MAX_LIN * dt, LIVE_MAX_ANG * dt)
+            pos_t, wxyz_t = _grasp_to_tool0(p_ref, w_ref)
             try:
                 q_target = np.asarray(pks.solve_ik_seeded(
                     robot=robot,

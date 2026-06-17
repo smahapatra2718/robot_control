@@ -169,6 +169,90 @@ def test_controller_freedrive_grasp():
     print("PASS test_controller_freedrive_grasp")
 
 
+def _max_line_deviation(points):
+    """Max perpendicular distance from each point to the chord through endpoints (m)."""
+    import numpy as np
+    p = np.asarray(points, dtype=float)
+    a, b = p[0], p[-1]
+    ab = b - a
+    L = float(np.linalg.norm(ab))
+    if L < 1e-12:
+        return float(np.max(np.linalg.norm(p - a, axis=1)))
+    u = ab / L
+    rel = p - a
+    perp = rel - np.outer(rel @ u, u)
+    return float(np.max(np.linalg.norm(perp, axis=1)))
+
+
+def test_cartesian_path_straight():
+    """The EE path for a segment must be a straight Cartesian line (MoveL), not the
+    curved sweep joint-space interpolation produces (MoveJ). Asserts the new
+    Cartesian interpolation is straight AND that the scenario genuinely arcs under
+    the old joint-lerp (so the test can't pass trivially)."""
+    import numpy as np
+    robot_sim.install("ur15")
+    from control import make_controller
+    c = make_controller("ur15")
+    c.connect()
+    try:
+        # rotate the base joint ~1.2 rad: the tool sweeps a wide horizontal arc under
+        # joint-space interpolation, which is exactly what a straight move must avoid.
+        q_start = np.asarray(robot_sim.UR_HOME, dtype=float)
+        q_goal = q_start + np.asarray([1.2, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=float)
+        ss = [i / 40.0 for i in range(41)]
+
+        # old joint-space lerp — the curved path the user is complaining about
+        joint_pts = [c._fk_pose(q_start + (q_goal - q_start) * s)[0] for s in ss]
+        arc = _max_line_deviation(joint_pts)
+        assert arc > 1e-2, f"scenario does not arc under joint-lerp ({arc*1000:.1f} mm); pick a better test pose"
+
+        # new Cartesian interpolation — must be straight to within IK error
+        at = c._cartesian_q(q_start, q_goal)
+        cart_pts = [c._fk_pose(at(s))[0] for s in ss]
+        dev = _max_line_deviation(cart_pts)
+        assert dev < 2e-3, f"Cartesian path deviates {dev*1000:.2f} mm from straight line"
+        # endpoints anchored exactly to the requested joint configs
+        assert np.max(np.abs(at(0.0) - q_start)) < 1e-9, "s=0 must be q_start exactly"
+        assert np.max(np.abs(at(1.0) - q_goal)) < 1e-9, "s=1 must be q_goal exactly"
+        print(f"PASS test_cartesian_path_straight (arc {arc*1000:.0f} mm -> straight {dev*1000:.2f} mm)")
+    finally:
+        c.close()
+
+
+def test_live_servo_straight():
+    """The Live follower (bounded Cartesian step toward the gizmo + seeded IK + joint
+    clamp, re-evaluated from the live pose each tick) must drive the tool along a
+    straight line to a reachable target, not the joint-space arc it used to."""
+    import numpy as np
+    from control.base import step_pose_toward
+    robot_sim.install("gofa")
+    from control import make_controller
+    c = make_controller("gofa")
+    c.connect()
+    try:
+        q0 = np.asarray(robot_sim.GOFA_HOME, dtype=float)
+        p0, w0 = (np.asarray(v, dtype=float) for v in c._fk_pose(q0))
+        # reachable target = the tool pose of a nearby joint config, same orientation
+        p_tgt = np.asarray(c._fk_pose(q0 + np.array([0.6, 0.2, -0.2, 0.0, 0.0, 0.0]))[0], dtype=float)
+        dt = 1.0 / 30.0
+        q_cmd, pts = q0.copy(), [p0]
+        for _ in range(3000):
+            p_cur, w_cur = (np.asarray(v, dtype=float) for v in c._fk_pose(q_cmd))
+            p_ref, w_ref = step_pose_toward(p_cur, w_cur, p_tgt, w0, 0.25 * dt, 1.5 * dt)
+            q_t = np.asarray(c._ik(p_ref, w_ref, q_cmd), dtype=float)
+            q_cmd = q_cmd + np.clip(q_t - q_cmd, -1.0 * dt, 1.0 * dt)
+            pts.append(np.asarray(c._fk_pose(q_cmd)[0], dtype=float))
+            if np.linalg.norm(p_tgt - pts[-1]) < 1e-3:
+                break
+        reached = float(np.linalg.norm(p_tgt - pts[-1]))
+        dev = _max_line_deviation(pts)
+        assert reached < 5e-3, f"live servo stalled {reached*1000:.1f} mm short of target"
+        assert dev < 3e-3, f"live servo path deviates {dev*1000:.2f} mm from straight line"
+        print(f"PASS test_live_servo_straight (reached {reached*1000:.1f} mm, straight {dev*1000:.2f} mm)")
+    finally:
+        c.close()
+
+
 def test_command_history():
     robot_sim.install("ur15")
     from control import make_controller
@@ -196,6 +280,8 @@ def main():
     test_gofa_connect_state()
     test_gofa_move_play()
     test_controller_freedrive_grasp()
+    test_cartesian_path_straight()
+    test_live_servo_straight()
     test_command_history()
     print("ALL CONTROL SMOKE TESTS PASSED")
 

@@ -142,7 +142,16 @@ class GoFaController(RobotController):
             seg_duration *= peak / rc.GOFA_MAX_TCP_SPEED
         return seg_duration
 
-    def _run_play(self, segments, speed, progress_cb) -> None:
+    def _cap_seg_duration_cartesian(self, q_start, q_goal, seg_duration):
+        # Straight tool0 line: |dp/ds| = ||p1-p0|| (constant), and the trapezoidal
+        # ease peaks ds/dt at v_peak/seg_duration, so the peak TCP speed is exact.
+        line = float(np.linalg.norm(self._fk_pose(q_goal)[0] - self._fk_pose(q_start)[0]))
+        peak = line * (1.0 / (1.0 - rc.RAMP_FRAC)) / seg_duration
+        if peak > rc.GOFA_MAX_TCP_SPEED:
+            seg_duration *= peak / rc.GOFA_MAX_TCP_SPEED
+        return seg_duration
+
+    def _run_play(self, segments, speed, progress_cb, interp="cartesian") -> None:
         dt = 1.0 / rc.GOFA_STREAM_HZ
         if not self._start_egm():
             raise RuntimeError("EGM did not start (no packets in 3s)")
@@ -153,12 +162,17 @@ class GoFaController(RobotController):
                     break
                 delta = q_goal - q_start
                 seg_dur = max(rc.MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / rc.GOFA_MAX_JOINT_SPEED)
-                seg_dur = self._cap_seg_duration(q_start, delta, seg_dur, dt)
+                if interp == "joint":
+                    at = lambda s, a=q_start, d=delta: a + d * s
+                    seg_dur = self._cap_seg_duration(q_start, delta, seg_dur, dt)
+                else:
+                    at = self._cartesian_q(q_start, q_goal)
+                    seg_dur = self._cap_seg_duration_cartesian(q_start, q_goal, seg_dur)
                 alpha = 0.0
                 while alpha < 1.0:
                     if self._cmd_stop.is_set():
                         break
-                    q = q_start + delta * rc.alpha_to_s(alpha)
+                    q = at(rc.alpha_to_s(alpha))
                     self._egm.set_target_rad(q.tolist())
                     time.sleep(dt)
                     alpha = min(1.0, alpha + dt * speed / seg_dur)

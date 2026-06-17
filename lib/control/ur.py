@@ -151,7 +151,7 @@ class URController(RobotController):
             pass
 
     # ---- motion (move/settle; gripper added in Task 4) ----
-    def _run_play(self, segments, speed, progress_cb) -> None:
+    def _run_play(self, segments, speed, progress_cb, interp="cartesian") -> None:
         dt = 1.0 / rc.UR_STREAM_HZ
         n = len(segments)
         cur_grip = self._grip_frac
@@ -160,11 +160,15 @@ class URController(RobotController):
                 break
             delta = q_goal - q_start
             seg_dur = max(rc.MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / rc.UR_MAX_JOINT_SPEED)
+            # Cartesian: tool tip travels a straight line (MoveL); joint: linear in
+            # joint space (MoveJ — exact config, used by move_to_joints).
+            at = (lambda s, a=q_start, d=delta: a + d * s) if interp == "joint" \
+                else self._cartesian_q(q_start, q_goal)
             alpha = 0.0
             while alpha < 1.0:
                 if self._cmd_stop.is_set():
                     break
-                q = q_start + delta * rc.alpha_to_s(alpha)
+                q = at(rc.alpha_to_s(alpha))
                 self._c.servoJ(q.tolist(), 0.0, 0.0, dt, rc.UR_SERVO_LOOKAHEAD, rc.UR_SERVO_GAIN)
                 time.sleep(dt)
                 alpha = min(1.0, alpha + dt * speed / seg_dur)

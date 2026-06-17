@@ -14,6 +14,7 @@ from __future__ import annotations
 import collections
 import copy
 import itertools
+import math
 import threading
 import time
 
@@ -30,6 +31,66 @@ class Busy(Exception):
 
 class Unsupported(Exception):
     """Raised for an operation the concrete robot does not support (e.g. GoFa gripper)."""
+
+
+# ---------- straight-line (Cartesian) tool interpolation ----------
+# Joint-space lerp sweeps the tool along an arc; these move the *tool pose* in a
+# straight line (MoveL) and IK back to joints. numpy-only (no jax) so the control
+# core stays lightweight — the fk/ik callables carry the jax cost where they live.
+
+def slerp_wxyz(w0, w1, s: float) -> np.ndarray:
+    """Spherical linear interpolation between unit quaternions (wxyz), shorter arc."""
+    w0 = np.asarray(w0, dtype=float)
+    w1 = np.asarray(w1, dtype=float)
+    dot = float(np.dot(w0, w1))
+    if dot < 0.0:                      # q and -q are the same rotation; take the short way
+        w1, dot = -w1, -dot
+    if dot > 0.9995:                   # almost parallel: lerp + renormalize (sin(theta)->0)
+        q = w0 + s * (w1 - w0)
+        return q / np.linalg.norm(q)
+    theta = math.acos(dot)
+    return (math.sin((1.0 - s) * theta) * w0 + math.sin(s * theta) * w1) / math.sin(theta)
+
+
+def cartesian_q(fk, ik, q_start, q_goal):
+    """Build at(s), s in [0,1], whose TOOL pose moves in a straight line — position
+    lerp + orientation slerp — from fk(q_start) to fk(q_goal), solving seeded IK at
+    each sample. The joint-space lerp seeds the IK (keeps one kinematic branch); the
+    endpoints return q_start / q_goal exactly, so captured configs are hit precisely.
+
+    fk(q) -> (pos, wxyz); ik(pos, wxyz, q_seed) -> q. Pure in s (no hidden state)."""
+    q_start = np.asarray(q_start, dtype=float)
+    q_goal = np.asarray(q_goal, dtype=float)
+    p0, w0 = (np.asarray(v, dtype=float) for v in fk(q_start))
+    p1, w1 = (np.asarray(v, dtype=float) for v in fk(q_goal))
+
+    def at(s: float) -> np.ndarray:
+        if s <= 0.0:
+            return q_start.copy()
+        if s >= 1.0:
+            return q_goal.copy()
+        pos = (1.0 - s) * p0 + s * p1
+        wxyz = slerp_wxyz(w0, w1, s)
+        seed = (1.0 - s) * q_start + s * q_goal
+        return np.asarray(ik(pos, wxyz, seed), dtype=float)
+    return at
+
+
+def step_pose_toward(p_cur, w_cur, p_tgt, w_tgt, max_lin: float, max_ang: float):
+    """One bounded step of a tool pose from (p_cur, w_cur) toward (p_tgt, w_tgt):
+    translation clamped to max_lin (m), reorientation to max_ang (rad). Returns
+    (p_ref, w_ref) — IK it to chase a moving gizmo along a straight tool path."""
+    p_cur = np.asarray(p_cur, dtype=float)
+    p_tgt = np.asarray(p_tgt, dtype=float)
+    w_cur = np.asarray(w_cur, dtype=float)
+    w_tgt = np.asarray(w_tgt, dtype=float)
+    dp = p_tgt - p_cur
+    dist = float(np.linalg.norm(dp))
+    p_ref = p_tgt if dist <= max_lin else p_cur + dp * (max_lin / dist)
+    dot = min(1.0, abs(float(np.dot(w_cur, w_tgt))))
+    angle = 2.0 * math.acos(dot)        # geodesic angle between the two orientations
+    w_ref = w_tgt.copy() if angle <= max_ang else slerp_wxyz(w_cur, w_tgt, max_ang / angle)
+    return p_ref, w_ref
 
 
 class RobotController:
@@ -187,8 +248,9 @@ class RobotController:
     def move_to_joints(self, q, speed: float = 1.0) -> int:
         q_goal = np.asarray(q, dtype=float)
         q_start = self._read_q_copy()
+        # a joint target is a MoveJ: interpolate in joint space (exact config, no IK)
         return self._submit("moving", lambda cb: self._run_play(
-            [(q_start, q_goal, None)], speed, cb))
+            [(q_start, q_goal, None)], speed, cb, interp="joint"))
 
     def move_to_pose(self, pos, wxyz, speed: float = 1.0) -> int:
         q_start = self._read_q_copy()
@@ -255,6 +317,10 @@ class RobotController:
             q = q_next
         return segs
 
+    def _cartesian_q(self, q_start, q_goal):
+        """Straight-line tool interpolation (base.cartesian_q) over this robot's FK/IK."""
+        return cartesian_q(self._fk_pose, self._ik, q_start, q_goal)
+
     # ---------- hardware primitives (subclass implements) ----------
     def _connect(self) -> None: raise NotImplementedError
     def _close(self) -> None: raise NotImplementedError
@@ -262,7 +328,7 @@ class RobotController:
     def _read_safety(self): raise NotImplementedError          # -> (safety, ctrl, conn_ok, health)
     def _fk_pose(self, q): raise NotImplementedError           # -> (pos, wxyz)
     def _ik(self, pos, wxyz, q_seed): raise NotImplementedError  # -> q
-    def _run_play(self, segments, speed, progress_cb): raise NotImplementedError
+    def _run_play(self, segments, speed, progress_cb, interp="cartesian"): raise NotImplementedError
     def _graceful_stop(self) -> None: raise NotImplementedError
     def _hard_stop(self) -> None: raise NotImplementedError
     def _gripper_frac(self): return None

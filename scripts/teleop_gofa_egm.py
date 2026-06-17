@@ -38,6 +38,7 @@ import abb_egm  # noqa: E402
 import abb_rws  # noqa: E402
 import pyroki_snippets as pks  # noqa: E402
 import robot_common as rc  # noqa: E402
+from control.base import cartesian_q, step_pose_toward  # noqa: E402  (straight-line tool motion)
 
 # ---------- config (shared values live in robot_common.py) ----------
 ROBOT_IP = rc.GOFA_ROBOT_IP
@@ -63,6 +64,7 @@ TRAJ_DIR = rc.TRAJ_DIR
 POLL_HZ = 10                         # RWS state polling (idle viz only)
 PLAY_HZ = 60                         # viz refresh when idle
 LIVE_HZ = 30                         # live gizmo-follow: IK + EGM target update rate
+LIVE_MAX_ANG = 1.5                   # rad/s — Live: cap the tool's reorientation speed (linear cap = MAX_TCP_SPEED)
 GIZMO_SNAP_TWEEN_S = 0.8             # slew the gizmo orientation when snapping in Live (in-place reorient)
 
 _alpha_to_s = rc.alpha_to_s
@@ -182,6 +184,20 @@ def ee_pose(q: np.ndarray) -> jaxlie.SE3:
     return jaxlie.SE3(Ts[TARGET_LINK_IDX])
 
 
+def _tool0_fk(q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """tool0 pose (pos, wxyz) for q — the frame the gizmo/waypoints live in.
+    Paired with _tool0_ik for straight-line tool interpolation (cartesian_q)."""
+    T = ee_pose(q)
+    return np.asarray(T.translation()), np.asarray(T.rotation().wxyz)
+
+
+def _tool0_ik(pos: np.ndarray, wxyz: np.ndarray, q_seed: np.ndarray) -> np.ndarray:
+    return np.asarray(pks.solve_ik_seeded(
+        robot=robot, target_link_name=TARGET_LINK,
+        target_position=np.asarray(pos), target_wxyz=np.asarray(wxyz),
+        q_seed=q_seed, rest_weight=2.0))
+
+
 def _warmup_ik() -> None:
     """Pre-compile the IK solver (JAX JIT, ~800 ms) so the first Plan is fast.
     Solves a no-op IK at the current pose; result discarded."""
@@ -199,21 +215,16 @@ def _warmup_ik() -> None:
         print(f"IK warmup skipped: {e}")
 
 
-def _cap_seg_duration(q_start: np.ndarray, delta: np.ndarray,
-                      seg_duration: float, dt: float) -> float:
+def _cap_seg_duration_cartesian(q_start: np.ndarray, q_goal: np.ndarray,
+                                seg_duration: float) -> float:
     """Stretch seg_duration so the real TCP speed never exceeds MAX_TCP_SPEED.
 
-    Walks the eased trajectory through forward kinematics at slider=1.0 and
-    measures the peak instantaneous TCP speed. Because TCP speed scales as
-    1/seg_duration for a fixed path, one measurement gives the exact stretch
-    factor. The slider only scales below 1.0, so this is the worst case.
-    """
-    alpha, prev_p, peak = 0.0, np.asarray(ee_pose(q_start).translation()), 0.0
-    while alpha < 1.0:
-        alpha = min(1.0, alpha + dt / seg_duration)
-        p = np.asarray(ee_pose(q_start + delta * _alpha_to_s(alpha)).translation())
-        peak = max(peak, float(np.linalg.norm(p - prev_p)) / dt)
-        prev_p = p
+    For a straight tool0 line |dp/ds| = ||p1-p0|| is constant, so the trapezoidal
+    ease peaks the speed at v_peak/seg_duration — exact, no FK walk needed. The
+    slider only scales below 1.0, so this is the worst case."""
+    line = float(np.linalg.norm(
+        np.asarray(ee_pose(q_goal).translation()) - np.asarray(ee_pose(q_start).translation())))
+    peak = line * (1.0 / (1.0 - RAMP_FRAC)) / seg_duration
     if peak > MAX_TCP_SPEED:
         seg_duration *= peak / MAX_TCP_SPEED
     return seg_duration
@@ -498,16 +509,18 @@ def _play() -> None:
                 break
             delta = q_goal - q_start
             seg_duration = max(MIN_SEG_DURATION_S, float(np.max(np.abs(delta))) / MAX_JOINT_SPEED)
-            seg_duration = _cap_seg_duration(q_start, delta, seg_duration, dt)
+            seg_duration = _cap_seg_duration_cartesian(q_start, q_goal, seg_duration)
             gui_status.value = f"Segment {seg_idx + 1}/{len(plan_segments)}"
 
+            # Straight-line tool motion (MoveL): interpolate the tool0 pose, IK each tick.
+            at = cartesian_q(_tool0_fk, _tool0_ik, q_start, q_goal)
             alpha = 0.0
             while alpha < 1.0:
                 if stop_flag.is_set():
                     break
                 speed = float(gui_speed.value)
                 eased = _alpha_to_s(alpha)
-                q = q_start + delta * eased
+                q = at(eased)
                 viser_urdf.update_cfg(q)
                 if execute:
                     egm.set_target_rad(q.tolist())
@@ -588,10 +601,11 @@ def _(_):
 
 
 def _live_loop() -> None:
-    """Continuously chase the gizmo over EGM: solve IK each tick and stream the
-    target, with a per-tick joint clamp AND a TCP-speed clamp (the GoFa collaborative
-    limit). Re-arms the EGM session if RAPID's CondTime drops it during a pause —
-    so no supervisor change is needed."""
+    """Continuously chase the gizmo over EGM with a straight-line tool path: each tick
+    step the commanded tool0 pose a bounded amount straight toward the gizmo (so the tool
+    tracks a line, not a joint-space arc), IK it, then stream with a per-tick joint clamp
+    AND a TCP-speed clamp (the GoFa collaborative limit). Re-arms the EGM session if
+    RAPID's CondTime drops it during a pause — so no supervisor change is needed."""
     dt = 1.0 / LIVE_HZ
     if not _start_egm_session():
         live.clear()
@@ -610,13 +624,14 @@ def _live_loop() -> None:
                 gui_egm_status.value = "streaming (live)"
                 with state_lock:
                     q_cmd = current_q.copy()
+            # straight-line reference: step the live tool0 pose toward the gizmo by a
+            # bounded amount (linear cap = MAX_TCP_SPEED), so the tool tracks a line to it.
+            p_cur, w_cur = _tool0_fk(q_cmd)
+            p_ref, w_ref = step_pose_toward(
+                p_cur, w_cur, np.asarray(gizmo.position), np.asarray(gizmo.wxyz),
+                MAX_TCP_SPEED * dt, LIVE_MAX_ANG * dt)
             try:
-                q_target = np.asarray(pks.solve_ik_seeded(
-                    robot=robot, target_link_name=TARGET_LINK,
-                    target_position=np.asarray(gizmo.position),
-                    target_wxyz=np.asarray(gizmo.wxyz),
-                    q_seed=q_cmd, rest_weight=2.0,
-                ))
+                q_target = _tool0_ik(p_ref, w_ref, q_cmd)
             except Exception:
                 time.sleep(dt)
                 continue

@@ -130,8 +130,17 @@ state/free-drive) against `lib/robot_sim.py` with no robot.
 Subclasses (`URController`, `GoFaController`) implement the hardware primitives (`_read_q`,
 `_servo`-style `_run_play`, `_ik`, `_graceful_stop`/`_hard_stop`, …); the base owns the command
 executor (one motion at a time; a submit while busy raises `Busy`; `stop`/`estop` preempt), the
-state loop, and segment building. The motion loops are lifted verbatim from the tuned teleop
-scripts, so behavior is identical.
+state loop, and segment building. The motion loops are lifted from the tuned teleop scripts,
+so behavior is identical across every surface.
+
+Point-to-point motion interpolates in **Cartesian** space: `move_to_pose` / `play` drive the
+tip along a straight line — `_cartesian_q` lerps position + slerps orientation between the
+segment's two poses and re-solves seeded IK each tick (endpoints anchored to the exact joint
+goals). `move_to_joints` stays **joint-space** (a joint command should move in joint space, and
+a straight line between two arbitrary joint configs can be unreachable / cross a singularity).
+The shared `_run_play(segments, speed, cb, interp=)` picks which (`"cartesian"` default,
+`"joint"` for `move_to_joints`); helpers live in `control/base.py` (`cartesian_q`, `slerp_wxyz`,
+`step_pose_toward`).
 
 ## Remote API — `scripts/api_server.py`
 
@@ -149,7 +158,9 @@ direct cable, set it — or make it required). All endpoints need `Authorization
   under the lease, return `202 {command_id}`. Poll `GET /command/{id}` or watch `WS /telemetry`
   for completion. Joint/pose vectors are shape+finiteness checked and `speed` is capped to
   `(0, 1.0]` (422 on a bad vector/speed, so a malformed `q` never reaches servoJ and the API
-  can't exceed `MAX_JOINT_SPEED`). `/gripper` 400s on a gripper-less arm (GoFa).
+  can't exceed `MAX_JOINT_SPEED`). `/move/pose` and `/play` move the tip along a straight
+Cartesian line; `/move/joints` interpolates in joint space. `/gripper` 400s on a gripper-less
+arm (GoFa).
 - `POST /stop` | `/estop` — any authed client (no lease needed); the always-open safety path.
 - `WS /telemetry?token=…&lease=…` — streams `RobotState` at `telem_hz`; an open lease-matched
   WS is the **heartbeat**. If the lease holder goes silent while a motion is active, a watchdog
@@ -179,7 +190,7 @@ for p in 29999 30001 30002 30004; do nc -zv -G 2 192.168.125.2 $p; done   # all 
 
 Threads: **`poll_loop`** reads `rtde_r.getActualQ()` at 30 Hz into `current_q` (under `state_lock`); **`viz_loop`** writes `current_q` into the `ViserUrdf` when not playing; **`_play`** is spawned per Play click and owns the URDF viz + (when Execute is on) the `servoJ` stream.
 
-State machine: Idle (browser mirrors arm, user drags gizmo) → Add waypoint (snapshot `(pos, wxyz)` + scene frame) → Plan (seeded IK at each waypoint, each solution seeds the next, stored as `plan_segments: list[(q_start, q_goal)]`; no waypoints → falls back to gizmo pose) → Play (per segment advance `alpha ∈ [0,1]` at `dt·speed/seg_duration`, `seg_duration = max(MIN_SEG_DURATION_S, max(|Δq|)/MAX_JOINT_SPEED)`, map through `_alpha_to_s`, write `q` to URDF and `servoJ` if Execute on). After a successful executed Play, auto-cleanup clears waypoints/frames, resets the gizmo to the new EE pose, drops `plan_segments`, unchecks Execute. Stopped/preview plays leave state untouched.
+State machine: Idle (browser mirrors arm, user drags gizmo) → Add waypoint (snapshot `(pos, wxyz)` + scene frame) → Plan (seeded IK at each waypoint, each solution seeds the next, stored as `plan_segments: list[(q_start, q_goal)]`; no waypoints → falls back to gizmo pose) → Play (per segment advance `alpha ∈ [0,1]` at `dt·speed/seg_duration`, `seg_duration = max(MIN_SEG_DURATION_S, max(|Δq|)/MAX_JOINT_SPEED)`, map through `_alpha_to_s` for the speed profile; the tip follows a **straight Cartesian line** — each tick lerps position + slerps orientation between the segment's two poses and re-solves seeded IK, with the endpoints anchored to the exact joint goals — then writes `q` to URDF and `servoJ` if Execute on). After a successful executed Play, auto-cleanup clears waypoints/frames, resets the gizmo to the new EE pose, drops `plan_segments`, unchecks Execute. Stopped/preview plays leave state untouched.
 
 Safety: Execute auto-unchecks the instant a Play with Execute=on begins; Stop → `stop_flag` → loop breaks → `finally` calls `rtde_c.servoStop(SERVO_STOP_DECEL=2.0)` (default 10 felt jerky).
 
@@ -198,6 +209,8 @@ Shared ones live in `robot_common.py` (`UR_*` / unprefixed); the script binds th
 | `SERVO_STOP_DECEL` | `2.0` rad/s² | Final settle deceleration |
 | `STREAM_HZ` | `50` | servoJ + viz frame rate |
 | `LIVE_HZ` | `125` | Live gizmo-follow IK + servoJ rate (fast steady cadence via initPeriod/waitPeriod keeps servoJ smooth) |
+| `LIVE_MAX_LIN` | `0.25` m/s | Live: per-tick straight-line tip speed toward the gizmo |
+| `LIVE_MAX_ANG` | `1.5` rad/s | Live: per-tick reorientation speed toward the gizmo |
 | `rest_weight` (in Plan handler) | `2.0` | IK pull toward current joints |
 
 ## Hand-E gripper
@@ -230,11 +243,11 @@ A Robotiq Hand-E parallel gripper on the UR15 wrist (RS-485 + 24 V through the t
 
 ## Live gizmo-follow mode
 
-Both scripts have a **"Live (drive robot)"** checkbox: the real arm chases the gizmo in real time (no Plan/Play). The `_live_loop` thread reads the gizmo pose → seeded IK (seeded from the *last commanded* `q`, not measured, to avoid feedback jitter) → clamps the step → commands the arm. Mutually exclusive with Plan/Play; Stop or unticking ends it.
+Both scripts have a **"Live (drive robot)"** checkbox: the real arm chases the gizmo in real time (no Plan/Play). The `_live_loop` thread reads the gizmo pose → steps the commanded pose a bounded amount **straight toward** it (≤ per-tick linear/angular limits, so the tip tracks a line, not a joint arc) → seeded IK (seeded from the *last commanded* `q`, not measured, to avoid feedback jitter) → clamps the joint step → commands the arm. Mutually exclusive with Plan/Play; Stop or unticking ends it.
 
 - **Snap-on-enable:** the gizmo jumps to the current EE first, so the arm never lurches toward a stale pose.
 - **UR acceleration-limited follower:** tracks the IK target through a per-joint profile bounding both speed (`MAX_JOINT_SPEED`) and accel (`MAX_JOINT_ACCEL`), with desired speed tapered to `√(2·a·|err|)` (decelerates to rest without overshoot) and a one-tick `|err|/dt` cap killing rest dither. This bounds jerk and low-passes IK jitter — the UR has no controller-side filter like the GoFa's EGM `LpFilter`. Runs at `LIVE_HZ` (125) on an exact `initPeriod`/`waitPeriod` cadence (`servoJ` is jitter-sensitive). `servoStop` on exit.
-- **GoFa:** simpler per-tick step clamp (EGM filters controller-side). Streams the target over the *existing* EGM session. Because `PyEgm.mod` uses `\CondTime := 1`, a >1 s pause lets the robot converge and RAPID drops the session; `_live_loop` detects the stale feed (`egm.is_fresh`) and **re-arms** (`_start_egm_session`) on the next motion — expect a brief hitch after a long pause. Applies the `MAX_TCP_SPEED` cap by scaling the per-tick step; on exit holds the last pose for `HOLD_AFTER_PLAY_S` so `\CondTime` cleanly closes the session.
+- **GoFa:** bounds the per-tick **pose** step straight toward the gizmo (linear ≤ `MAX_TCP_SPEED·dt`, angular ≤ `LIVE_MAX_ANG·dt`), IKs it, then a simpler per-tick joint clamp (EGM filters controller-side). Streams the target over the *existing* EGM session. Because `PyEgm.mod` uses `\CondTime := 1`, a >1 s pause lets the robot converge and RAPID drops the session; `_live_loop` detects the stale feed (`egm.is_fresh`) and **re-arms** (`_start_egm_session`) on the next motion — expect a brief hitch after a long pause. The linear bound above is the `MAX_TCP_SPEED` cap; on exit holds the last pose for `HOLD_AFTER_PLAY_S` so `\CondTime` cleanly closes the session.
 
 ## Free-drive teach & saved trajectories
 
@@ -385,8 +398,8 @@ Knobs (edit in `install_gofa_egm.py`, then rerun the installer — Ctrl+C any ru
 
 Same shape as `teleop_ur15.py`, with EGM in place of servoJ:
 - **State polling** via `rws.get_joints()` at ~10 Hz (idle viz only). During an Execute play the loop drives the URDF from the streamed target.
-- **Execute mode** streams joint targets over EGM (UDP) at `STREAM_HZ`; the same `q` from the alpha profile goes to both viser and the stream every tick. A play: (1) sets `egm_go = TRUE` and waits for the first EGM feedback packet; (2) streams targets segment by segment with a short dwell between; (3) holds the final target for `HOLD_AFTER_PLAY_S` so RAPID's `\CondTime` convergence fires and `EGMRunJoint` exits, clearing `egm_go`.
-- **Speed is unified and TCP-capped.** `_cap_seg_duration()` stretches each segment so real TCP speed never exceeds `MAX_TCP_SPEED` (measured against URDF kinematics); the slider can only scale *below* that cap.
+- **Execute mode** streams joint targets over EGM (UDP) at `STREAM_HZ`; the same `q` (a **straight Cartesian line** between the segment endpoints — lerp + slerp + seeded IK each tick, shaped by the alpha profile) goes to both viser and the stream every tick. A play: (1) sets `egm_go = TRUE` and waits for the first EGM feedback packet; (2) streams targets segment by segment with a short dwell between; (3) holds the final target for `HOLD_AFTER_PLAY_S` so RAPID's `\CondTime` convergence fires and `EGMRunJoint` exits, clearing `egm_go`.
+- **Speed is unified and TCP-capped.** `_cap_seg_duration_cartesian()` stretches each segment so real TCP speed never exceeds `MAX_TCP_SPEED` — for a straight tool line the peak speed is exactly `‖p₁−p₀‖·v_peak/seg_duration`, computed analytically (no joint-walk needed); the slider can only scale *below* that cap.
 - Startup safety: sets `egm_go = FALSE` on connect so a stray TRUE doesn't fire EGM.
 
 ## Tunables — `teleop_gofa_egm.py`
@@ -407,6 +420,7 @@ Shared ones live in `robot_common.py` (`GOFA_*` / unprefixed); GoFa-only knobs a
 | `POLL_HZ` | `10` | RWS state polling rate |
 | `STREAM_HZ` | `100` | EGM target stream + viz frame rate |
 | `LIVE_HZ` | `30` | Live gizmo-follow IK + EGM target update rate |
+| `LIVE_MAX_ANG` | `1.5` rad/s | Live: per-tick reorientation speed toward the gizmo (linear bound is `MAX_TCP_SPEED`) |
 | `rest_weight` (Plan handler) | `2.0` | IK pull toward current joints |
 
 ## OmniCore RWS gotchas
