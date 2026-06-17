@@ -445,7 +445,9 @@
         <div id="recList" class="reclist"></div>
         <label class="fl" style="margin-top:13px">Name</label>
         <div class="row" style="margin-top:0">
-          <input id="recName" type="text" autocomplete="off" placeholder="e.g. pickplace" style="flex:1;width:auto">
+          <input id="recName" type="text" autocomplete="off" data-1p-ignore data-lpignore="true"
+                 readonly onfocus="this.removeAttribute('readonly')" onblur="this.setAttribute('readonly','')"
+                 placeholder="e.g. pickplace" style="flex:1;width:auto">
           <button class="ghost" onclick="loadRec()" title="Load this saved trajectory into the editor">Load</button>
           <button class="primary" id="recSave" onclick="saveRec()" title="Save to the arm's folder (needs the lease)">Save</button>
         </div>
@@ -458,13 +460,23 @@
       <div class="pbody">
         <label class="fl">Saved trajectory — type to filter (trajectories/&lt;robot&gt;/)</label>
         <div class="combo">
-          <input id="playName" type="text" autocomplete="off" placeholder="pick or type a name…"
-                 onfocus="openPlayMenu()" oninput="playInput()" onkeydown="playKey(event)"
-                 onblur="setTimeout(closePlayMenu,150)">
+          <input id="playName" type="text" autocomplete="off" data-1p-ignore data-lpignore="true"
+                 readonly placeholder="pick or type a name…"
+                 onfocus="this.removeAttribute('readonly');openPlayMenu()"
+                 oninput="playInput()" onkeydown="playKey(event)"
+                 onblur="this.setAttribute('readonly','');setTimeout(closePlayMenu,150)">
           <span class="combo-caret">▾</span>
           <div id="playMenu" class="combo-menu" style="display:none"></div>
         </div>
-        <div class="row end"><button class="primary" onclick="play()">Send /play</button></div>
+        <div class="row">
+          <button class="ghost" onclick="addChain()">⊕ Add to chain</button>
+          <button class="primary" id="playBtn" style="margin-left:auto" onclick="play()">▶ Play</button>
+        </div>
+        <div id="chainList" class="reclist" style="display:none;margin-top:11px"></div>
+        <div class="row" id="chainTools" style="display:none">
+          <span class="hintline">Chained trajectories play back-to-back as one continuous motion.</span>
+          <button class="ghost" style="margin-left:auto" onclick="clearChain()">Clear chain</button>
+        </div>
       </div>
     </section>
   </div>
@@ -510,6 +522,7 @@ const lastStates = {};             // arm -> last RobotState
 let prefilled = false;
 let mode = "joints";                // teleop box: "joints" | "pose"
 let trajList = [], playMenuOpen = false, playHi = -1;   // play picker
+let chain = [];                     // play builder: ordered trajectory names to chain
 let recWps = [];                    // record editor: captured waypoints
 const tracked = new Set();
 
@@ -607,6 +620,7 @@ function disconnect(){
   });
   connected=false; multi=false; arms=[]; active=null;
   trajList=[]; closePlayMenu(); $("playName").value="";
+  chain=[]; renderChain();
   recWps=[]; renderRecList();
   Object.keys(lastStates).forEach(k=>delete lastStates[k]);
   $("gate").classList.remove("hide");
@@ -634,8 +648,9 @@ function selectArm(name){
   active = name;
   document.querySelectorAll(".armchip").forEach(c=> c.classList.toggle("active", c.dataset.arm===name));
   prefilled = false;
-  // captured waypoints hold this-arm joint values, so don't carry them across arms
+  // captured waypoints / chains hold this-arm names+joints, so don't carry them across arms
   recWps = []; renderRecList();
+  chain = []; renderChain();
   $("playName").value = ""; closePlayMenu(); trajList = []; fetchTrajList();
   if(lastStates[active]) render(lastStates[active]);   // re-paint panels from this arm
   updateLeaseUI();
@@ -848,10 +863,34 @@ function refreshTeleop(){
   $("teleopSend").disabled = fd;                          // can't command a compliant arm
   document.querySelectorAll("#modeSeg .segbtn").forEach(b=> b.disabled = fd);
 }
-function play(){
+// ---------- play builder: chain several saved trajectories into one motion ----------
+function addChain(){
   const name = $("playName").value.trim();
-  if(!name){ log("err","pick or type a trajectory name"); return; }
-  submit("play", ()=> api("/play",{method:"POST",lease:true,body:{name,speed:speed()}}));
+  if(!name){ log("err","pick a trajectory to add"); return; }
+  if(!trajList.includes(name)){ log("err","'"+name+"' isn't a saved trajectory for this arm"); return; }
+  chain.push(name); renderChain(); $("playName").value = ""; closePlayMenu();
+}
+function delChainItem(i){ chain.splice(i,1); renderChain(); }
+function clearChain(){ chain = []; renderChain(); }
+function renderChain(){
+  const box = $("chainList"), tools = $("chainTools"), n = chain.length;
+  $("playBtn").textContent = n ? `▶ Play chain (${n})` : "▶ Play";
+  box.style.display = tools.style.display = n ? "" : "none";
+  box.innerHTML = chain.map((nm,i)=>
+    `<div class="rec-row"><span class="rec-i">${i+1}</span><span class="rec-p">${nm}</span>`
+    + `<button class="rec-x" data-i="${i}">×</button></div>`).join("");
+}
+function play(){
+  // the server does all the work: a single name, or a chain of names it concatenates.
+  // the dashboard just posts to /play — no client-side composition.
+  if(chain.length){
+    submit("play chain ["+chain.join(" → ")+"]",
+           ()=> api("/play",{method:"POST",lease:true,body:{names:chain.slice(),speed:speed()}}));
+    return;
+  }
+  const name = $("playName").value.trim();
+  if(!name){ log("err","pick a trajectory, or add some to a chain"); return; }
+  submit("play "+name, ()=> api("/play",{method:"POST",lease:true,body:{name,speed:speed()}}));
 }
 
 // ---------- play picker: type-to-filter combobox over GET /trajectories ----------
@@ -960,7 +999,7 @@ function loadPose(){
 
 window.addEventListener("DOMContentLoaded", ()=>{
   $("tokenIn").focus();
-  renderRecList();
+  renderRecList(); renderChain();
   // play picker: pick an item (mousedown beats the input's blur)
   $("playMenu").addEventListener("mousedown", e=>{
     const it = e.target.closest(".combo-item"); if(!it) return;
@@ -970,6 +1009,11 @@ window.addEventListener("DOMContentLoaded", ()=>{
   $("recList").addEventListener("click", e=>{
     const x = e.target.closest(".rec-x"); if(!x) return;
     delWp(+x.dataset.i);
+  });
+  // chain list: remove a trajectory from the chain
+  $("chainList").addEventListener("click", e=>{
+    const x = e.target.closest(".rec-x"); if(!x) return;
+    delChainItem(+x.dataset.i);
   });
 });
 </script>

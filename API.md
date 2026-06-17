@@ -220,14 +220,22 @@ curl -s -X POST localhost:8000/move/pose \
 ```
 
 ### POST /play
-Body: provide **one** of `name` (resolved as `trajectories/<robot>/<name>.json`,
-where `<robot>` is this endpoint's arm) or `waypoints` (an inline list), plus
-optional `speed`.
+Body: provide **one** of:
+- `name` — a single saved trajectory (`trajectories/<robot>/<name>.json`, the arm being this endpoint's), or
+- `names` — a **list** of saved names the **server chains**: it concatenates each trajectory's waypoints, in order, into one continuous motion (each seam becomes another segment), or
+- `waypoints` — an inline list.
+
+plus optional `speed`. Names are validated server-side (bad/missing → `400`, no path traversal).
 ```bash
 curl -s -X POST localhost:8000/play \
      -H "Authorization: Bearer $TOK" -H "X-Lease: $LEASE" \
      -H 'Content-Type: application/json' \
      -d '{"name": "_sample_ur15", "speed": 1.0}'
+# chain several into one continuous motion (server-side concatenation):
+curl -s -X POST localhost:8000/play \
+     -H "Authorization: Bearer $TOK" -H "X-Lease: $LEASE" \
+     -H 'Content-Type: application/json' \
+     -d '{"names": ["approach", "grasp", "retreat"], "speed": 0.5}'
 ```
 Each waypoint is `{"q": [6]|null, "pos": [3], "wxyz": [4], "grip": float|null}`.
 A waypoint with `q` replays those joints exactly; without it, IK solves from the

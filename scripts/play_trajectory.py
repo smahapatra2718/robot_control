@@ -69,6 +69,8 @@ def load_trajectory(robot: str, name: str) -> dict:
         data = rc.load_trajectory(name, robot)
     except FileNotFoundError:
         raise SystemExit(f"no trajectory at trajectories/{robot}/{name}.json")
+    except ValueError as e:
+        raise SystemExit(str(e))
     if data.get("robot") not in (None, robot):
         raise SystemExit(
             f"{robot}/{name}.json is filed under {robot}/ but its 'robot' field is "

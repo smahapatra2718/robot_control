@@ -314,10 +314,18 @@ class RobotController:
         return np.asarray(self._read_q(), dtype=float).copy()
 
     def _load_waypoints(self, waypoints_or_name) -> list[dict]:
+        """Resolve a play target into a waypoint list. Accepts a trajectory name (str),
+        a list of names (chained — each trajectory's waypoints concatenated, in order,
+        as one continuous motion), or a list of inline waypoint dicts."""
         if isinstance(waypoints_or_name, str):
-            data = rc.load_trajectory(waypoints_or_name, self.robot_name)
-            return data.get("waypoints", [])
-        return list(waypoints_or_name)
+            return self._named_waypoints(waypoints_or_name)
+        items = list(waypoints_or_name)
+        if items and all(isinstance(x, str) for x in items):
+            return [wp for nm in items for wp in self._named_waypoints(nm)]
+        return items
+
+    def _named_waypoints(self, name: str) -> list[dict]:
+        return rc.load_trajectory(name, self.robot_name).get("waypoints", [])
 
     def _build_segments(self, waypoints: list[dict]):
         """[(q_start, q_goal, grip)] from the current pose through each waypoint.

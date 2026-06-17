@@ -118,6 +118,18 @@ def test_commands():
         rp = client.post("/play", headers=h, json={"name": "_sample_ur15", "speed": 1.0})
         assert rp.status_code == 202
         assert _poll_command(client, rp.json()["command_id"]) == "done"
+        # play a CHAIN of names — the server concatenates each trajectory's waypoints into
+        # one continuous motion (this is exactly what the console's chain builder posts)
+        rpn = client.post("/play", headers=h, json={"names": ["_sample_ur15", "_sample_ur15"], "speed": 1.0})
+        assert rpn.status_code == 202, rpn.text
+        assert _poll_command(client, rpn.json()["command_id"]) == "done"
+        # a bad name in a chain is validated server-side (no path traversal) -> 400
+        assert client.post("/play", headers=h, json={"names": ["../evil"]}).status_code == 400
+        # inline waypoints are also accepted
+        rpw = client.post("/play", headers=h,
+                          json={"waypoints": [{"q": target}, {"q": list(robot_sim.UR_HOME)}], "speed": 1.0})
+        assert rpw.status_code == 202
+        assert _poll_command(client, rpw.json()["command_id"]) == "done"
         # gripper -> done
         rg = client.post("/gripper", headers=h, json={"frac": 0.5})
         assert rg.status_code == 202

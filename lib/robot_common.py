@@ -145,6 +145,8 @@ def save_trajectory(name: str, robot: str, waypoints: list, traj_dir: str = TRAJ
 
 
 def load_trajectory(name: str, robot: str, traj_dir: str = TRAJ_DIR) -> dict:
-    """Read and parse trajectories/<robot>/<name>.json (no validation)."""
+    """Read and parse trajectories/<robot>/<name>.json. Validates the name first so a
+    caller passing a name straight through (e.g. /play chaining) can't traverse paths."""
+    validate_traj_name(name)
     with open(os.path.join(traj_dir, robot, f"{name}.json")) as f:
         return json.load(f)

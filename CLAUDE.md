@@ -160,8 +160,9 @@ direct cable, set it — or make it required). All endpoints need `Authorization
   for completion. Joint/pose vectors are shape+finiteness checked and `speed` is capped to
   `(0, 1.0]` (422 on a bad vector/speed, so a malformed `q` never reaches servoJ and the API
   can't exceed `MAX_JOINT_SPEED`). `/move/pose` and `/play` move the tip along a straight
-Cartesian line; `/move/joints` interpolates in joint space. `/gripper` 400s on a gripper-less
-arm (GoFa).
+Cartesian line; `/move/joints` interpolates in joint space. `/play` takes a single `name`, a
+list of `names` it **chains server-side** (concatenates each trajectory's waypoints into one
+continuous motion), or inline `waypoints`. `/gripper` 400s on a gripper-less arm (GoFa).
 - `POST /freedrive` — lease-gated **synchronous** mode toggle (`{on}`), not an async command:
   engages/releases hand-guiding (UR `teachMode` / GoFa lead-through) and reports `activity:
   "freedrive"`. Mutually exclusive with motion (the command endpoints 409 while engaged; engaging
@@ -196,8 +197,10 @@ that calls `/freedrive` and snapshots the live state into the fields on each cli
 `activity:"freedrive"` and disables the toggle/Send while compliant), plus `/play` · `/gripper`
 forms (all lease-gated; gripper panel auto-disables on a gripper-less arm), a **Record** panel
 (Capture snapshots the live `RobotState` into a client-side waypoint list you can delete from /
-load an existing trajectory into / Save — Save lease-gated), a **Play** picker that's a themed
-type-to-filter dropdown over `GET /trajectories`, always-live STOP/E-STOP, and a console log
+load an existing trajectory into / Save — Save lease-gated), a **Play** builder — a themed
+type-to-filter dropdown over `GET /trajectories` plus a chain list: add several trajectories and
+Play posts the list of `names` to `/play` (the **server** concatenates them — the console does no
+client-side composition; a single pick plays by `name`) — always-live STOP/E-STOP, and a console log
 that polls `/command/{id}` to completion. The open WS carries the lease so it doubles as the
 deadman heartbeat. Vanilla HTML/JS, no build step.
 

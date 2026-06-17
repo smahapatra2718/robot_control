@@ -142,14 +142,18 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
 
     @app.post("/play", status_code=202)
     def play(authorization: str = Header(None), x_lease: str = Header(None),
-             name: str = Body(None), waypoints: list = Body(None), speed: float = Body(1.0)):
+             name: str = Body(None), names: list = Body(None),
+             waypoints: list = Body(None), speed: float = Body(1.0)):
         check_auth(authorization)
         _check_speed(speed)
-        target = name if name is not None else waypoints
+        # exactly one of: name (single), names (chain — the server concatenates each
+        # trajectory's waypoints into one continuous motion), or waypoints (inline list).
+        target = names if names is not None else (name if name is not None else waypoints)
         if target is None:
-            raise HTTPException(status_code=400, detail="provide 'name' or 'waypoints'")
+            raise HTTPException(status_code=400, detail="provide 'name', 'names', or 'waypoints'")
         with _lease_lock:
             check_lease(x_lease)
+            # a bad/missing name (incl. in a chain) raises in load -> mapped to 400 by _submit
             return _submit(lambda: controller.play(target, speed))
 
     @app.post("/gripper", status_code=202)
