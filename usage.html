@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>abb_foga — Usage Guide</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --ink:#1b1e2b; --muted:#5b6071; --line:#e4e7ef;
+    --accent:#4f46e5; --accent-soft:#eef0fe; --code-bg:#1b1d2a; --code-ink:#e7e9f5;
+    --get:#15803d; --get-bg:#dcfce7; --post:#1d4ed8; --post-bg:#dbeafe;
+    --ws:#7c3aed; --ws-bg:#ede9fe; --warn:#b45309; --warn-bg:#fef3c7;
+    --radius:12px;
+  }
+  body.dark{
+    --bg:#12141d; --panel:#1b1e2b; --ink:#e8eaf3; --muted:#9aa0b4; --line:#2a2e3e;
+    --accent:#8b87f5; --accent-soft:#23263a; --code-bg:#0e0f17; --code-ink:#e7e9f5;
+    --get-bg:#10331f; --post-bg:#11244a; --ws-bg:#241a42; --warn-bg:#3a2c0a;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  code,kbd,pre{font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* layout */
+  .wrap{display:flex; min-height:100vh}
+  nav{
+    width:248px; flex:0 0 248px; position:sticky; top:0; height:100vh; overflow-y:auto;
+    background:var(--panel); border-right:1px solid var(--line); padding:22px 16px;
+  }
+  nav .brand{font-weight:700; font-size:17px; letter-spacing:.2px; margin:0 8px 2px}
+  nav .brand span{color:var(--accent)}
+  nav .tag{color:var(--muted); font-size:12px; margin:0 8px 18px}
+  nav a{
+    display:block; color:var(--muted); padding:7px 10px; border-radius:8px;
+    font-size:13.5px; margin:1px 0; border-left:2px solid transparent;
+  }
+  nav a:hover{background:var(--accent-soft); text-decoration:none; color:var(--ink)}
+  nav a.active{color:var(--accent); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600}
+  nav .grp{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:16px 10px 4px; opacity:.7}
+
+  main{flex:1; max-width:920px; margin:0 auto; padding:38px 40px 120px}
+  header.top{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:8px}
+  h1{font-size:30px; margin:0 0 6px; letter-spacing:-.4px}
+  .lede{color:var(--muted); font-size:16px; margin:0 0 8px; max-width:62ch}
+  h2{font-size:22px; margin:46px 0 12px; padding-top:10px; letter-spacing:-.3px}
+  h3{font-size:16.5px; margin:26px 0 8px}
+  section{scroll-margin-top:20px}
+  p{margin:10px 0}
+  hr{border:none; border-top:1px solid var(--line); margin:18px 0}
+
+  .pill{display:inline-block; font-size:11px; font-weight:600; padding:2px 9px; border-radius:99px; background:var(--accent-soft); color:var(--accent); vertical-align:middle}
+  .toggle{
+    border:1px solid var(--line); background:var(--panel); color:var(--muted); cursor:pointer;
+    border-radius:8px; padding:7px 12px; font-size:13px; white-space:nowrap;
+  }
+  .toggle:hover{color:var(--ink)}
+
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px; margin:14px 0}
+  .note{border-left:3px solid var(--accent); background:var(--accent-soft); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
+  .warn{border-left:3px solid var(--warn); background:var(--warn-bg); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
+
+  /* code blocks */
+  .code{position:relative; margin:12px 0}
+  .code pre{
+    background:var(--code-bg); color:var(--code-ink); padding:15px 16px; border-radius:10px;
+    overflow-x:auto; margin:0; font-size:13px; line-height:1.6;
+  }
+  .code .copy{
+    position:absolute; top:8px; right:8px; border:none; background:rgba(255,255,255,.09); color:#c9cce0;
+    border-radius:7px; padding:5px 10px; font-size:11.5px; cursor:pointer; opacity:0; transition:opacity .12s;
+  }
+  .code:hover .copy{opacity:1}
+  .code .copy:hover{background:rgba(255,255,255,.18)}
+  .code .copy.ok{background:#1f7a44; color:#fff}
+  pre .c{color:#7f87b3}     /* comment */
+  pre .k{color:#c792ea}     /* keyword/flag */
+  pre .s{color:#a3e58f}     /* string */
+  code.inline{background:var(--accent-soft); color:var(--accent); padding:1px 6px; border-radius:5px; font-size:.88em}
+
+  /* tables */
+  table{border-collapse:collapse; width:100%; margin:14px 0; font-size:13.5px}
+  th,td{border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top}
+  th{background:var(--accent-soft); font-weight:600}
+  td code{background:var(--accent-soft); color:var(--accent); padding:1px 5px; border-radius:4px; font-size:.9em}
+
+  /* tabs */
+  .tabs{display:flex; gap:6px; margin:16px 0 0}
+  .tabs button{
+    border:1px solid var(--line); background:var(--panel); color:var(--muted); cursor:pointer;
+    border-radius:9px 9px 0 0; padding:8px 16px; font-size:13.5px; font-weight:600; border-bottom:none;
+  }
+  .tabs button.active{color:var(--accent); background:var(--accent-soft)}
+  .tabpane{border:1px solid var(--line); border-radius:0 10px 10px 10px; padding:16px 20px; background:var(--panel)}
+  .tabpane[hidden]{display:none}
+
+  /* builder */
+  .builder{display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end}
+  .builder label{display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--muted); font-weight:600}
+  .builder select{
+    border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:8px;
+    padding:8px 11px; font-size:14px; min-width:150px;
+  }
+
+  /* endpoint cards */
+  .ep{border:1px solid var(--line); border-radius:10px; margin:9px 0; background:var(--panel); overflow:hidden}
+  .ep>summary{
+    display:flex; align-items:center; gap:12px; padding:12px 15px; cursor:pointer; list-style:none; user-select:none;
+  }
+  .ep>summary::-webkit-details-marker{display:none}
+  .ep>summary:hover{background:var(--accent-soft)}
+  .ep .verb{font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; letter-spacing:.04em; min-width:54px; text-align:center}
+  .verb.get{color:var(--get); background:var(--get-bg)}
+  .verb.post{color:var(--post); background:var(--post-bg)}
+  .verb.ws{color:var(--ws); background:var(--ws-bg)}
+  .ep .path{font-family:ui-monospace,monospace; font-size:13.5px; font-weight:600}
+  .ep .blurb{color:var(--muted); font-size:13px; margin-left:auto; text-align:right}
+  .ep .body{padding:4px 16px 16px; border-top:1px solid var(--line)}
+  .lease-y{color:var(--post); font-weight:700} .lease-n{color:var(--muted)}
+
+  .codetoggle{font-size:12.5px}
+  @media (max-width:840px){
+    nav{display:none}
+    main{padding:24px 18px 90px}
+    .ep .blurb{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav id="nav">
+    <p class="brand">abb<span>_foga</span></p>
+    <p class="tag">teleop &amp; remote control — usage</p>
+    <a href="#overview">Overview</a>
+    <a href="#quickstart">Quick start</a>
+    <div class="grp">Driving the arms</div>
+    <a href="#teleop">Teleop UI</a>
+    <a href="#live">Live &amp; free-drive</a>
+    <a href="#headless">Headless tools</a>
+    <div class="grp">Remote control</div>
+    <a href="#api">Remote API</a>
+    <a href="#endpoints">Endpoints</a>
+    <a href="#telemetry">Telemetry &amp; deadman</a>
+    <div class="grp">Reference</div>
+    <a href="#motion">Motion model</a>
+    <a href="#sim">Simulation</a>
+    <a href="#cheatsheet">Cheat sheet</a>
+  </nav>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1>abb_foga usage guide</h1>
+        <p class="lede">Browser-based teleop and a remote HTTP/WebSocket API for two arms — a Universal Robots <strong>UR15</strong> and an ABB <strong>GoFa CRB&nbsp;15000</strong> — on a shared viser&nbsp;+&nbsp;pyroki stack.</p>
+      </div>
+      <button class="toggle" id="theme">🌙 Dark</button>
+    </header>
+    <p><span class="pill">tip</span> &nbsp;Every command block has a <strong>copy</strong> button on hover. The sidebar tracks your position.</p>
+
+    <!-- OVERVIEW -->
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>One motion implementation drives everything. The same kinematics, IK, speed profile and safety logic back the viser teleop UIs, the headless recorders/players, and the remote API — so behavior never drifts between surfaces.</p>
+      <table>
+        <tr><th>Surface</th><th>What it is</th><th>Run with</th></tr>
+        <tr><td><strong>Teleop UI</strong></td><td>Viser browser app: drag a gizmo, plan, play, live-follow, free-drive teach</td><td><code>real.py ur15</code> / <code>gofa</code></td></tr>
+        <tr><td><strong>Headless player</strong></td><td>Replay a saved trajectory from the CLI</td><td><code>real.py play &lt;name&gt;</code></td></tr>
+        <tr><td><strong>Headless recorder</strong></td><td>Hand-guide + keypress capture to a trajectory file</td><td><code>real.py teleop</code></td></tr>
+        <tr><td><strong>Remote API</strong></td><td>HTTP + WebSocket control for a remote service</td><td><code>real.py api ur15</code> / <code>gofa</code></td></tr>
+      </table>
+      <div class="note"><strong>Two ports to remember.</strong> The teleop UI serves viser on <code class="inline">http://localhost:8080</code>. The remote API serves on <code class="inline">http://localhost:8000</code>.</div>
+    </section>
+
+    <!-- QUICK START -->
+    <section id="quickstart">
+      <h2>Quick start</h2>
+      <p>Everything runs through two symmetric dispatchers — <code class="inline">real.py</code> (hardware) and <code class="inline">sim.py</code> (offline, no robot or network). They take the same arguments, so you can develop against the sim and switch one word to go live.</p>
+
+      <h3>Build a command</h3>
+      <div class="card">
+        <div class="builder">
+          <label>Mode
+            <select id="b-mode">
+              <option value="sim">sim &nbsp;(offline)</option>
+              <option value="real">real &nbsp;(hardware)</option>
+            </select>
+          </label>
+          <label>Target
+            <select id="b-target">
+              <option value="ur15">ur15 — UR15 teleop UI</option>
+              <option value="gofa">gofa — GoFa teleop UI</option>
+              <option value="api ur15">api ur15 — remote API</option>
+              <option value="api gofa">api gofa — remote API</option>
+              <option value="play _sample_ur15">play — replay a trajectory</option>
+              <option value="teleop">teleop — headless recorder</option>
+            </select>
+          </label>
+        </div>
+        <div class="code" style="margin-bottom:0">
+          <button class="copy">Copy</button>
+          <pre id="b-out">./robot_control/bin/python scripts/sim.py ur15</pre>
+        </div>
+      </div>
+
+      <h3>First run (offline, no robot needed)</h3>
+      <div class="code"><button class="copy">Copy</button><pre><span class="c"># offline sim — runs the real teleop against a perfect-tracking kinematic sim</span>
+./robot_control/bin/python scripts/sim.py ur15
+<span class="c"># → open the printed URL:</span>  http://localhost:8080</pre></div>
+      <p>The sim still needs the project venv (it runs the real jax / pyroki / viser stack and real URDFs) — "offline" means no <em>robot</em>, not no Python deps.</p>
+
+      <h3>Going live</h3>
+      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/real.py ur15     <span class="c"># UR15 over RTDE</span>
+./robot_control/bin/python scripts/real.py gofa     <span class="c"># GoFa over EGM</span></pre></div>
+      <div class="warn"><strong>Each script connects at startup and aborts if it can't reach the arm.</strong> For the UR15, enable the RTDE/Dashboard/Primary services and <em>Remote Control</em> mode on the pendant. For the GoFa, push the EGM supervisor once with <code class="inline">install_gofa_egm.py</code>. See <code class="inline">CLAUDE.md</code> for the full controller bring-up.</div>
+    </section>
+
+    <!-- TELEOP UI -->
+    <section id="teleop">
+      <h2>Teleop UI workflow</h2>
+      <p>The browser app follows a simple state machine. The arm mirrors into the browser while you author, then plays back what you planned.</p>
+      <div class="card">
+        <strong>Idle → Waypoints → Plan → Play</strong>
+        <ol>
+          <li><strong>Idle.</strong> The browser mirrors the live arm. Drag the 3-D <em>gizmo</em> to aim the tool.</li>
+          <li><strong>Add / Capture waypoint.</strong> <em>Add</em> snapshots the gizmo pose; <em>Capture</em> snapshots the live joints (and, on the UR, the current gripper opening). Each adds a numbered frame to the scene.</li>
+          <li><strong>Plan.</strong> Runs seeded IK through the waypoints — each solution seeds the next, so the path stays in one kinematic branch. With no waypoints it falls back to the gizmo pose.</li>
+          <li><strong>Play.</strong> Streams the planned motion. With <em>Execute</em> ticked it drives the real arm; otherwise it's a preview in the browser only.</li>
+        </ol>
+      </div>
+      <div class="note"><strong>The speed slider is unified.</strong> The same <code class="inline">q</code> drives the viser preview and the robot each tick, so the picture and the arm move in lockstep. After a successful executed play, the UI auto-cleans up: waypoints clear, the gizmo snaps to the new pose, and <em>Execute</em> un-ticks.</div>
+
+      <h3>Safety while playing</h3>
+      <ul>
+        <li><strong>Execute auto-unticks</strong> the instant an executed play begins — you re-arm it deliberately each time.</li>
+        <li><strong>Stop</strong> breaks the loop and decelerates smoothly (UR <code class="inline">servoStop</code>; GoFa holds then lets the EGM session converge out).</li>
+      </ul>
+
+      <h3>Gripper (UR15 only)</h3>
+      <p>A Robotiq Hand-E rides the UR wrist. The <strong>"Gripper close %"</strong> slider drives it live (0% open → 100% closed) and snaps the on-screen fingers. <em>Capture</em>/<em>Add</em> records the current opening into the waypoint automatically; on replay the gripper actuates only when a waypoint's value changes, after the arm settles. The GoFa has no gripper.</p>
+    </section>
+
+    <!-- LIVE & FREEDRIVE -->
+    <section id="live">
+      <h2>Live follow &amp; free-drive teach</h2>
+
+      <h3>Live (drive robot)</h3>
+      <p>Tick <strong>"Live (drive robot)"</strong> and the real arm chases the gizmo in real time — no Plan/Play. The gizmo snaps to the current tool first so the arm never lurches toward a stale pose. The tool tracks a <strong>straight line</strong> to the gizmo (not a joint-space arc). Mutually exclusive with Plan/Play; Stop or un-ticking ends it.</p>
+
+      <div class="tabs" data-tabs="live">
+        <button class="active" data-tab="live-ur">UR15</button>
+        <button data-tab="live-gofa">GoFa</button>
+      </div>
+      <div class="tabpane" id="live-ur">
+        <p>Runs at 125&nbsp;Hz through an acceleration-limited follower — speed, joint speed <em>and</em> joint accel are all bounded, so a fast drag or an IK branch-flip can't make the arm lurch. The straight-line tool speed is capped by <code class="inline">LIVE_MAX_LIN</code> (m/s); raise it for a snappier follow.</p>
+      </div>
+      <div class="tabpane" id="live-gofa" hidden>
+        <p>Streams over the existing EGM session at 30&nbsp;Hz. Real tool speed is held under <code class="inline">MAX_TCP_SPEED</code> (0.25&nbsp;m/s, the collaborative limit) by a downstream clamp — so it follows a straight line but stays slow by design. After a long pause the EGM session may drop; the loop detects the stale feed and re-arms on the next motion (expect a brief hitch).</p>
+      </div>
+
+      <h3>Free-drive (hand-guiding)</h3>
+      <p>Tick <strong>"Free-drive"</strong> to hand-guide the arm (UR zero-g <code class="inline">teachMode</code>; GoFa software lead-through over RWS). <em>Capture</em> records hand-moved poses. Mutually exclusive with Plan/Play/Live; Stop or un-tick releases it.</p>
+
+      <h3>Save &amp; load trajectories</h3>
+      <p>Waypoint lists save to <code class="inline">trajectories/&lt;name&gt;.json</code> (tracked in the repo, so they sync across machines). Load repopulates the waypoints and frames; then Plan to replay.</p>
+    </section>
+
+    <!-- HEADLESS -->
+    <section id="headless">
+      <h2>Headless tools</h2>
+
+      <h3>Replay — <code class="inline">play_trajectory.py</code></h3>
+      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/play_trajectory.py <span class="k">&lt;name&gt;</span> [more names...] \
+    [<span class="k">--speed</span> S] [<span class="k">--dry-run</span>] [<span class="k">--no-confirm</span>]</pre></div>
+      <p>Auto-detects the robot from the file's <code class="inline">"robot"</code> field and plays after a <code class="inline">[y/N]</code> confirm. Every waypoint must already carry <code class="inline">"q"</code> (it's IK-solver-free) — capture taught joints, or Plan-and-save in viser first.</p>
+      <ul>
+        <li><code class="inline">--dry-run</code> — print the plan (segments + estimated duration) and exit.</li>
+        <li><code class="inline">--no-confirm</code> — skip the confirmation prompt.</li>
+        <li><strong>Chaining</strong> — pass several names to play them back-to-back as one continuous motion (one confirm, gripper state carries across seams). All must target the same robot.</li>
+      </ul>
+      <div class="code"><button class="copy">Copy</button><pre><span class="c"># preview a 3-trajectory chain without moving anything</span>
+./robot_control/bin/python scripts/sim.py play pick approach place <span class="k">--dry-run</span></pre></div>
+
+      <h3>Record — <code class="inline">teleop.py</code></h3>
+      <p>The record-side counterpart: hand-guide the arm and capture with keypresses to the same JSON format. A live terminal dashboard shows pose, joints, gripper % and waypoint count.</p>
+      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/teleop.py [name] [<span class="k">--robot</span> ur|gofa]</pre></div>
+      <table>
+        <tr><th>Key</th><th>Action</th></tr>
+        <tr><td><kbd>c</kbd></td><td>Capture a waypoint (live joints + FK pose + gripper)</td></tr>
+        <tr><td><kbd>o</kbd> / <kbd>p</kbd></td><td>UR only — open / close the gripper one step</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>End free-drive, save, prompt for the next trajectory</td></tr>
+        <tr><td><kbd>w</kbd></td><td>Soft stop — end free-drive cleanly and exit</td></tr>
+        <tr><td><kbd>q</kbd></td><td>Hard stop — protective stop (UR) / halt RAPID (GoFa), then exit</td></tr>
+      </table>
+    </section>
+
+    <!-- API -->
+    <section id="api">
+      <h2>Remote API</h2>
+      <p>Serve HTTP + WebSocket control over the same controller. The network carries <strong>high-level goals and telemetry — never the servo loop.</strong></p>
+      <div class="code"><button class="copy">Copy</button><pre><span class="c"># real hardware, or sim.py for offline</span>
+ROBOT_API_TOKEN=<span class="s">'a-long-random-secret'</span> \
+  ./robot_control/bin/python scripts/real.py api ur15 <span class="k">--host</span> 127.0.0.1 <span class="k">--port</span> 8000</pre></div>
+
+      <h3>Authentication</h3>
+      <p>Every endpoint needs the token from <code class="inline">ROBOT_API_TOKEN</code> (defaults to <code class="inline">changeme</code> with a startup warning — set it for anything past a direct cable).</p>
+      <ul>
+        <li><strong>HTTP:</strong> <code class="inline">Authorization: Bearer &lt;token&gt;</code> header.</li>
+        <li><strong>WebSocket:</strong> <code class="inline">?token=&lt;token&gt;</code> query parameter.</li>
+      </ul>
+      <p>A bad/missing token → <code class="inline">401</code> with a <code class="inline">WWW-Authenticate: Bearer</code> challenge.</p>
+
+      <h3>The single-writer lease</h3>
+      <p>Reads and the safety path are open to any authenticated client. <strong>All writes require a lease</strong> — only one client holds it at a time, so two operators can't fight over the arm.</p>
+      <ol>
+        <li><code class="inline">POST /control/acquire</code> → <code class="inline">{"lease_token": "…"}</code> (<code class="inline">409</code> if already held).</li>
+        <li>Send it as the <code class="inline">X-Lease</code> header on every write.</li>
+        <li><code class="inline">POST /control/release</code> when done.</li>
+      </ol>
+      <p>Acquire with <code class="inline">{"force": true}</code> <strong>steals</strong> a held lease (stopping the current motion first). A write without a valid lease → <code class="inline">423</code>.</p>
+
+      <h3>Async commands</h3>
+      <p>Writes are non-blocking: validate → submit → return <code class="inline">202 {command_id}</code> immediately. One motion at a time (a second submit → <code class="inline">409 Busy</code>). Track it by polling <code class="inline">GET /command/{id}</code> or watching the telemetry stream's <code class="inline">active_command</code>.</p>
+    </section>
+
+    <!-- ENDPOINTS -->
+    <section id="endpoints">
+      <h2>Endpoint reference</h2>
+      <p><span class="pill">interactive</span> &nbsp;Click any endpoint to expand its body, response and an example.</p>
+
+      <details class="ep"><summary><span class="verb get">GET</span><span class="path">/health</span><span class="blurb">liveness + robot name</span></summary>
+        <div class="body"><p>Lease: <span class="lease-n">not required</span>. Returns <code class="inline">{"ok": true, "robot": "ur15"}</code>.</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s localhost:8000/health -H <span class="s">"Authorization: Bearer $TOK"</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb get">GET</span><span class="path">/state</span><span class="blurb">full state snapshot</span></summary>
+        <div class="body"><p>Lease: <span class="lease-n">not required</span>. Returns the full <code class="inline">RobotState</code> (joints, pose, gripper, safety, activity, active command).</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s localhost:8000/state -H <span class="s">"Authorization: Bearer $TOK"</span></pre></div>
+        <div class="code"><button class="copy">Copy</button><pre>{
+  <span class="s">"robot"</span>: <span class="s">"ur15"</span>,
+  <span class="s">"q"</span>: [0.0, -1.4, 1.4, -1.4, -1.4, 0.2],   <span class="c">// 6 joints (rad)</span>
+  <span class="s">"pose"</span>: { <span class="s">"pos"</span>: [0.40, 0.10, 0.30], <span class="s">"wxyz"</span>: [0,1,0,0] },
+  <span class="s">"gripper_frac"</span>: 0.0,        <span class="c">// 0 open .. 1 closed; null on GoFa</span>
+  <span class="s">"activity"</span>: <span class="s">"idle"</span>,       <span class="c">// idle | moving | playing | stopped</span>
+  <span class="s">"active_command"</span>: null,
+  <span class="s">"conn_ok"</span>: true
+}</pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb post">POST</span><span class="path">/control/acquire</span><span class="blurb">take the write lease</span></summary>
+        <div class="body"><p>Lease: <span class="lease-n">n/a</span>. Body (optional) <code class="inline">{"force": false}</code>. Returns <code class="inline">{"lease_token"}</code>, or <code class="inline">409</code> if held.</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/control/acquire \
+  -H <span class="s">"Authorization: Bearer $TOK"</span> \
+  -H <span class="s">'Content-Type: application/json'</span> -d <span class="s">'{"force": true}'</span>   <span class="c"># steal</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb post">POST</span><span class="path">/control/release</span><span class="blurb">release the lease</span></summary>
+        <div class="body"><p>Lease: <span class="lease-y">required</span> (<code class="inline">X-Lease</code>). → <code class="inline">{"released": true}</code>, or <code class="inline">423</code> with a wrong/absent lease.</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/control/release \
+  -H <span class="s">"Authorization: Bearer $TOK"</span> -H <span class="s">"X-Lease: $LEASE"</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb post">POST</span><span class="path">/move/joints</span><span class="blurb">move to a joint config (MoveJ)</span></summary>
+        <div class="body"><p>Lease: <span class="lease-y">required</span>. Body <code class="inline">{"q": [6], "speed": 0&lt;…≤1.0}</code>. Interpolates in joint space — exact config, no IK. <code class="inline">q</code> is shape/finiteness checked → <code class="inline">422</code> on a bad vector or speed.</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/move/joints \
+  -H <span class="s">"Authorization: Bearer $TOK"</span> -H <span class="s">"X-Lease: $LEASE"</span> \
+  -H <span class="s">'Content-Type: application/json'</span> \
+  -d <span class="s">'{"q": [0.0,-1.4,1.4,-1.4,-1.4,0.2], "speed": 1.0}'</span>
+<span class="c"># → 202 {"command_id": 1}</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb post">POST</span><span class="path">/move/pose</span><span class="blurb">move to a Cartesian pose (MoveL)</span></summary>
+        <div class="body"><p>Lease: <span class="lease-y">required</span>. Body <code class="inline">{"pos": [x,y,z], "wxyz": [w,x,y,z], "speed"}</code>. IK solves the goal, then the tool tip travels a <strong>straight line</strong> to it. Pose is the grasp/EE frame (same as <code class="inline">/state</code>).</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/move/pose \
+  -H <span class="s">"Authorization: Bearer $TOK"</span> -H <span class="s">"X-Lease: $LEASE"</span> \
+  -H <span class="s">'Content-Type: application/json'</span> \
+  -d <span class="s">'{"pos":[0.4,0.1,0.3], "wxyz":[0,1,0,0], "speed":0.5}'</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb post">POST</span><span class="path">/play</span><span class="blurb">play a saved/inline trajectory</span></summary>
+        <div class="body"><p>Lease: <span class="lease-y">required</span>. Provide <strong>one</strong> of <code class="inline">name</code> (a saved trajectory) or <code class="inline">waypoints</code> (inline list), plus optional <code class="inline">speed</code>. Segments are straight-line. Missing both → <code class="inline">400</code>; unknown name → <code class="inline">400</code>.</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/play \
+  -H <span class="s">"Authorization: Bearer $TOK"</span> -H <span class="s">"X-Lease: $LEASE"</span> \
+  -H <span class="s">'Content-Type: application/json'</span> \
+  -d <span class="s">'{"name": "_sample_ur15", "speed": 1.0}'</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb post">POST</span><span class="path">/gripper</span><span class="blurb">set gripper opening (UR only)</span></summary>
+        <div class="body"><p>Lease: <span class="lease-y">required</span>. Body <code class="inline">{"frac": 0.0..1.0}</code> (0 open, 1 closed). On the GoFa (no gripper) → <code class="inline">400</code>.</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/gripper \
+  -H <span class="s">"Authorization: Bearer $TOK"</span> -H <span class="s">"X-Lease: $LEASE"</span> \
+  -H <span class="s">'Content-Type: application/json'</span> -d <span class="s">'{"frac": 0.5}'</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb get">GET</span><span class="path">/command/{id}</span><span class="blurb">command status</span></summary>
+        <div class="body"><p>Lease: <span class="lease-n">not required</span>. Returns the command object; unknown/evicted id → <code class="inline">404</code> (history keeps the 64 most recent).</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s localhost:8000/command/1 -H <span class="s">"Authorization: Bearer $TOK"</span>
+<span class="c"># {"id":1,"kind":"moving","status":"done","progress":1.0,"error":null}</span>
+<span class="c"># status: running | done | failed | stopped</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb post">POST</span><span class="path">/stop</span> &nbsp;·&nbsp; <span class="verb post">POST</span><span class="path">/estop</span><span class="blurb">always-open safety path</span></summary>
+        <div class="body"><p>Lease: <span class="lease-n">not required</span> — any authenticated client can halt the arm. <code class="inline">/stop</code> decelerates gracefully; <code class="inline">/estop</code> is a hard stop.</p>
+        <div class="code"><button class="copy">Copy</button><pre>curl -s -X POST localhost:8000/stop  -H <span class="s">"Authorization: Bearer $TOK"</span>
+curl -s -X POST localhost:8000/estop -H <span class="s">"Authorization: Bearer $TOK"</span></pre></div></div>
+      </details>
+
+      <details class="ep"><summary><span class="verb ws">WS</span><span class="path">/telemetry</span><span class="blurb">state stream + heartbeat</span></summary>
+        <div class="body"><p>Connect <code class="inline">ws://host:8000/telemetry?token=…&amp;lease=…</code>. Streams <code class="inline">RobotState</code> at ~20&nbsp;Hz. A matching <code class="inline">lease</code> turns the socket into the deadman heartbeat (see below).</p></div>
+      </details>
+
+      <h3>Status codes</h3>
+      <table>
+        <tr><th>Code</th><th>Meaning</th></tr>
+        <tr><td><code>202</code></td><td>Write accepted &amp; submitted (<code>command_id</code> returned)</td></tr>
+        <tr><td><code>400</code></td><td>Bad command content (no name/waypoints, unknown trajectory, gripper on GoFa)</td></tr>
+        <tr><td><code>401</code></td><td>Missing/invalid bearer token</td></tr>
+        <tr><td><code>404</code></td><td><code>/command/{id}</code> unknown or evicted</td></tr>
+        <tr><td><code>409</code></td><td>Lease already held, or another motion is running (<code>Busy</code>)</td></tr>
+        <tr><td><code>422</code></td><td>Bad vector (<code>q</code>/<code>pos</code>/<code>wxyz</code>) or <code>speed</code> outside <code>(0, 1.0]</code></td></tr>
+        <tr><td><code>423</code></td><td>Write without a valid <code>X-Lease</code></td></tr>
+      </table>
+    </section>
+
+    <!-- TELEMETRY -->
+    <section id="telemetry">
+      <h2>Telemetry &amp; the deadman watchdog</h2>
+      <p>An open telemetry WebSocket whose <code class="inline">?lease=</code> matches the current lease is a <strong>heartbeat</strong>. A background watchdog stops the arm and releases the lease if the holder goes silent (no heartbeat, no writes) for <code class="inline">watchdog_timeout_s</code> (default 2.0&nbsp;s) <em>while a motion is running</em>. If your client crashes or the network drops mid-move, the arm stops on its own.</p>
+      <div class="note"><strong>Pattern:</strong> hold a <code class="inline">/telemetry?…&amp;lease=…</code> socket open for the duration of any motion — at 20&nbsp;Hz it satisfies the heartbeat automatically.</div>
+
+      <h3>End-to-end client (Python / httpx)</h3>
+      <div class="code"><button class="copy">Copy</button><pre><span class="k">import</span> time, httpx
+BASE, TOK = <span class="s">"http://localhost:8000"</span>, <span class="s">"your-token"</span>
+auth = {<span class="s">"Authorization"</span>: <span class="s">f"Bearer {TOK}"</span>}
+
+<span class="k">with</span> httpx.Client(base_url=BASE, timeout=10.0) <span class="k">as</span> cl:
+    lease = cl.post(<span class="s">"/control/acquire"</span>, headers=auth).json()[<span class="s">"lease_token"</span>]
+    h = {**auth, <span class="s">"X-Lease"</span>: lease}
+
+    cid = cl.post(<span class="s">"/move/joints"</span>, headers=h,
+                  json={<span class="s">"q"</span>: [0.0,-1.0,1.0,0.0,1.0,0.2], <span class="s">"speed"</span>: 1.0}
+                  ).json()[<span class="s">"command_id"</span>]
+
+    <span class="k">while</span> cl.get(<span class="s">f"/command/{cid}"</span>, headers=auth).json()[<span class="s">"status"</span>] == <span class="s">"running"</span>:
+        time.sleep(0.1)
+
+    cl.post(<span class="s">"/control/release"</span>, headers=h)</pre></div>
+    </section>
+
+    <!-- MOTION MODEL -->
+    <section id="motion">
+      <h2>Motion model</h2>
+      <table>
+        <tr><th>Command</th><th>Path</th><th>Notes</th></tr>
+        <tr><td><code>/move/joints</code></td><td><strong>MoveJ</strong> — joint-space lerp</td><td>Exact configuration reproduced; no IK.</td></tr>
+        <tr><td><code>/move/pose</code></td><td><strong>MoveL</strong> — straight tool line</td><td>Position lerp + orientation slerp, IK each tick.</td></tr>
+        <tr><td><code>/play</code></td><td><strong>MoveL</strong> per segment</td><td>Straight lines between waypoints; captured configs hit exactly.</td></tr>
+      </table>
+      <p><strong>Speed.</strong> <code class="inline">speed</code> is a fraction in <code class="inline">(0, 1.0]</code> that scales motion <em>below</em> the configured cap — it can never raise it.</p>
+      <table>
+        <tr><th></th><th>UR15</th><th>GoFa CRB 15000</th></tr>
+        <tr><td>Gripper</td><td>Hand-E (<code>gripper_frac</code>)</td><td>none — <code>/gripper</code> → 400</td></tr>
+        <tr><td>TCP speed cap</td><td>none on this path</td><td><strong>0.25 m/s</strong> (<code>MAX_TCP_SPEED</code>, collaborative)</td></tr>
+        <tr><td>Live follow</td><td>accel-limited, <code>LIVE_MAX_LIN</code> m/s</td><td>straight-line, clamped to <code>MAX_TCP_SPEED</code></td></tr>
+      </table>
+      <div class="note">"Uses Cartesian" (the <em>path</em> is straight) is separate from <em>speed</em>. The GoFa moves in straight lines but stays capped at 0.25&nbsp;m/s by its collaborative limit — that's why it's straight but not fast.</div>
+    </section>
+
+    <!-- SIM -->
+    <section id="sim">
+      <h2>Simulation</h2>
+      <p><code class="inline">sim.py</code> runs the <strong>real, unmodified</strong> scripts against a perfect-tracking kinematic sim by injecting fake transports (<code class="inline">rtde_*</code>, <code class="inline">hande_gripper</code>, <code class="inline">abb_rws</code>, <code class="inline">abb_egm</code>) — so every feature works in sim automatically and never drifts from hardware.</p>
+      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/sim.py ur15                       <span class="c"># UR15 teleop, simulated</span>
+./robot_control/bin/python scripts/sim.py gofa                       <span class="c"># GoFa teleop, simulated</span>
+./robot_control/bin/python scripts/sim.py api ur15                   <span class="c"># remote API, simulated</span>
+./robot_control/bin/python scripts/sim.py play _sample_ur15 <span class="k">--no-confirm</span></pre></div>
+      <div class="warn"><strong>One limitation:</strong> there's no physical arm to hand-guide, so free-drive/teach <em>capture</em> just re-grabs the current pose. Author offline with the gizmo, Live, or Plan instead.</div>
+
+      <h3>Run the test suites (offline)</h3>
+      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/control_smoketest.py   <span class="c"># controller core</span>
+./robot_control/bin/python scripts/api_smoketest.py       <span class="c"># API (in-process + real subprocess)</span>
+./robot_control/bin/python scripts/sim_smoketest.py       <span class="c"># sim fakes + EGM handshake</span></pre></div>
+    </section>
+
+    <!-- CHEATSHEET -->
+    <section id="cheatsheet">
+      <h2>Cheat sheet</h2>
+      <table>
+        <tr><th>I want to…</th><th>Command</th></tr>
+        <tr><td>Try the UR15 UI offline</td><td><code>sim.py ur15</code> → localhost:8080</td></tr>
+        <tr><td>Try the GoFa UI offline</td><td><code>sim.py gofa</code></td></tr>
+        <tr><td>Drive the real UR15</td><td><code>real.py ur15</code></td></tr>
+        <tr><td>Serve the remote API</td><td><code>real.py api ur15</code> → localhost:8000</td></tr>
+        <tr><td>Replay a trajectory</td><td><code>real.py play &lt;name&gt;</code></td></tr>
+        <tr><td>Record by hand-guiding</td><td><code>real.py teleop</code></td></tr>
+        <tr><td>Preview a plan, no motion</td><td><code>… play &lt;name&gt; --dry-run</code></td></tr>
+      </table>
+      <p style="color:var(--muted);font-size:13px;margin-top:24px">Controller bring-up, firewall/port setup, EGM install and RWS gotchas live in <code class="inline">CLAUDE.md</code>. The machine-readable API contract is in <code class="inline">API.md</code>.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  // ---- copy buttons ----
+  document.querySelectorAll('.code').forEach(function(block){
+    var btn = block.querySelector('.copy'); if(!btn) return;
+    btn.addEventListener('click', function(){
+      var pre = block.querySelector('pre');
+      navigator.clipboard.writeText(pre.innerText).then(function(){
+        var t = btn.textContent; btn.textContent = '✓ Copied'; btn.classList.add('ok');
+        setTimeout(function(){ btn.textContent = t; btn.classList.remove('ok'); }, 1200);
+      });
+    });
+  });
+
+  // ---- theme toggle ----
+  var tbtn = document.getElementById('theme');
+  function applyTheme(d){
+    document.body.classList.toggle('dark', d);
+    tbtn.textContent = d ? '☀︎ Light' : '🌙 Dark';
+    try{ localStorage.setItem('abbfoga-theme', d ? 'dark' : 'light'); }catch(e){}
+  }
+  applyTheme((function(){ try{ return localStorage.getItem('abbfoga-theme') === 'dark'; }catch(e){ return false; } })());
+  tbtn.addEventListener('click', function(){ applyTheme(!document.body.classList.contains('dark')); });
+
+  // ---- command builder ----
+  var mode = document.getElementById('b-mode'),
+      target = document.getElementById('b-target'),
+      out = document.getElementById('b-out');
+  function rebuild(){ out.textContent = './robot_control/bin/python scripts/' + mode.value + '.py ' + target.value; }
+  mode.addEventListener('change', rebuild); target.addEventListener('change', rebuild); rebuild();
+
+  // ---- tabs ----
+  document.querySelectorAll('.tabs').forEach(function(tabs){
+    tabs.querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        tabs.querySelectorAll('button').forEach(function(x){ x.classList.remove('active'); });
+        b.classList.add('active');
+        var group = tabs.getAttribute('data-tabs');
+        // hide every pane referenced by this tab group's buttons
+        tabs.querySelectorAll('button').forEach(function(x){
+          var pane = document.getElementById(x.getAttribute('data-tab'));
+          if(pane) pane.hidden = true;
+        });
+        var show = document.getElementById(b.getAttribute('data-tab'));
+        if(show) show.hidden = false;
+      });
+    });
+  });
+
+  // ---- sidebar active-section tracking ----
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav a'));
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute('href').slice(1)] = a; });
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){
+        links.forEach(function(a){ a.classList.remove('active'); });
+        var a = byId[en.target.id]; if(a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -75% 0px', threshold: 0 });
+  document.querySelectorAll('section[id]').forEach(function(s){ obs.observe(s); });
+})();
+</script>
+</body>
+</html>
