@@ -30,7 +30,7 @@ abb_foga/
 │   ├── real.py                 #   dispatcher: real.py <ur15|gofa|play|teleop> [args] on real hardware
 │   ├── sim.py                  #   dispatcher: sim.py  <ur15|gofa|play|teleop> [args] offline (fake arm)
 │   ├── sim_smoketest.py        #   stdlib-assert smoke test for the sim fakes + EGM handshake
-│   ├── api_server.py           #   remote control API server: real.py/sim.py api <ur15|gofa>
+│   ├── api_server.py           #   remote control API server (+ static web console at /): real.py/sim.py api <ur15|gofa>
 │   └── api_smoketest.py        #   stdlib-assert API test (TestClient + real-subprocess e2e)
 │
 ├── lib/                        # importable modules (on sys.path via the scripts/ bootstrap)
@@ -56,6 +56,7 @@ abb_foga/
 ├── robotiq_hande_description/  # vendored macmacal/robotiq_hande_description (Hand-E meshes)
 │
 │   # ── runtime / docs ──
+├── web/                        # static remote-control console (dashboard.html) served by api_server at /
 ├── robot_control/              # Python venv (3.13), gitignored
 ├── docs/                       # design specs + plans
 ├── README.md
@@ -166,9 +167,19 @@ arm (GoFa).
   WS is the **heartbeat**. If the lease holder goes silent while a motion is active, a watchdog
   stops the arm and releases the lease (deadman).
 
+**Web console** — `api_server.py` also serves a static dashboard at `GET /` (the file
+`web/dashboard.html`, served same-origin so there's no CORS and the token never leaves the tab).
+Open `http://<host>:<port>/`, type the bearer token, and it drives the arm **purely through the
+API endpoints**: a connection gate, live telemetry (joints as bipolar bars, TCP pose/quaternion,
+gripper, safety/activity, active-command progress) off the `WS /telemetry` stream, lease
+acquire/force/release, `/move/joints` · `/move/pose` · `/play` · `/gripper` forms (lease-gated;
+gripper panel auto-disables on a gripper-less arm), always-live STOP/E-STOP, and a console log
+that polls `/command/{id}` to completion. The open WS carries the lease so it doubles as the
+deadman heartbeat. Vanilla HTML/JS, no build step.
+
 Runs fully offline: `./robot_control/bin/python scripts/api_smoketest.py` exercises every
 endpoint in-process (FastAPI `TestClient`) plus a real `sim.py api` subprocess over HTTP — no
-robot. The embedded viser viewer + Live control are a follow-on.
+robot. The embedded viser 3D viewer + Live control are a follow-on.
 
 # UR15
 
