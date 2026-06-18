@@ -452,6 +452,11 @@ def test_e2e_subprocess():
             assert status == "done", f"e2e move status {status}"
             st = cl.get("/state", headers=auth).json()
             assert max(abs(a - b) for a, b in zip(st["q"], target)) < 1e-6
+            # static web assets: dashboard shell + vendored 3D libs + baked model bundle
+            assert cl.get("/").status_code == 200
+            assert cl.get("/vendor/three.module.js").status_code == 200
+            r_urdf = cl.get("/models/ur15/ur15.urdf")
+            assert r_urdf.status_code == 200 and "<robot" in r_urdf.text
     finally:
         proc.send_signal(signal.SIGINT)
         try:

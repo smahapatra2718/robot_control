@@ -16,6 +16,7 @@ for _p in (_ROOT, os.path.join(_ROOT, "lib")):
 
 import uvicorn  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from control import make_controller  # noqa: E402
 from robot_api import build_app, build_multi_app  # noqa: E402
@@ -66,6 +67,14 @@ def main() -> None:
                   f"(multi: online={list(controllers)} unavailable={unavailable})")
 
         # Serve the static web console (talks to the robot only via the API endpoints).
+        # Vendored 3D libs + baked model bundles are static assets, served unauthenticated
+        # like the dashboard shell itself — the bearer token still gates all state/control.
+        _WEB = os.path.join(_ROOT, "web")
+        for _route, _sub in (("/vendor", "vendor"), ("/models", "models")):
+            _d = os.path.join(_WEB, _sub)
+            if os.path.isdir(_d):
+                app.mount(_route, StaticFiles(directory=_d), name=_sub)
+
         @app.get("/", include_in_schema=False)
         def dashboard():
             return FileResponse(_DASHBOARD)
