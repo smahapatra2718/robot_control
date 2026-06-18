@@ -7,6 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three.module.js",
+  "three/addons/": "/vendor/jsm/",
+  "urdf-loader": "/vendor/urdf-loader/URDFLoader.js"
+}}
+</script>
 <style>
   :root{
     --bg:#070809; --bg2:#0c0f12; --panel:#0e1216; --panel2:#11161b;
@@ -141,6 +148,14 @@
   .fdcheck input{accent-color:var(--acid);cursor:pointer;width:14px;height:14px}
   .fdcheck input:disabled{cursor:not-allowed}
   .fdcheck.dis{opacity:.4;cursor:not-allowed}
+
+  /* ---------- 3D viewer ---------- */
+  .viewer3d{position:relative;width:100%;height:340px;overflow:hidden;
+    background:radial-gradient(120% 120% at 50% 0%, #0d1217, #070809)}
+  .viewer3d canvas{display:block}
+  .viewer3d-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--dim);pointer-events:none}
 
   /* ---------- telemetry readouts ---------- */
   .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
@@ -304,6 +319,15 @@
 <main>
   <!-- LEFT: telemetry dashboard -->
   <div class="col">
+    <section class="panel" style="animation-delay:.02s">
+      <div class="phead"><span class="idx">00</span> 3D View <span class="tag">live</span></div>
+      <div class="pbody" style="padding:0">
+        <div id="viewer3d" class="viewer3d">
+          <div id="viewer3dNote" class="viewer3d-note">connect to view</div>
+        </div>
+      </div>
+    </section>
+
     <section class="panel" style="animation-delay:.04s">
       <div class="phead"><span class="idx">01</span> Telemetry <span id="staleTag" class="tag">—</span></div>
       <div class="pbody">
@@ -602,6 +626,7 @@ async function connect(){
     setLed("on","ONLINE");
     prefilled = false;
     openStreams();
+    if(window.viewer3d) window.viewer3d.load(active, base);
     fetchTrajList();                 // populate the play picker for the active arm
     updateLeaseUI();                 // baseline (no lease yet): lock gated panels, disable Save
   }catch(e){
@@ -627,6 +652,7 @@ function disconnect(){
   document.body.classList.add("locked");
   $("disconnectBtn").style.display="none"; $("robotchip").style.display="none"; $("armSwitch").style.display="none";
   setLed("off","OFFLINE"); updateLeaseUI(); log("sys","disconnected");
+  if(window.viewer3d) window.viewer3d.dispose();
 }
 
 // ---------- arm switcher (multi-arm mode) ----------
@@ -653,6 +679,7 @@ function selectArm(name){
   chain = []; renderChain();
   $("playName").value = ""; closePlayMenu(); trajList = []; fetchTrajList();
   if(lastStates[active]) render(lastStates[active]);   // re-paint panels from this arm
+  if(window.viewer3d) window.viewer3d.load(active, base);
   updateLeaseUI();
   log("sys","→ "+name.toUpperCase());
 }
@@ -688,7 +715,8 @@ function onArmState(name, s){
   lastStates[name] = s;
   const led = $("chipled_"+name);          // each arm's chip LED tracks its own link
   if(led) led.className = "led "+(s.conn_ok?"on":"warn");
-  if(name===active) render(s);             // only the selected arm drives the panels
+  if(name===active){ render(s);            // only the selected arm drives the panels
+    if(window.viewer3d) window.viewer3d.update(s); }
 }
 
 // ---------- render telemetry ----------
@@ -1016,6 +1044,114 @@ window.addEventListener("DOMContentLoaded", ()=>{
     delChainItem(+x.dataset.i);
   });
 });
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import URDFLoader from 'urdf-loader';
+
+const JOINTS = {
+  ur15: ["shoulder_pan_joint","shoulder_lift_joint","elbow_joint","wrist_1_joint","wrist_2_joint","wrist_3_joint"],
+  gofa: ["joint_1","joint_2","joint_3","joint_4","joint_5","joint_6"],
+};
+const FINGER_JOINT = "robotiq_hande_left_finger_joint";
+const FINGER_OPEN = 0.025;            // m; gripper_frac 0=open..1=closed
+
+const mount = document.getElementById("viewer3d");
+const note  = document.getElementById("viewer3dNote");
+let renderer, scene, camera, controls;
+let robot = null, hande = null, tool0 = null, curArm = null, loadTok = 0;
+
+const showNote = m => { if(note){ note.textContent = m || ""; note.style.display = m ? "" : "none"; } };
+
+function init(){
+  try { renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true }); }
+  catch(e){ showNote("3D unavailable (no WebGL)"); return false; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  mount.appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+  camera.up.set(0, 0, 1);                       // URDF is Z-up
+  camera.position.set(1.2, -1.2, 1.0);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.target.set(0, 0, 0.4);
+  scene.add(new THREE.HemisphereLight(0xddeeff, 0x222428, 1.1));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.4);
+  dir.position.set(2, -2, 3); scene.add(dir);
+  const grid = new THREE.GridHelper(2, 20, 0x2a3640, 0x1d262e);
+  grid.rotation.x = Math.PI / 2;                // grid into the XY plane (Z up)
+  scene.add(grid);
+  const resize = () => {
+    const w = mount.clientWidth, h = mount.clientHeight || 340;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix();
+  };
+  resize();
+  new ResizeObserver(resize).observe(mount);
+  (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+  return true;
+}
+
+function makeLoader(){
+  const mgr = new THREE.LoadingManager();
+  const gltf = new GLTFLoader(mgr);
+  const loader = new URDFLoader(mgr);
+  loader.loadMeshCb = (path, manager, done) =>
+    gltf.load(path, g => done(g.scene), undefined, err => { console.warn("mesh load failed", path, err); done(null); });
+  return loader;
+}
+
+function clearRobot(){ if(robot) scene.remove(robot); robot = null; hande = null; tool0 = null; }
+
+function frameCamera(){
+  const box = new THREE.Box3().setFromObject(robot);
+  if(box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3());
+  const r = box.getSize(new THREE.Vector3()).length() * 0.6 || 1;
+  controls.target.copy(c);
+  camera.position.set(c.x + r, c.y - r, c.z + r * 0.8);
+  camera.near = r / 100; camera.far = r * 20; camera.updateProjectionMatrix();
+}
+
+function load(arm, origin){
+  if(!renderer) return;                          // init failed → inert
+  if(arm === curArm && robot) return;
+  curArm = arm;
+  const tok = ++loadTok;                          // guard against overlapping switches
+  showNote("loading model…");
+  clearRobot();
+  const baseUrl = (origin || location.origin).replace(/\/$/, "");
+  makeLoader().load(`${baseUrl}/models/${arm}/${arm}.urdf`, obj => {
+    if(tok !== loadTok) return;                   // superseded
+    robot = obj; scene.add(robot); showNote(""); frameCamera();
+    if(arm === "ur15"){
+      tool0 = robot.links && robot.links["tool0"];
+      makeLoader().load(`${baseUrl}/models/ur15/hande.urdf`, h => {
+        if(tok !== loadTok) return;
+        hande = h; (tool0 || scene).add(hande);
+      }, undefined, () => {});                     // gripper is best-effort
+    }
+  }, undefined, err => {
+    if(tok !== loadTok) return;
+    console.warn("URDF load failed", err); showNote("3D model unavailable");
+  });
+}
+
+function update(s){
+  if(!robot || !s || !s.q) return;
+  const names = JOINTS[curArm] || [];
+  for(let i = 0; i < names.length && i < s.q.length; i++)
+    if(typeof s.q[i] === "number") robot.setJointValue(names[i], s.q[i]);
+  if(hande && typeof s.gripper_frac === "number")
+    hande.setJointValue(FINGER_JOINT, (1 - s.gripper_frac) * FINGER_OPEN);
+}
+
+function dispose(){ clearRobot(); curArm = null; ++loadTok; showNote("connect to view"); }
+
+window.viewer3d = { load, update, dispose, ready: init() };
 </script>
 </body>
 </html>
