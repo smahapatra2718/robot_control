@@ -192,22 +192,23 @@ addEventListener("DOMContentLoaded", () => {
     text-transform:uppercase;margin:16px 0 9px;display:flex;gap:8px;align-items:center}
   .sect::after{content:"";flex:1;height:1px;background:var(--line)}
 
-  .joint{display:grid;grid-template-columns:30px 1fr 78px 64px;align-items:center;
-    gap:10px;margin-bottom:7px}
+  #joints{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,auto);
+    grid-auto-flow:column;gap:5px 18px}
+  .joint{display:grid;grid-template-columns:26px 1fr 46px 40px;align-items:center;gap:8px}
   .joint .jl{font-family:var(--mono);font-size:11px;color:var(--cyan);letter-spacing:.05em}
-  .bar{position:relative;height:10px;background:var(--bg);border:1px solid var(--line);
+  .bar{position:relative;height:7px;background:var(--bg);border:1px solid var(--line);
     border-radius:1px;overflow:hidden}
   .bar .mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line2)}
   .bar .fill{position:absolute;top:0;bottom:0;background:var(--acid);
     box-shadow:0 0 8px rgba(224,88,79,.5);transition:width .12s linear,left .12s linear;opacity:.85}
-  .joint .jv{font-family:var(--mono);font-size:12px;text-align:right;color:var(--txt)}
-  .joint .jd{font-family:var(--mono);font-size:11px;text-align:right;color:var(--txt2)}
+  .joint .jv{font-family:var(--mono);font-size:11px;text-align:right;color:var(--txt)}
+  .joint .jd{font-family:var(--mono);font-size:10px;text-align:right;color:var(--txt2)}
 
   .poserow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
   .cell{border:1px solid var(--line);background:var(--bg2);border-radius:2px;padding:8px 9px}
   .cell .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--dim)}
   .cell .v{font-family:var(--mono);font-size:14px;margin-top:3px;color:var(--cyan)}
-  .cell .u{font-size:9px;color:var(--dim)}
+  .cell .u{font-size:9px;color:var(--dim);margin-left:4px}
   .quad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
   .quad .cell .v{color:var(--txt)}
 
@@ -269,13 +270,17 @@ addEventListener("DOMContentLoaded", () => {
   .rec-x:hover:not(:disabled){border-color:var(--danger);color:var(--danger2);box-shadow:none}
   .rec-empty{font-family:var(--mono);font-size:11px;color:var(--dim);padding:11px}
 
-  /* speed */
-  .speedbox{display:flex;align-items:center;gap:12px;padding:11px 15px;
-    border-bottom:1px solid var(--line)}
-  .speedbox .lab{font-family:var(--cond);font-weight:600;letter-spacing:.16em;
+  /* speed + gripper, inside the teleop box */
+  .speedrow{display:flex;align-items:center;gap:12px;margin-bottom:14px;
+    padding-bottom:13px;border-bottom:1px solid var(--line)}
+  .speedrow .lab{font-family:var(--cond);font-weight:600;letter-spacing:.16em;
     text-transform:uppercase;font-size:12px;color:#dfe8ee}
   input[type=range]{flex:1;accent-color:var(--acid);height:4px}
-  .speedval{font-family:var(--mono);font-size:16px;color:var(--acid);min-width:52px;text-align:right}
+  .speedval{font-family:var(--mono);font-size:15px;color:var(--acid);min-width:48px;text-align:right}
+  .subhead{font-family:var(--cond);font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+    font-size:11px;color:var(--txt2);margin:18px 0 11px;padding-top:14px;
+    border-top:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  #gripperGroup.blocked{opacity:.4;pointer-events:none}
 
   /* lease state banner */
   .leasebar{display:flex;align-items:center;gap:11px;margin-bottom:13px;position:relative;overflow:hidden;
@@ -364,9 +369,9 @@ addEventListener("DOMContentLoaded", () => {
 
         <div class="sect">TCP Pose · position (m)</div>
         <div class="poserow">
-          <div class="cell"><div class="k">X</div><div id="p_x" class="v">—</div><span class="u">m</span></div>
-          <div class="cell"><div class="k">Y</div><div id="p_y" class="v">—</div><span class="u">m</span></div>
-          <div class="cell"><div class="k">Z</div><div id="p_z" class="v">—</div><span class="u">m</span></div>
+          <div class="cell"><div class="k">X</div><div class="v"><span id="p_x">—</span><span class="u">m</span></div></div>
+          <div class="cell"><div class="k">Y</div><div class="v"><span id="p_y">—</span><span class="u">m</span></div></div>
+          <div class="cell"><div class="k">Z</div><div class="v"><span id="p_z">—</span><span class="u">m</span></div></div>
         </div>
         <div class="sect">Orientation · quaternion (w,x,y,z)</div>
         <div class="quad">
@@ -405,15 +410,6 @@ addEventListener("DOMContentLoaded", () => {
       </div>
     </section>
 
-    <section class="panel speedpanel" style="animation-delay:.12s">
-      <div class="speedbox">
-        <span class="lab">Speed</span>
-        <input id="speed" type="range" min="0.05" max="1" step="0.05" value="0.5" oninput="document.getElementById('speedval').textContent=(+this.value).toFixed(2)">
-        <span id="speedval" class="speedval">0.50</span>
-      </div>
-      <div class="pbody hintline">Scales below the controller's hard speed cap (0,&nbsp;1.0]. Applies to every move &amp; play below.</div>
-    </section>
-
     <section class="panel" style="animation-delay:.1s">
       <div class="phead"><span class="idx">02</span> Active Command</div>
       <div class="pbody">
@@ -437,6 +433,11 @@ addEventListener("DOMContentLoaded", () => {
         <button class="ghost" style="padding:4px 8px" onclick="loadCurrent()" title="Fill fields from the arm's current state">⟲ load</button>
       </div>
       <div class="pbody">
+        <div class="speedrow">
+          <span class="lab">Speed</span>
+          <input id="speed" type="range" min="0.05" max="1" step="0.05" value="0.5" oninput="document.getElementById('speedval').textContent=(+this.value).toFixed(2)">
+          <span id="speedval" class="speedval">0.50</span>
+        </div>
         <div id="jointsGroup">
           <div class="jgrid" id="jointInputs"></div>
         </div>
@@ -456,22 +457,20 @@ addEventListener("DOMContentLoaded", () => {
           </div>
         </div>
         <div class="row end"><button class="primary" id="teleopSend" onclick="teleopSend()">Send /move/joints</button></div>
-      </div>
-    </section>
 
-    <section class="panel gated" id="gripperPanel" data-locked="1" style="animation-delay:.2s">
-      <div class="phead"><span class="idx">05</span> Gripper <span class="lockflag"></span><span id="gripTag" class="tag">—</span></div>
-      <div class="pbody">
-        <div class="gripwrap">
-          <input id="gripIn" type="range" min="0" max="1" step="0.01" value="0"
-                 oninput="document.getElementById('gripInVal').textContent=Math.round(this.value*100)+'%'">
-          <span id="gripInVal" class="gripval">0%</span>
-        </div>
-        <div class="row" style="margin-top:11px">
-          <button class="ghost" onclick="gripPreset(0)">Open · 0%</button>
-          <button class="ghost" onclick="gripPreset(0.5)">Half · 50%</button>
-          <button class="ghost" onclick="gripPreset(1)">Close · 100%</button>
-          <button class="primary" style="margin-left:auto" onclick="setGripper()">Send /gripper</button>
+        <div class="subhead">Gripper <span id="gripTag" class="tag" style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim)">—</span></div>
+        <div id="gripperGroup">
+          <div class="gripwrap">
+            <input id="gripIn" type="range" min="0" max="1" step="0.01" value="0"
+                   oninput="document.getElementById('gripInVal').textContent=Math.round(this.value*100)+'%'">
+            <span id="gripInVal" class="gripval">0%</span>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="ghost" onclick="gripPreset(0)">Open · 0%</button>
+            <button class="ghost" onclick="gripPreset(0.5)">Half · 50%</button>
+            <button class="ghost" onclick="gripPreset(1)">Close · 100%</button>
+            <button class="primary" style="margin-left:auto" onclick="setGripper()">Send /gripper</button>
+          </div>
         </div>
       </div>
     </section>
@@ -778,11 +777,11 @@ function render(s){
   if(hasGrip){
     $("g_fill").style.width = (s.gripper_frac*100)+"%";
     $("g_val").textContent = Math.round(s.gripper_frac*100)+"%";
-    $("gripperPanel").dataset.locked = curLease()?"0":"1";
+    $("gripperGroup").classList.remove("blocked");
     $("gripTag").textContent = "";
   }else{
     $("g_fill").style.width="0"; $("g_val").textContent="N/A";
-    $("gripperPanel").dataset.locked = "blocked";
+    $("gripperGroup").classList.add("blocked");     // gripper-less arm: block only this sub-section
     $("gripTag").textContent = "no gripper";
   }
 
@@ -831,10 +830,7 @@ function updateLeaseUI(){
   $("lt_tok").textContent = held ? lt.substr(0,8)+"…" : "";
   $("acqBtn").disabled = held; $("relBtn").disabled = !held;
   $("recSave").disabled = !held;          // saving a trajectory is a lease-gated write
-  document.querySelectorAll(".gated").forEach(p=>{
-    if(p.id==="gripperPanel" && p.dataset.locked==="blocked") return; // gripperless stays blocked
-    p.dataset.locked = held ? "0" : "1";
-  });
+  document.querySelectorAll(".gated").forEach(p=> p.dataset.locked = held ? "0" : "1");
   refreshTeleop();
 }
 
