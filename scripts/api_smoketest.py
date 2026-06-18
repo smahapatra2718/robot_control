@@ -455,6 +455,11 @@ def test_e2e_subprocess():
             # static web assets: dashboard shell + vendored 3D libs + baked model bundle
             assert cl.get("/").status_code == 200
             assert cl.get("/vendor/three.module.js").status_code == 200
+            # urdf-loader imports these unconditionally — the whole viewer module
+            # fails to load if any are missing (see the import map's three/examples/jsm).
+            for _lib in ("jsm/loaders/GLTFLoader.js", "jsm/loaders/STLLoader.js",
+                         "jsm/loaders/ColladaLoader.js", "urdf-loader/URDFLoader.js"):
+                assert cl.get(f"/vendor/{_lib}").status_code == 200, _lib
             r_urdf = cl.get("/models/ur15/ur15.urdf")
             assert r_urdf.status_code == 200 and "<robot" in r_urdf.text
     finally:
