@@ -77,7 +77,9 @@ def main() -> None:
 
         @app.get("/", include_in_schema=False)
         def dashboard():
-            return FileResponse(_DASHBOARD)
+            # no-cache: always revalidate so a pulled dashboard (e.g. a changed import
+            # map) can't be masked by a stale browser copy during iteration.
+            return FileResponse(_DASHBOARD, headers={"Cache-Control": "no-cache"})
 
         print(f"Web console:  http://{args.host}:{args.port}/")
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")

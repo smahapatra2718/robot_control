@@ -15,6 +15,13 @@
   "urdf-loader": "/vendor/urdf-loader/URDFLoader.js"
 }}
 </script>
+<script>
+// Favicon = the Oracle brand logo (reuse its inline data URI — no duplication).
+addEventListener("DOMContentLoaded", () => {
+  const img = document.querySelector(".oracle-logo");
+  if (img && img.src) { const l = document.createElement("link"); l.rel = "icon"; l.href = img.src; document.head.appendChild(l); }
+});
+</script>
 <style>
   :root{
     --bg:#070809; --bg2:#0c0f12; --panel:#0e1216; --panel2:#11161b;
@@ -628,6 +635,7 @@ async function connect(){
     prefilled = false;
     openStreams();
     if(window.viewer3d) window.viewer3d.load(active, base);
+    else { const n=$("viewer3dNote"); if(n) n.textContent="3D libs failed to load — see console"; }
     fetchTrajList();                 // populate the play picker for the active arm
     updateLeaseUI();                 // baseline (no lease yet): lock gated panels, disable Save
   }catch(e){
