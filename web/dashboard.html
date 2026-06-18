@@ -16,10 +16,22 @@
 }}
 </script>
 <script>
-// Favicon = the Oracle brand logo (reuse its inline data URI — no duplication).
+// Favicon = the Oracle brand logo, scaled to FIT a square (aspect ratio preserved,
+// transparent padding) so the wide logo isn't squished into the square icon slot.
 addEventListener("DOMContentLoaded", () => {
   const img = document.querySelector(".oracle-logo");
-  if (img && img.src) { const l = document.createElement("link"); l.rel = "icon"; l.href = img.src; document.head.appendChild(l); }
+  if (!img) return;
+  const draw = () => {
+    const S = 64, c = document.createElement("canvas"); c.width = c.height = S;
+    const ar = (img.naturalWidth || 1) / (img.naturalHeight || 1);
+    let w = S, h = S;
+    if (ar >= 1) h = S / ar; else w = S * ar;          // contain: fit inside the square
+    c.getContext("2d").drawImage(img, (S - w) / 2, (S - h) / 2, w, h);  // centered
+    const l = document.querySelector("link[rel='icon']") || document.createElement("link");
+    l.rel = "icon"; l.type = "image/png"; l.href = c.toDataURL("image/png");
+    document.head.appendChild(l);
+  };
+  img.complete ? draw() : img.addEventListener("load", draw);
 });
 </script>
 <style>
