@@ -51,6 +51,14 @@ listed as unavailable rather than aborting.
 
 Single-arm servers (`api ur15`) keep everything at the root (`/state`, `/move/joints`, …) — unchanged.
 
+### Web console & static assets
+
+The server serves the static console at **`GET /`** plus its assets at **`/vendor/…`**
+(vendored three.js + urdf-loader) and **`/models/<arm>/…`** (baked glTF arm bundles) —
+all unauthenticated, like the dashboard shell itself; the bearer token still gates every
+state/control endpoint. The console's 3D viewer reads live joint state from the existing
+`WS /telemetry` — it adds **no new API endpoint**.
+
 ### Auth token
 
 The bearer token is read from the **`ROBOT_API_TOKEN`** environment variable:

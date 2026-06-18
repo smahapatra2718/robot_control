@@ -59,5 +59,11 @@ These directories are vendored copies (their upstream `.git` history was strippe
 | `pyroki_src/` | https://github.com/chungmin99/pyroki | `388e43e` | see dir |
 | `abb_desc/` | https://github.com/ros-industrial/abb | `45f4769` | see dir |
 | `robotiq_hande_description/` | https://github.com/macmacal/robotiq_hande_description | `5ae8b97` | Apache-2.0 |
+| `web/vendor/three.module.js` + `jsm/` | https://github.com/mrdoob/three.js | `0.160.1` | MIT |
+| `web/vendor/urdf-loader/` | https://github.com/gkjohnson/urdf-loaders | `0.12.3` | Apache-2.0 |
 
 `pyroki_snippets/` is a copy of `pyroki_src/examples/pyroki_snippets/` plus the custom `_solve_ik_seeded.py`.
+
+`web/vendor/` holds the console's 3D-viewer libraries (vanilla ESM, no build step) — re-download the
+pinned versions to regenerate. `web/models/` holds per-arm glTF bundles baked from the URDFs by
+`scripts/export_web_models.py` (committed so the server needs no robot_descriptions cache to serve them).

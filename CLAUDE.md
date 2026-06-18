@@ -31,6 +31,7 @@ robot_control/                  # (repo name; the local dev folder may differ)
 │   ├── sim.py                  #   dispatcher: sim.py  <ur15|gofa|play|teleop> [args] offline (fake arm)
 │   ├── sim_smoketest.py        #   stdlib-assert smoke test for the sim fakes + EGM handshake
 │   ├── api_server.py           #   remote control API server (+ static web console at /): real.py/sim.py api <ur15|gofa>
+│   ├── export_web_models.py    #   bake web/models/<arm>/ glTF bundles for the console 3D viewer
 │   └── api_smoketest.py        #   stdlib-assert API test (TestClient + real-subprocess e2e)
 │
 ├── lib/                        # importable modules (on sys.path via the scripts/ bootstrap)
@@ -56,7 +57,7 @@ robot_control/                  # (repo name; the local dev folder may differ)
 ├── robotiq_hande_description/  # vendored macmacal/robotiq_hande_description (Hand-E meshes)
 │
 │   # ── runtime / docs ──
-├── web/                        # static remote-control console (dashboard.html) served by api_server at /
+├── web/                        # static remote console served by api_server: dashboard.html + vendor/ (three.js + urdf-loader) + models/ (baked glTF bundles)
 ├── robot_control/              # Python venv (3.13), gitignored
 ├── docs/                       # design specs + plans
 ├── README.md
@@ -203,6 +204,15 @@ Play posts the list of `names` to `/play` (the **server** concatenates them — 
 client-side composition; a single pick plays by `name`) — always-live STOP/E-STOP, and a console log
 that polls `/command/{id}` to completion. The open WS carries the lease so it doubles as the
 deadman heartbeat. Vanilla HTML/JS, no build step.
+
+A **3D View** card at the top of the left column renders the live arm in three.js — a
+vendored `urdf-loader` (under `web/vendor/`) loads a baked glTF bundle from `web/models/<arm>/`
+(served at `/models`) and is driven entirely off the open `WS /telemetry` stream: each frame sets
+the six joint values from `RobotState.q`, plus the Hand-E finger from `gripper_frac` on the UR15.
+It is **display-only** — view-only OrbitControls move the camera, nothing drives the robot — and
+degrades to a quiet "3D model unavailable" note if WebGL or the bundle is missing. Wired via a
+native import map (no bundler, no CDN). Regenerate the bundles with `scripts/export_web_models.py`
+(converts each arm's visual meshes to glTF, strips collisions, bakes STL colors from the URDF).
 
 Runs fully offline: `./robot_control/bin/python scripts/api_smoketest.py` exercises every
 endpoint in-process (FastAPI `TestClient`) plus a real `sim.py api` subprocess over HTTP — no
