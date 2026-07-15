@@ -1,7 +1,7 @@
 """Offline smoke test for the RobotController core (lib/control), driven against
 the sim fakes (lib/robot_sim). No robot, no network.
 
-  ./robot_control/bin/python scripts/control_smoketest.py
+  uv run scripts/control_smoketest.py
 
 Exits 0 on success, 1 on the first failed assertion.
 """

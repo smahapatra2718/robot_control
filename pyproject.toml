@@ -1,0 +1,52 @@
+[project]
+name = "robot-control"
+version = "0.1.0"
+description = "Browser-based teleop for a UR15 (RTDE) and an ABB GoFa CRB 15000 (EGM), on a shared viser + pyroki stack"
+readme = "README.md"
+requires-python = ">=3.13"
+
+dependencies = [
+    # kinematics / viz
+    "pyroki",                # editable, from the vendored pyroki_src/ (see [tool.uv.sources])
+    "numpy",
+    "viser",
+    "yourdfpy",
+    "jax",
+    "jaxlib",
+    "jaxlie",
+    "robot_descriptions",
+    "trimesh",               # scripts/export_web_models.py — bakes the console's glTF bundles
+    "xacrodoc",              # regenerates urdf/*.urdf from xacro (not imported at runtime)
+
+    # ABB GoFa transport
+    "requests",              # lib/abb_rws.py — RWS over HTTPS
+    "urllib3",               # lib/abb_rws.py — InsecureRequestWarning suppression
+    "protobuf",              # lib/egm_pb2.py — EGM wire format. Nothing else pulls this in.
+
+    # UR15 transport. Builds from sdist on macOS and needs boost@1.85 — see README "Setup".
+    "ur_rtde==1.6.3",
+
+    # remote API + web console
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",                 # scripts/api_smoketest.py + fastapi's TestClient
+]
+
+[dependency-groups]
+# Installed by default by `uv sync`. Only needed to regenerate lib/egm_pb2.py
+# from lib/egm.proto — see the command in that file's header.
+dev = ["grpcio-tools"]
+
+[tool.uv]
+# scripts/ + lib/ are plain files on sys.path (each script bootstraps its own
+# path), not an installable package — so there is no root package to build.
+package = false
+
+# Use uv's own CPython, never a system/conda interpreter. The previous venv was
+# built against miniconda's python and broke when the repo moved; this keeps the
+# toolchain self-contained and identical on every machine.
+python-preference = "only-managed"
+
+[tool.uv.sources]
+# No PyPI package exists for pyroki; install from the vendored clone.
+pyroki = { path = "pyroki_src", editable = true }

@@ -2,8 +2,8 @@
 """real.py <ur15|gofa|play|teleop> [args] — run a teleop entry point on real hardware.
 
 Thin verb over lib/dispatch.py; the offline twin is sim.py.
-  ./robot_control/bin/python scripts/real.py ur15
-  ./robot_control/bin/python scripts/real.py play traj1 --speed 0.5
+  uv run scripts/real.py ur15
+  uv run scripts/real.py play traj1 --speed 0.5
 """
 import os
 import sys

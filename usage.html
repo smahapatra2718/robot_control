@@ -216,19 +216,19 @@
         </div>
         <div class="code" style="margin-bottom:0">
           <button class="copy">Copy</button>
-          <pre id="b-out">./robot_control/bin/python scripts/sim.py ur15</pre>
+          <pre id="b-out">uv run scripts/sim.py ur15</pre>
         </div>
       </div>
 
       <h3>First run (offline, no robot needed)</h3>
       <div class="code"><button class="copy">Copy</button><pre><span class="c"># offline sim — runs the real teleop against a perfect-tracking kinematic sim</span>
-./robot_control/bin/python scripts/sim.py ur15
+uv run scripts/sim.py ur15
 <span class="c"># → open the printed URL:</span>  http://localhost:8080</pre></div>
       <p>The sim still needs the project venv (it runs the real jax / pyroki / viser stack and real URDFs) — "offline" means no <em>robot</em>, not no Python deps.</p>
 
       <h3>Going live</h3>
-      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/real.py ur15     <span class="c"># UR15 over RTDE</span>
-./robot_control/bin/python scripts/real.py gofa     <span class="c"># GoFa over EGM</span></pre></div>
+      <div class="code"><button class="copy">Copy</button><pre>uv run scripts/real.py ur15     <span class="c"># UR15 over RTDE</span>
+uv run scripts/real.py gofa     <span class="c"># GoFa over EGM</span></pre></div>
       <div class="warn"><strong>Each script connects at startup and aborts if it can't reach the arm.</strong> For the UR15, enable the RTDE/Dashboard/Primary services and <em>Remote Control</em> mode on the pendant. For the GoFa, push the EGM supervisor once with <code class="inline">install_gofa_egm.py</code>. See <code class="inline">CLAUDE.md</code> for the full controller bring-up.</div>
     </section>
 
@@ -287,7 +287,7 @@
       <h2>Headless tools</h2>
 
       <h3>Replay — <code class="inline">play_trajectory.py</code></h3>
-      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/play_trajectory.py <span class="k">&lt;robot&gt;/&lt;name&gt;</span> [more...] \
+      <div class="code"><button class="copy">Copy</button><pre>uv run scripts/play_trajectory.py <span class="k">&lt;robot&gt;/&lt;name&gt;</span> [more...] \
     [<span class="k">--speed</span> S] [<span class="k">--dry-run</span>] [<span class="k">--no-confirm</span>]</pre></div>
       <p>Name the trajectory with an explicit <code class="inline">&lt;robot&gt;/</code> prefix (e.g. <code class="inline">ur15/pickplace</code>) — this headless entry point has no arm context, so the prefix picks both the folder and the controller. Plays after a <code class="inline">[y/N]</code> confirm. Every waypoint must already carry <code class="inline">"q"</code> (it's IK-solver-free) — capture taught joints, or Plan-and-save in viser first.</p>
       <ul>
@@ -296,11 +296,11 @@
         <li><strong>Chaining</strong> — pass several names to play them back-to-back as one continuous motion (one confirm, gripper state carries across seams). All must target the same robot.</li>
       </ul>
       <div class="code"><button class="copy">Copy</button><pre><span class="c"># preview a 3-trajectory chain without moving anything</span>
-./robot_control/bin/python scripts/sim.py play pick approach place <span class="k">--dry-run</span></pre></div>
+uv run scripts/sim.py play pick approach place <span class="k">--dry-run</span></pre></div>
 
       <h3>Record — <code class="inline">teleop.py</code></h3>
       <p>The record-side counterpart: hand-guide the arm and capture with keypresses to the same JSON format. A live terminal dashboard shows pose, joints, gripper % and waypoint count.</p>
-      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/teleop.py [name] [<span class="k">--robot</span> ur|gofa]</pre></div>
+      <div class="code"><button class="copy">Copy</button><pre>uv run scripts/teleop.py [name] [<span class="k">--robot</span> ur|gofa]</pre></div>
       <table>
         <tr><th>Key</th><th>Action</th></tr>
         <tr><td><kbd>c</kbd></td><td>Capture a waypoint (live joints + FK pose + gripper)</td></tr>
@@ -317,7 +317,7 @@
       <p>Serve HTTP + WebSocket control over the same controller. The network carries <strong>high-level goals and telemetry — never the servo loop.</strong></p>
       <div class="code"><button class="copy">Copy</button><pre><span class="c"># real hardware, or sim.py for offline</span>
 ROBOT_API_TOKEN=<span class="s">'a-long-random-secret'</span> \
-  ./robot_control/bin/python scripts/real.py api ur15 <span class="k">--host</span> 127.0.0.1 <span class="k">--port</span> 8000</pre></div>
+  uv run scripts/real.py api ur15 <span class="k">--host</span> 127.0.0.1 <span class="k">--port</span> 8000</pre></div>
 
       <h3>Authentication</h3>
       <p>Every endpoint needs the token from <code class="inline">ROBOT_API_TOKEN</code> (defaults to <code class="inline">changeme</code> with a startup warning — set it for anything past a direct cable).</p>
@@ -541,16 +541,16 @@ auth = {<span class="s">"Authorization"</span>: <span class="s">f"Bearer {TOK}"<
     <section id="sim">
       <h2>Simulation</h2>
       <p><code class="inline">sim.py</code> runs the <strong>real, unmodified</strong> scripts against a perfect-tracking kinematic sim by injecting fake transports (<code class="inline">rtde_*</code>, <code class="inline">hande_gripper</code>, <code class="inline">abb_rws</code>, <code class="inline">abb_egm</code>) — so every feature works in sim automatically and never drifts from hardware.</p>
-      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/sim.py ur15                       <span class="c"># UR15 teleop, simulated</span>
-./robot_control/bin/python scripts/sim.py gofa                       <span class="c"># GoFa teleop, simulated</span>
-./robot_control/bin/python scripts/sim.py api ur15                   <span class="c"># remote API, simulated</span>
-./robot_control/bin/python scripts/sim.py play ur15/_sample_ur15 <span class="k">--no-confirm</span></pre></div>
+      <div class="code"><button class="copy">Copy</button><pre>uv run scripts/sim.py ur15                       <span class="c"># UR15 teleop, simulated</span>
+uv run scripts/sim.py gofa                       <span class="c"># GoFa teleop, simulated</span>
+uv run scripts/sim.py api ur15                   <span class="c"># remote API, simulated</span>
+uv run scripts/sim.py play ur15/_sample_ur15 <span class="k">--no-confirm</span></pre></div>
       <div class="warn"><strong>One limitation:</strong> there's no physical arm to hand-guide, so free-drive/teach <em>capture</em> just re-grabs the current pose. Author offline with the gizmo, Live, or Plan instead.</div>
 
       <h3>Run the test suites (offline)</h3>
-      <div class="code"><button class="copy">Copy</button><pre>./robot_control/bin/python scripts/control_smoketest.py   <span class="c"># controller core</span>
-./robot_control/bin/python scripts/api_smoketest.py       <span class="c"># API (in-process + real subprocess)</span>
-./robot_control/bin/python scripts/sim_smoketest.py       <span class="c"># sim fakes + EGM handshake</span></pre></div>
+      <div class="code"><button class="copy">Copy</button><pre>uv run scripts/control_smoketest.py   <span class="c"># controller core</span>
+uv run scripts/api_smoketest.py       <span class="c"># API (in-process + real subprocess)</span>
+uv run scripts/sim_smoketest.py       <span class="c"># sim fakes + EGM handshake</span></pre></div>
     </section>
 
     <!-- CHEATSHEET -->
@@ -599,7 +599,7 @@ auth = {<span class="s">"Authorization"</span>: <span class="s">f"Bearer {TOK}"<
   var mode = document.getElementById('b-mode'),
       target = document.getElementById('b-target'),
       out = document.getElementById('b-out');
-  function rebuild(){ out.textContent = './robot_control/bin/python scripts/' + mode.value + '.py ' + target.value; }
+  function rebuild(){ out.textContent = 'uv run scripts/' + mode.value + '.py ' + target.value; }
   mode.addEventListener('change', rebuild); target.addEventListener('change', rebuild); rebuild();
 
   // ---- tabs ----

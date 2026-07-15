@@ -14,7 +14,7 @@ move segment), the Hand-E is calibrated ONCE at the start (not between
 trajectories), and the gripper state carries across the seam. All chained
 trajectories must target the same robot.
 
-  ./robot_control/bin/python scripts/play_trajectory.py <robot>/<name> [more...] [--speed S] [--dry-run] [--no-confirm]
+  uv run scripts/play_trajectory.py <robot>/<name> [more...] [--speed S] [--dry-run] [--no-confirm]
 """
 
 import argparse

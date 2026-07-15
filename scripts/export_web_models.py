@@ -9,8 +9,8 @@ material) get the URDF link <color> baked in; DAE/OBJ keep their own materials.
 Run once on a box that has the source meshes (the dev machine); the output is
 committed so the server serves it everywhere without the robot_descriptions cache.
 
-  ./robot_control/bin/python scripts/export_web_models.py          # (re)generate
-  ./robot_control/bin/python scripts/export_web_models.py --check  # verify only
+  uv run scripts/export_web_models.py          # (re)generate
+  uv run scripts/export_web_models.py --check  # verify only
 """
 import argparse
 import os

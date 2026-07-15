@@ -8,8 +8,8 @@ Browser-based teleop for two arms on a shared viser + pyroki stack:
 Both unify the speed slider — the same `q` drives the viser preview and the robot each tick, so viz and arm move in lockstep. Both share the UI (viser scene + gizmo + waypoints), the IK (`pyroki_snippets._solve_ik_seeded`), the trapezoidal alpha play profile, and auto-cleanup after a successful executed Play. All four entry points (`teleop_ur15.py`, `teleop_gofa_egm.py`, `play_trajectory.py`, `teleop.py`) pull shared config + pure helpers from **`robot_common.py`** (single source of truth).
 
 ```bash
-./robot_control/bin/python scripts/real.py ur15   # real hardware  (targets: ur15 | gofa | play | teleop)
-./robot_control/bin/python scripts/sim.py  ur15   # offline sim    (same targets, no robot/network)
+uv run scripts/real.py ur15   # real hardware  (targets: ur15 | gofa | play | teleop)
+uv run scripts/sim.py  ur15   # offline sim    (same targets, no robot/network)
 ```
 
 Open the printed `http://localhost:8080`. Each script connects to its controller at startup and aborts if it can't reach.
@@ -20,7 +20,7 @@ Runnable scripts in `scripts/`, importable modules in `lib/`, assets/vendored tr
 
 ```
 robot_control/                  # (repo name; the local dev folder may differ)
-├── scripts/                    # entry points — run with ./robot_control/bin/python scripts/<script>
+├── scripts/                    # entry points — run with uv run scripts/<script>
 │   ├── teleop_ur15.py          #   UR15 teleop: viser + RTDE/servoJ + Hand-E gripper
 │   ├── teleop_gofa_egm.py      #   GoFa teleop: viser + EGM joint streaming
 │   ├── teleop.py               #   headless CLI trajectory recorder (free-drive + keypress capture)
@@ -58,15 +58,27 @@ robot_control/                  # (repo name; the local dev folder may differ)
 │
 │   # ── runtime / docs ──
 ├── web/                        # static remote console served by api_server: dashboard.html + vendor/ (three.js + urdf-loader) + models/ (baked glTF bundles)
-├── robot_control/              # Python venv (3.13), gitignored
+├── pyproject.toml              # uv project: deps + [tool.uv.sources] (pyroki editable)
+├── uv.lock                     # exact pinned resolution — committed
+├── .venv/                      # Python venv (3.13), built by `uv sync`, gitignored
 ├── docs/                       # design specs + plans
 ├── README.md
 └── CLAUDE.md                   # this file
 ```
 
-## Dependencies (already installed in `robot_control/`)
+## Dependencies — `pyproject.toml` + `uv.lock`
 
-Python: numpy, viser, yourdfpy, jaxlie, jax, jaxlib, robot_descriptions, xacrodoc, pyroki (editable), ur_rtde 1.6.3, requests, urllib3. System (brew): cmake, **boost@1.85** (keg-only, for the ur_rtde build only).
+Managed with [uv](https://docs.astral.sh/uv/). `uv sync` builds `.venv/` from `uv.lock`;
+`uv run <script>` runs against it with no activation. See README → "Setup".
+
+Python: numpy, viser, yourdfpy, jaxlie, jax, jaxlib, robot_descriptions, trimesh, xacrodoc, pyroki (editable, from `pyroki_src/`), ur_rtde 1.6.3, requests, urllib3, protobuf, fastapi, uvicorn[standard], httpx. Dev group: grpcio-tools (only to regenerate `lib/egm_pb2.py`). System (brew): cmake, **boost@1.85** (keg-only, for the ur_rtde build only).
+
+Notes on the manifest, since a few entries are non-obvious:
+- **`protobuf` is a direct dependency** — `lib/egm_pb2.py` imports `google.protobuf` at runtime, and nothing else pulls it in. Dropping it silently breaks the GoFa EGM path.
+- **`xacrodoc` is not imported anywhere** — it regenerates `urdf/*.urdf` from xacro; the generated URDFs are committed, so it's only needed to rebuild them.
+- **`pyroki` provides jax/jaxlib/jaxlie/viser/yourdfpy/trimesh/robot_descriptions transitively**, but we declare the ones we import ourselves so a pyroki change can't remove them from under us.
+- **`uv` manages the interpreter** (`python-preference = "only-managed"`): builds never use a system or conda Python. The pre-uv venv was built against miniconda and broke when the repo directory moved.
+- **`package = false`** — `scripts/` + `lib/` are plain files that bootstrap their own `sys.path`, not an installable package, so there is no root package to build.
 
 URDFs — all generated via `xacrodoc`, then mesh URIs rewritten to `package://` and resolved through `robot_common.make_mesh_resolver(<prefix>)`. xacrodoc emits absolute `file://` URIs that yourdfpy can't resolve, so the `file://…` prefix is stripped back to `package://` after generation (see the yourdfpy gotcha below).
 - **UR15**: no local file — loaded at runtime via `robot_descriptions.loaders.yourdfpy.load_robot_description("ur15_description")`.
@@ -99,13 +111,13 @@ drifts. `real.py` and `sim.py` are the same dispatcher (`lib/dispatch.py`) and
 differ only in that `sim.py` installs the shim first.
 
 ```bash
-./robot_control/bin/python scripts/sim.py ur15                         # UR15 teleop, simulated
-./robot_control/bin/python scripts/sim.py gofa                         # GoFa teleop, simulated
-./robot_control/bin/python scripts/sim.py play ur15/_sample_ur15 --no-confirm
-./robot_control/bin/python scripts/sim_smoketest.py                    # fast fakes + handshake check
+uv run scripts/sim.py ur15                         # UR15 teleop, simulated
+uv run scripts/sim.py gofa                         # GoFa teleop, simulated
+uv run scripts/sim.py play ur15/_sample_ur15 --no-confirm
+uv run scripts/sim_smoketest.py                    # fast fakes + handshake check
 ```
 
-The sim still needs the `robot_control/` venv (it runs the real jax/pyroki/viser
+The sim still needs the `.venv` (it runs the real jax/pyroki/viser
 stack and the real URDFs) — "offline" means no *robot*, not no Python deps.
 
 **One limitation — free-drive/teach can't be hand-guided** (no physical arm to
@@ -126,7 +138,7 @@ pose, gripper, safety, activity) from a background state-poll thread, and `grasp
 `start_freedrive` / `stop_freedrive` / `adjust_grip` for the recorder. The headless players
 (`play_trajectory.py`, `teleop.py`) run on it; the viser teleops and the remote API are next.
 Because it uses the same hardware clients the sim fakes shadow, the whole core runs offline —
-`./robot_control/bin/python scripts/control_smoketest.py` exercises it (move/play/stop/gripper/
+`uv run scripts/control_smoketest.py` exercises it (move/play/stop/gripper/
 state/free-drive) against `lib/robot_sim.py` with no robot.
 
 Subclasses (`URController`, `GoFaController`) implement the hardware primitives (`_read_q`,
@@ -214,7 +226,7 @@ degrades to a quiet "3D model unavailable" note if WebGL or the bundle is missin
 native import map (no bundler, no CDN). Regenerate the bundles with `scripts/export_web_models.py`
 (converts each arm's visual meshes to glTF, strips collisions, bakes STL colors from the URDF).
 
-Runs fully offline: `./robot_control/bin/python scripts/api_smoketest.py` exercises every
+Runs fully offline: `uv run scripts/api_smoketest.py` exercises every
 endpoint in-process (FastAPI `TestClient`) plus a real `sim.py api` subprocess over HTTP — no
 robot. The embedded viser 3D viewer + Live control are a follow-on.
 
@@ -310,7 +322,7 @@ Hand-guide the arm, capture poses, save/replay. UR15 has the full version (softw
 ## Headless replay — `play_trajectory.py`
 
 ```bash
-./robot_control/bin/python scripts/play_trajectory.py <robot>/<name> [more...] [--speed S] [--dry-run] [--no-confirm]
+uv run scripts/play_trajectory.py <robot>/<name> [more...] [--speed S] [--dry-run] [--no-confirm]
 ```
 
 Reads `trajectories/<robot>/<name>.json` — the **`<robot>/` prefix is required** (this entry point has no arm context, so the prefix picks both the folder and the controller; e.g. `ur15/pickplace`). It then executes after a `[y/N]` confirm (`--no-confirm` to skip). `--dry-run` prints the plan (segments + estimated duration) and exits. **IK-solver-free**: every waypoint must already carry `"q"` (from Capture, or Plan-and-save in viser) — a `q`-less waypoint aborts with a "Plan + re-save" message. First segment moves from the current pose to waypoint 1. UR15 path mirrors `teleop_ur15.py` (servoJ + settle + gripper-on-change with the 0.5 s pre-delay, gripper opened at start). GoFa path imports pyroki for FK **only** to enforce the `MAX_TCP_SPEED` cap, then streams over the existing EGM supervisor (PyEgm parked at `WaitUntil egm_go`). Profile + connection constants come from `robot_common.py`, so retuning a teleop script updates this one too.
@@ -322,7 +334,7 @@ Reads `trajectories/<robot>/<name>.json` — the **`<robot>/` prefix is required
 The record-side counterpart to `play_trajectory.py`; same `trajectories/<robot>/<name>.json` format, replays unchanged.
 
 ```bash
-./robot_control/bin/python scripts/teleop.py [name] [--robot ur|gofa]
+uv run scripts/teleop.py [name] [--robot ur|gofa]
 ```
 
 Missing `name`/`--robot` are prompted for. The robot connects once and is reused for the session. The arm enters free-drive (UR `teachMode()`; GoFa `lead_go=TRUE` → `SetLeadThrough`) and a raw-keypress loop runs:
@@ -387,7 +399,7 @@ OmniCore C30 has **no physical Auto/Manual key switch**. Mode is on the FlexPend
 EGM is a **licensed** option — confirm it's enabled (pendant: Settings → System → installed options) first.
 
 ```bash
-./robot_control/bin/python scripts/install_gofa_egm.py
+uv run scripts/install_gofa_egm.py
 ```
 
 What it does:
@@ -500,8 +512,9 @@ Trade-off: at `rest_weight=2.0` pose error is ~0.5 mm. Raise to 5–10 if IK sti
 
 # Other gotchas
 
-- **Boost 1.90 breaks ur_rtde on macOS.** Boost made `Boost.System` header-only in 1.87+, so homebrew Boost 1.90 ships no `boost_system-*-Config.cmake` and ur_rtde's `find_package(boost_system CONFIG)` dies. Fix: `brew install boost@1.85` (keg-only, doesn't shadow 1.90), then `BOOST_ROOT=/opt/homebrew/opt/boost@1.85 CMAKE_PREFIX_PATH=/opt/homebrew/opt/boost@1.85 pip install ur_rtde`. Already done in `robot_control/`.
-- **`pip install pyroki` doesn't exist.** Install from source: `git clone https://github.com/chungmin99/pyroki.git pyroki_src && ./robot_control/bin/pip install -e ./pyroki_src`. Already done.
+- **Boost 1.90 breaks ur_rtde on macOS.** Boost made `Boost.System` header-only in 1.87+, so homebrew Boost 1.90 ships no `boost_system-*-Config.cmake` and ur_rtde's `find_package(boost_system CONFIG)` dies. This bites on *every* machine because **ur_rtde publishes no wheels** — `uv.lock` has an sdist only, so `uv sync` always compiles it. Fix: `brew install boost@1.85` (keg-only, doesn't shadow 1.90), then export `BOOST_ROOT` + `CMAKE_PREFIX_PATH` to it before `uv sync` (README → "Setup"). uv passes the ambient env through to the build, so exporting them in your shell is enough.
+- **`pip install pyroki` doesn't exist.** No PyPI package — it's installed from the vendored `pyroki_src/` clone, wired up by `[tool.uv.sources] pyroki = { path = "pyroki_src", editable = true }` in `pyproject.toml`. `uv sync` handles it; don't move `pyroki_src/` (editable install).
+- **pyroki depends on `jaxls` via git**, not PyPI (`jaxls @ git+https://github.com/brentyi/jaxls.git`). `uv.lock` pins it to an exact commit, so `uv sync` needs git available and network access on a cold cache. Pre-uv this floated at whatever `0.0.0` happened to be checked out.
 - **PyRoki's `solve_ik` lives in `examples/pyroki_snippets/`, not the package** — NOT installed by `pip install -e .`. The `pyroki_snippets/` dir in the project root is a copy of `pyroki_src/examples/pyroki_snippets/` plus our `_solve_ik_seeded.py`; every script's bootstrap adds the repo root to `sys.path` so `import pyroki_snippets` works.
 - **First IK call takes ~800 ms (JAX JIT compile); subsequent calls are ms.** Both teleop scripts call `_warmup_ik()` at launch (a no-op IK at the current pose) to pay this during startup instead of on the first Plan click.
 - **UR15 model is brand new.** It postdates a lot of training data — if Claude says "there's no UR15", point at https://www.universal-robots.com/products/ur15/. The official ROS2 description repo supports `ur_type:=ur15`.

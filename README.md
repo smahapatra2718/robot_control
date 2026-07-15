@@ -11,33 +11,44 @@ Both teleop scripts share the same UI (viser scene + 6-DoF gizmo + waypoints), t
 
 ```bash
 # real hardware:
-./robot_control/bin/python scripts/real.py ur15      # or: gofa | play <robot>/<name> | teleop
+uv run scripts/real.py ur15      # or: gofa | play <robot>/<name> | teleop
 # offline simulation (no robot, no network):
-./robot_control/bin/python scripts/sim.py  ur15      # same targets — runs the real scripts vs a fake arm
+uv run scripts/sim.py  ur15      # same targets — runs the real scripts vs a fake arm
 ```
 
-Remote control API (offline): `ROBOT_API_TOKEN=secret ./robot_control/bin/python scripts/sim.py api ur15` → HTTP+WebSocket on `:8000` (see `CLAUDE.md` → Remote API).
+Remote control API (offline): `ROBOT_API_TOKEN=secret uv run scripts/sim.py api ur15` → HTTP+WebSocket on `:8000` (see `CLAUDE.md` → Remote API).
 
 Then open the printed `http://localhost:8080`. The four scripts (`teleop_ur15.py`, `teleop_gofa_egm.py`, `play_trajectory.py`, `teleop.py`) still run directly too.
 
-## Setup (rebuild the venv)
+## Setup
 
-The `robot_control/` virtualenv is **not** committed (655M, machine-specific). Recreate it:
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) — `pyproject.toml` declares
+them, `uv.lock` pins them. Install uv, then:
 
 ```bash
-python3.13 -m venv robot_control
-./robot_control/bin/pip install numpy viser yourdfpy jaxlie jax jaxlib \
-    robot_descriptions xacrodoc requests urllib3 fastapi "uvicorn[standard]"
-
-# pyroki — install from the vendored source (no PyPI package exists)
-./robot_control/bin/pip install -e ./pyroki_src
-
-# ur_rtde — on macOS, build against boost@1.85 (1.87+ breaks the build):
+# ur_rtde publishes no wheels, so it always compiles from source. On macOS that
+# needs boost@1.85 (1.87+ made Boost.System header-only and breaks the build):
 brew install boost@1.85
-BOOST_ROOT=/opt/homebrew/opt/boost@1.85 \
-CMAKE_PREFIX_PATH=/opt/homebrew/opt/boost@1.85 \
-  ./robot_control/bin/pip install ur_rtde==1.6.3
+export BOOST_ROOT=/opt/homebrew/opt/boost@1.85
+export CMAKE_PREFIX_PATH=/opt/homebrew/opt/boost@1.85
+
+uv sync
 ```
+
+That's the whole install. `uv sync` builds `.venv/` from `uv.lock`, which pins everything
+exactly — including uv's own CPython 3.13 (no system or conda Python is involved), the
+vendored `pyroki_src/` as an editable install, and `jaxls` at an exact git commit.
+
+Run anything with `uv run`; it re-syncs first if the lock changed, and nothing needs activating:
+
+```bash
+uv run scripts/sim.py ur15
+uv run scripts/sim_smoketest.py
+```
+
+`.venv/` (~655M) is **not** committed; `uv.lock` is, so every machine resolves identically.
+To change a dependency, edit `pyproject.toml` and run `uv sync` (or `uv add <pkg>`) — this
+regenerates `uv.lock`, which should be committed alongside.
 
 See `CLAUDE.md` → "Dependencies" and "Other gotchas" for the why behind each step.
 

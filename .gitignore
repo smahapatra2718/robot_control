@@ -1,4 +1,7 @@
-# Python venv — regenerable, machine-specific (see README "Setup")
+# Python venv — regenerable from uv.lock, machine-specific (see README "Setup")
+.venv/
+
+# Legacy pre-uv venv. Safe to delete: `rm -rf robot_control/`
 robot_control/
 
 # Python caches

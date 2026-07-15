@@ -3,8 +3,8 @@
 
 Injects fake robot transports (lib/robot_sim.py) into sys.modules, then runs the
 real, unmodified script. The real twin is real.py.
-  ./robot_control/bin/python scripts/sim.py ur15
-  ./robot_control/bin/python scripts/sim.py play ur15/_sample_ur15 --no-confirm
+  uv run scripts/sim.py ur15
+  uv run scripts/sim.py play ur15/_sample_ur15 --no-confirm
 """
 import os
 import sys

@@ -1,7 +1,7 @@
 """Offline smoke test for the remote API (lib/robot_api), in-process via FastAPI's
 TestClient over a controller wired to the sim fakes. No robot, no network.
 
-  ./robot_control/bin/python scripts/api_smoketest.py
+  uv run scripts/api_smoketest.py
 
 Exits 0 on success, 1 on the first failed assertion.
 """
@@ -387,7 +387,7 @@ def test_e2e_subprocess():
     )
     env = dict(os.environ, ROBOT_API_TOKEN=TOKEN)
     proc = subprocess.Popen(
-        [os.path.join(_ROOT, "robot_control", "bin", "python"),
+        [sys.executable,
          os.path.join(_ROOT, "scripts", "sim.py"), "api", "ur15", "--port", str(port)],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=_ROOT,
     )

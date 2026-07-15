@@ -1,7 +1,7 @@
 """Offline-sim smoke test: drive the fake transports directly and assert the
 kinematic round-trips + (Task 2) the GoFa EGM handshake.
 
-  ./robot_control/bin/python scripts/sim_smoketest.py
+  uv run scripts/sim_smoketest.py
 
 Exits 0 on success, 1 on the first failed assertion.
 """

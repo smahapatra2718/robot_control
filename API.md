@@ -19,12 +19,12 @@ since both drive the same controller.
 
 ```bash
 # real hardware
-./robot_control/bin/python scripts/real.py api ur15          # or: gofa
+uv run scripts/real.py api ur15          # or: gofa
 # offline sim (no robot, no network)
-./robot_control/bin/python scripts/sim.py  api ur15          # or: gofa
+uv run scripts/sim.py  api ur15          # or: gofa
 
 # options
-./robot_control/bin/python scripts/real.py api gofa --host 127.0.0.1 --port 8000
+uv run scripts/real.py api gofa --host 127.0.0.1 --port 8000
 ```
 
 | Flag | Default | Notes |
@@ -64,7 +64,7 @@ state/control endpoint. The console's 3D viewer reads live joint state from the 
 The bearer token is read from the **`ROBOT_API_TOKEN`** environment variable:
 
 ```bash
-ROBOT_API_TOKEN='a-long-random-secret' ./robot_control/bin/python scripts/real.py api ur15
+ROBOT_API_TOKEN='a-long-random-secret' uv run scripts/real.py api ur15
 ```
 
 If unset it defaults to `changeme` and prints a startup warning. **Set it for
@@ -442,8 +442,8 @@ with httpx.Client(base_url=BASE, timeout=10.0) as cl:
 The whole API runs with no robot and no network against the sim fakes:
 
 ```bash
-./robot_control/bin/python scripts/api_smoketest.py    # in-process TestClient + real sim.py subprocess e2e
-./robot_control/bin/python scripts/sim.py api ur15     # serve the sim over real HTTP for manual poking
+uv run scripts/api_smoketest.py    # in-process TestClient + real sim.py subprocess e2e
+uv run scripts/sim.py api ur15     # serve the sim over real HTTP for manual poking
 ```
 
 ---
