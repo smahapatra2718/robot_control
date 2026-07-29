@@ -346,7 +346,14 @@ addEventListener("DOMContentLoaded", () => {
   <!-- COL 1: state -->
   <div class="col">
     <section class="panel" style="animation-delay:.02s">
-      <div class="phead"><span class="idx">00</span> 3D View <span class="tag">live</span></div>
+      <div class="phead"><span class="idx">00</span> 3D View <span class="tag">live</span>
+        <label class="fdcheck" id="gizmoLabel" style="margin-left:auto"><input id="gizmoChk" type="checkbox" onchange="toggleGizmo(this.checked)">Gizmo</label>
+        <div class="seg" id="gizmoSeg" style="display:none">
+          <button class="segbtn active" data-gmode="translate" onclick="setGizmoMode('translate')">Move</button>
+          <button class="segbtn" data-gmode="rotate" onclick="setGizmoMode('rotate')">Rotate</button>
+        </div>
+        <button class="ghost" id="gizmoSnap" style="padding:4px 8px;display:none" onclick="snapGizmo()" title="Move the gizmo back to the arm's current pose">⟲ snap</button>
+      </div>
       <div class="pbody" style="padding:0">
         <div id="viewer3d" class="viewer3d">
           <div id="viewer3dNote" class="viewer3d-note">connect to view</div>
@@ -678,6 +685,7 @@ function disconnect(){
   document.body.classList.add("locked");
   $("disconnectBtn").style.display="none"; $("robotchip").style.display="none"; $("armSwitch").style.display="none";
   setLed("off","OFFLINE"); updateLeaseUI(); log("sys","disconnected");
+  resetGizmoUI();
   if(window.viewer3d) window.viewer3d.dispose();
 }
 
@@ -705,6 +713,7 @@ function selectArm(name){
   chain = []; renderChain();
   $("playName").value = ""; closePlayMenu(); trajList = []; fetchTrajList();
   if(lastStates[active]) render(lastStates[active]);   // re-paint panels from this arm
+  resetGizmoUI();                                      // the target belonged to the other arm
   if(window.viewer3d) window.viewer3d.load(active, base);
   updateLeaseUI();
   log("sys","→ "+name.toUpperCase());
@@ -1046,10 +1055,46 @@ function loadPose(){
   const p=s.pose.pos||[], w=s.pose.wxyz||[];
   ["px","py","pz"].forEach((id,i)=>{ if(p[i]!=null) $(id).value=p[i].toFixed(4); });
   ["qw","qx","qy","qz"].forEach((id,i)=>{ if(w[i]!=null) $(id).value=w[i].toFixed(4); });
+  // the gizmo marker IS the pose fields — reloading them has to move it too, or the
+  // 3D target and the numbers you're about to send disagree
+  if($("gizmoChk").checked && window.viewer3d) window.viewer3d.snapGizmo(s.pose);
+}
+
+// ---------- 3D target gizmo ----------
+// Drag it to a target pose; it writes the pose fields, and the Teleop box's
+// Send /move/pose is what actually commands the arm. Nothing moves while dragging.
+function toggleGizmo(on){
+  if(!window.viewer3d || !window.viewer3d.ready){ $("gizmoChk").checked = false; return; }
+  if(on && !snapGizmo()){                          // no live pose yet => nothing to anchor to
+    $("gizmoChk").checked = false; log("err","no pose yet — connect first"); return;
+  }
+  window.viewer3d.setGizmo(on);
+  $("gizmoSeg").style.display  = on ? "" : "none";
+  $("gizmoSnap").style.display = on ? "" : "none";
+  if(on) setMode("pose");                          // the gizmo drives /move/pose
+}
+function snapGizmo(){
+  const s = active ? lastStates[active] : null;
+  if(!s || !s.pose) return false;
+  loadPose();                                      // fills the fields and moves the marker
+  return true;
+}
+function resetGizmoUI(){                           // disconnect / arm switch — drop a stale target
+  $("gizmoChk").checked = false;
+  $("gizmoSeg").style.display = $("gizmoSnap").style.display = "none";
+  if(window.viewer3d) window.viewer3d.setGizmo(false);
+}
+function setGizmoMode(m){
+  window.viewer3d.setGizmoMode(m);
+  document.querySelectorAll("#gizmoSeg .segbtn").forEach(b=> b.classList.toggle("active", b.dataset.gmode===m));
 }
 
 window.addEventListener("DOMContentLoaded", ()=>{
   $("tokenIn").focus();
+  if(window.viewer3d) window.viewer3d.onMove = (pos, wxyz)=>{
+    ["px","py","pz"].forEach((id,i)=> $(id).value = pos[i].toFixed(4));
+    ["qw","qx","qy","qz"].forEach((id,i)=> $(id).value = wxyz[i].toFixed(4));
+  };
   renderRecList(); renderChain();
   // play picker: pick an item (mousedown beats the input's blur)
   $("playMenu").addEventListener("mousedown", e=>{
@@ -1072,6 +1117,7 @@ window.addEventListener("DOMContentLoaded", ()=>{
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import URDFLoader from 'urdf-loader';
 
@@ -1086,6 +1132,7 @@ const mount = document.getElementById("viewer3d");
 const note  = document.getElementById("viewer3dNote");
 let renderer, scene, camera, controls;
 let robot = null, hande = null, tool0 = null, curArm = null, loadTok = 0;
+let gizmo = null, target = null;                // TransformControls + the pose marker it drags
 
 const showNote = m => { if(note){ note.textContent = m || ""; note.style.display = m ? "" : "none"; } };
 
@@ -1114,9 +1161,47 @@ function init(){
   };
   resize();
   new ResizeObserver(resize).observe(mount);
+
+  // ---- target gizmo: drag a pose, then Send /move/pose. Display-only until you send;
+  // the arm is NOT driven by the drag (there is no IK in the browser).
+  target = new THREE.Object3D();
+  target.add(new THREE.AxesHelper(0.13));
+  target.visible = false;
+  scene.add(target);
+  gizmo = new TransformControls(camera, renderer.domElement);
+  gizmo.setSize(0.75);
+  gizmo.attach(target);
+  gizmo.enabled = gizmo.visible = false;
+  // OrbitControls and the gizmo both own the mouse — hand it over while dragging
+  gizmo.addEventListener("dragging-changed", e => { controls.enabled = !e.value; });
+  gizmo.addEventListener("objectChange", () => {
+    if(!viewer.onMove) return;
+    const q = target.quaternion;                 // three is xyzw, the API is wxyz
+    viewer.onMove(target.position.toArray(), [q.w, q.x, q.y, q.z]);
+  });
+  scene.add(gizmo);
+
   (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
   return true;
 }
+
+// Park the gizmo on a pose ({pos, wxyz}) — used when it's switched on and by ⟲ snap,
+// so it never starts from a stale target.
+function snapGizmo(pose){
+  if(!target || !pose || !pose.pos || !pose.wxyz) return false;
+  const [x,y,z] = pose.pos, [w,qx,qy,qz] = pose.wxyz;
+  target.position.set(x, y, z);
+  target.quaternion.set(qx, qy, qz, w);
+  return true;
+}
+
+function setGizmo(on){
+  if(!gizmo) return false;
+  gizmo.enabled = gizmo.visible = target.visible = !!on;
+  return true;
+}
+
+function setGizmoMode(m){ if(gizmo) gizmo.setMode(m); }   // "translate" | "rotate"
 
 function makeLoader(){
   const mgr = new THREE.LoadingManager();
@@ -1172,9 +1257,12 @@ function update(s){
     hande.setJointValue(FINGER_JOINT, (1 - s.gripper_frac) * FINGER_OPEN);
 }
 
-function dispose(){ clearRobot(); curArm = null; ++loadTok; showNote("connect to view"); }
+function dispose(){ clearRobot(); setGizmo(false); curArm = null; ++loadTok; showNote("connect to view"); }
 
-window.viewer3d = { load, update, dispose, ready: init() };
+// onMove is assigned by the page: (pos[3], wxyz[4]) => … , fired while the gizmo is dragged
+const viewer = { load, update, dispose, snapGizmo, setGizmo, setGizmoMode, onMove: null };
+viewer.ready = init();
+window.viewer3d = viewer;
 </script>
 </body>
 </html>

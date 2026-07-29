@@ -230,10 +230,22 @@ A **3D View** card at the top of the left column renders the live arm in three.j
 vendored `urdf-loader` (under `web/vendor/`) loads a baked glTF bundle from `web/models/<arm>/`
 (served at `/models`) and is driven entirely off the open `WS /telemetry` stream: each frame sets
 the six joint values from `RobotState.q`, plus the Hand-E finger from `gripper_frac` on the UR15.
-It is **display-only** — view-only OrbitControls move the camera, nothing drives the robot — and
-degrades to a quiet "3D model unavailable" note if WebGL or the bundle is missing. Wired via a
+The render itself is **display-only** — OrbitControls move the camera, telemetry drives the joints —
+and it degrades to a quiet "3D model unavailable" note if WebGL or the bundle is missing. Wired via a
 native import map (no bundler, no CDN). Regenerate the bundles with `scripts/export_web_models.py`
 (converts each arm's visual meshes to glTF, strips collisions, bakes STL colors from the URDF).
+
+**Target gizmo.** The card's **Gizmo** checkbox adds a viser-style drag handle (three.js
+`TransformControls`, vendored alongside OrbitControls) on a target frame, with a `[Move | Rotate]`
+toggle and **⟲ snap**. Dragging it is **not** motion: it only writes the Teleop box's pose fields
+(and flips that box to Pose mode), so the arm goes nowhere until you press **Send /move/pose** —
+one lease-gated Cartesian move from where the arm is to where you put the marker. The gizmo
+anchors to the live TCP pose when switched on, and resets on disconnect / arm switch so a target
+from one arm can't be sent to the other. `loadPose()` moves the marker whenever it refills the
+fields, so the numbers and the marker never disagree. Two consequences of the browser having no
+IK: the rendered arm does **not** preview the target pose (only the real `RobotState` moves it),
+and an unreachable target is not rejected client-side — seeded IK always returns *something*, so
+the arm will move to the closest solution it finds rather than erroring.
 
 Runs fully offline: `uv run scripts/api_smoketest.py` exercises every
 endpoint in-process (FastAPI `TestClient`) plus a real `sim.py api` subprocess over HTTP — no
