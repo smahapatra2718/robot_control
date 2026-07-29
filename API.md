@@ -57,7 +57,9 @@ The server serves the static console at **`GET /`** plus its assets at **`/vendo
 (vendored three.js + urdf-loader) and **`/models/<arm>/…`** (baked glTF arm bundles) —
 all unauthenticated, like the dashboard shell itself; the bearer token still gates every
 state/control endpoint. The console's 3D viewer reads live joint state from the existing
-`WS /telemetry` — it adds **no new API endpoint**.
+`WS /telemetry` — it adds **no new API endpoint**. Its optional target **gizmo** is likewise
+client-side only: dragging it just fills the console's pose fields, and the motion goes out
+over the ordinary lease-gated `POST /move/pose`.
 
 ### Auth token
 
@@ -77,8 +79,16 @@ FastAPI serves an auto-generated API explorer — open it once the server is up:
 | URL | What |
 |---|---|
 | `http://<host>:8000/docs` | **Swagger UI** — every endpoint with "try it out" forms |
-| `http://<host>:8000/redoc` | **ReDoc** — clean read-only reference |
 | `http://<host>:8000/openapi.json` | raw **OpenAPI** schema (Postman / codegen) |
+
+In **multi-arm mode** these are per-arm: the root `/docs` carries only `/health` + `/robots`
+(the parent app's whole schema), so use `/ur15/docs` · `/gofa/docs` and `/ur15/openapi.json`.
+The root docs page links to them.
+
+Swagger UI is served from the vendored `web/vendor/swagger-ui/`, **not a CDN** — a machine
+cabled straight to a robot has no DNS, and FastAPI's stock docs page renders blank there.
+**ReDoc is not served** (`/redoc` → 404); it is CDN-only, so it was dropped rather than left
+as a second blank page.
 
 Auth is a per-request header field (no global "Authorize" button — it's a plain
 header, not a declared security scheme): put `Bearer <token>` in `authorization`,
@@ -346,7 +356,9 @@ Returned by `GET /state` and streamed over `/telemetry`.
     "pos":  [0.40, 0.10, 0.30],        //   metres
     "wxyz": [0.0, 1.0, 0.0, 0.0]       //   quaternion (w, x, y, z)
   },
-  "gripper_frac": 0.0,                 // 0=open .. 1=closed; null if no gripper (GoFa)
+  "gripper_frac": 0.0,                 // 0=open .. 1=closed; null if no gripper — always on
+                                       //   the GoFa, and on the UR15 too if the Hand-E socket
+                                       //   is unreachable, so null means "no gripper right now"
   "safety_state": "NORMAL",            // robot-reported safety state
   "controller_state": "ok",            // robot-reported controller/exec state
   "activity": "idle",                  // "idle" | "moving" | "playing" | "freedrive" | "stopped"
