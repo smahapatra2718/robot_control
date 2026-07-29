@@ -112,24 +112,42 @@ class GoFaController(RobotController):
                 pass
 
     # ---- EGM session + motion ----
-    def _start_egm(self) -> bool:
+    def _set_go(self, value: bool) -> None:
+        """Set egm_go over RWS, re-requesting mastership once if the write is refused.
+
+        Mastership is grabbed at connect, but it can be missing (an orphaned RWS session
+        still holds it — the pendant shows "write access held by …") or lost later. Reads
+        don't need it, so the server looks perfectly healthy and only motion fails."""
+        try:
+            self._rws.set_rapid_bool(rc.GOFA_RAPID_GO_FLAG, value, module=rc.GOFA_RAPID_MODULE)
+            return
+        except Exception as first:
+            try:
+                self._rws.request_mastership()
+                self._rws.set_rapid_bool(rc.GOFA_RAPID_GO_FLAG, value, module=rc.GOFA_RAPID_MODULE)
+            except Exception as e:
+                raise RuntimeError(
+                    f"could not set {rc.GOFA_RAPID_GO_FLAG} over RWS ({first}); re-requesting "
+                    f"mastership also failed ({e}) — another RWS client holds write access "
+                    "(the pendant names it), or a stale session orphaned it") from e
+
+    def _start_egm(self) -> None:
         q_now = self._read_q_copy()
         self._egm.set_target_rad(q_now.tolist())
-        try:
-            self._rws.set_rapid_bool(rc.GOFA_RAPID_GO_FLAG, True, module=rc.GOFA_RAPID_MODULE)
-        except Exception:
-            return False
+        self._set_go(True)                  # raises with the actual reason if RWS refuses
         deadline = time.time() + 3.0
         while time.time() < deadline:
             if self._egm.is_fresh(0.1):
-                return True
+                return
             time.sleep(0.05)
         # timed out — clear egm_go so RAPID doesn't sit in EGMRunJoint chasing a dead stream
         try:
-            self._rws.set_rapid_bool(rc.GOFA_RAPID_GO_FLAG, False, module=rc.GOFA_RAPID_MODULE)
+            self._set_go(False)
         except Exception:
             pass
-        return False
+        raise RuntimeError("EGM did not start: egm_go was set but no feedback packets arrived "
+                           "in 3s — is the RAPID program running and parked at its WaitUntil? "
+                           "(pendant: PP to Main + Play)")
 
     def _cap_seg_duration(self, q_start, delta, seg_duration, dt):
         alpha, prev_p, peak = 0.0, self._fk_pose(q_start)[0], 0.0
@@ -153,8 +171,7 @@ class GoFaController(RobotController):
 
     def _run_play(self, segments, speed, progress_cb, interp="cartesian") -> None:
         dt = 1.0 / rc.GOFA_STREAM_HZ
-        if not self._start_egm():
-            raise RuntimeError("EGM did not start (no packets in 3s)")
+        self._start_egm()                   # raises a specific reason on failure
         n = len(segments)
         try:
             for seg_idx, (q_start, q_goal, _grip) in enumerate(segments):
