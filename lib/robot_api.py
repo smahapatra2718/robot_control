@@ -14,15 +14,41 @@ import secrets
 import threading
 import time
 
-from fastapi import Body, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (Body, FastAPI, Header, HTTPException, Request, WebSocket,
+                     WebSocketDisconnect)
+from fastapi.openapi.docs import get_swagger_ui_html
 
 import robot_common as rc
 from control import Busy
 
 
+def _local_docs(app: FastAPI) -> None:
+    """Serve /docs from the vendored Swagger UI instead of a CDN.
+
+    FastAPI's stock docs page pulls swagger-ui off cdn.jsdelivr.net and its favicon
+    off fastapi.tiangolo.com. A machine cabled straight to a robot has no DNS, so
+    both fail (ERR_NAME_NOT_RESOLVED) and the page renders blank. api_server.py
+    mounts web/vendor at /vendor; the URLs are absolute so a mounted sub-app's docs
+    (/ur15/docs) load the parent's copy. Apps are built with docs_url=None (this
+    route replaces it) and redoc_url=None (ReDoc is CDN-only — same failure).
+    """
+    @app.get("/docs", include_in_schema=False)
+    def swagger_ui(request: Request):
+        # under a mount, root_path is the mount prefix (e.g. /ur15) — same as FastAPI's own route
+        root = request.scope.get("root_path", "").rstrip("/")
+        return get_swagger_ui_html(
+            openapi_url=f"{root}{app.openapi_url}",
+            title=f"{app.title} — docs",
+            swagger_js_url="/vendor/swagger-ui/swagger-ui-bundle.js",
+            swagger_css_url="/vendor/swagger-ui/swagger-ui.css",
+            swagger_favicon_url="/vendor/swagger-ui/favicon-32x32.png",
+        )
+
+
 def build_app(controller, token: str, telem_hz: float = 20.0,
               watchdog_timeout_s: float = 2.0) -> FastAPI:
-    app = FastAPI(title="robot-control-api")
+    app = FastAPI(title="robot-control-api", docs_url=None, redoc_url=None)
+    _local_docs(app)
     # single write lease: {"token": str|None, "last_seen": monotonic float}
     lease = {"token": None, "last_seen": 0.0}
     _lease_lock = threading.Lock()   # guards acquire/release + command validate-then-submit
@@ -299,7 +325,14 @@ def build_multi_app(controllers: dict, token: str, telem_hz: float = 20.0,
     independent lease, watchdog and telemetry — this is just a parent that namespaces
     them. Single-arm servers keep using build_app at the root; this is only the no-arm
     `api` mode."""
-    app = FastAPI(title="robot-control-api (multi)")
+    # this root app only carries /health + /robots — each arm's endpoints live in its
+    # own mounted sub-app, so say where their schemas are (the description is markdown)
+    _links = " · ".join(f"[/{n}/docs](/{n}/docs)" for n in controllers)
+    app = FastAPI(title="robot-control-api (multi)", docs_url=None, redoc_url=None,
+                  description="Multi-arm server. This root schema carries only `/health` and "
+                              "`/robots`; every per-arm endpoint (state, move, play, gripper, "
+                              f"telemetry) is namespaced under its arm — see {_links}.")
+    _local_docs(app)
     _order = {"ur15": 0, "gofa": 1}
     roster = ([{"name": n, "available": True} for n in controllers]
               + [{"name": n, "available": False} for n in unavailable])

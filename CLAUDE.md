@@ -199,6 +199,15 @@ continuous motion), or inline `waypoints`. `/gripper` 400s on a gripper-less arm
 namespaced (`/ur15/state`, `/gofa/move/joints`, `/ur15/telemetry`, even `/ur15/docs`); each arm
 keeps its own lease/watchdog/telemetry. Single-arm servers (`api ur15`) stay at the root, unchanged.
 
+**Swagger docs are per-arm and offline.** In multi mode the **root `/docs` only lists `/health` +
+`/robots`** — that's the parent app's whole schema; the arm endpoints live in the mounted sub-apps,
+so browse **`/ur15/docs`** / **`/gofa/docs`** (the root docs page links to them in its description).
+Swagger UI is served from the vendored `web/vendor/swagger-ui/` (mounted at `/vendor`), not from
+`cdn.jsdelivr.net` — a machine cabled straight to a robot has no DNS, and FastAPI's stock docs page
+comes up blank (`ERR_NAME_NOT_RESOLVED` on `swagger-ui-bundle.js`, `SwaggerUIBundle is not defined`).
+Both apps are built with `docs_url=None` + `redoc_url=None`; `_local_docs()` in `robot_api.py`
+re-adds `/docs` pointed at the local assets. ReDoc is dropped (CDN-only, same failure).
+
 **Web console** — `api_server.py` also serves a static dashboard at `GET /` (the file
 `web/dashboard.html`, served same-origin so there's no CORS and the token never leaves the tab).
 Open `http://<host>:<port>/`, type the bearer token, and it drives the arm **purely through the
