@@ -27,6 +27,7 @@ robot_control/                  # (repo name; the local dev folder may differ)
 │   ├── play_trajectory.py      #   headless replay of a saved trajectory (UR15 / GoFa)
 │   ├── install_gofa_egm.py     #   one-shot GoFa bring-up: generates+loads PyEgm.mod, sets the UDP peer
 │   ├── verify_hande.py         #   one-shot Hand-E gripper comms probe (run before trusting control)
+│   ├── verify_cameras.py       #   one-shot USB camera probe: which device is which arm (--save writes JPEGs)
 │   ├── real.py                 #   dispatcher: real.py <ur15|gofa|play|teleop> [args] on real hardware
 │   ├── sim.py                  #   dispatcher: sim.py  <ur15|gofa|play|teleop> [args] offline (fake arm)
 │   ├── sim_smoketest.py        #   stdlib-assert smoke test for the sim fakes + EGM handshake

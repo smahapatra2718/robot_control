@@ -19,6 +19,7 @@ import glob
 import json
 import os
 import re
+import sys
 
 # Repo root = parent of lib/ (this module lives in lib/). Asset paths below
 # resolve against the root from __file__, independent of the caller's CWD.
@@ -53,8 +54,14 @@ def _camera_dev(env: str, default: str):
         return raw
 
 
+# Default for the *second* camera is platform-dependent: on Linux each UVC camera claims TWO
+# /dev/video* nodes (capture + metadata) and only the capture node yields frames, so a second
+# camera lands on index 2, not 1. macOS/Windows enumerate no metadata nodes, so there it is 1.
+# Both are only guesses — confirm with `uv run scripts/verify_cameras.py --save`.
+_SECOND_CAMERA_DEFAULT = "2" if sys.platform.startswith("linux") else "1"
+
 UR_CAMERA_INDEX = _camera_dev("UR_CAMERA_INDEX", "0")
-GOFA_CAMERA_INDEX = _camera_dev("GOFA_CAMERA_INDEX", "1")
+GOFA_CAMERA_INDEX = _camera_dev("GOFA_CAMERA_INDEX", _SECOND_CAMERA_DEFAULT)
 CAMERA_WIDTH = int(os.environ.get("CAMERA_WIDTH", "640"))
 CAMERA_HEIGHT = int(os.environ.get("CAMERA_HEIGHT", "480"))
 CAMERA_FPS = int(os.environ.get("CAMERA_FPS", "15"))       # grab rate; also caps the MJPEG stream

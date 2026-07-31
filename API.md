@@ -395,6 +395,18 @@ UR_CAMERA_INDEX=0 GOFA_CAMERA_INDEX=2 ROBOT_API_TOKEN=… uv run scripts/real.py
 `CAMERA_WIDTH`, `CAMERA_HEIGHT`, `CAMERA_FPS` and `CAMERA_JPEG_QUALITY` are the other knobs
 (`robot_common.py`). `-1` disables an arm's camera.
 
+**Which camera is which arm?** Run the probe — it opens every candidate device exactly as the
+server does, reports which actually deliver frames, and prints ready-to-paste env lines:
+
+```bash
+uv run scripts/verify_cameras.py --save     # writes a JPEG per device to /tmp/camera-probe/
+```
+
+Comparing those images is the only dependable way to map a device to an arm. Note that two UVC
+cameras usually expose **four** `/dev/video*` nodes — each claims a capture node and a metadata
+node, and only the capture node yields frames — which is why the probe distinguishes
+"delivered a frame" from "opened".
+
 Either env var also accepts a **device path** instead of an index — prefer that on Linux,
 where indices shift on re-enumeration and one physical camera often exposes several
 `/dev/video*` nodes of which only the first delivers frames:
@@ -421,6 +433,22 @@ ls /dev/video*            # no such file  -> the camera is not visible to Linux 
 lsmod | grep uvcvideo     # empty         -> the kernel has no UVC driver
 usbipd.exe list           # (from WSL) is the device even attached?
 ```
+
+**usbipd-win is necessary but may not be sufficient.** It forwards the USB device into WSL;
+the kernel still needs a `uvcvideo` driver to bind it and create the node. Try it — if
+`/dev/video*` appears, you're done and no kernel work is needed:
+
+```powershell
+usbipd list                     # find each camera's BUSID
+usbipd bind   --busid <BUSID>   # ONCE per device, admin — persists across reboots
+usbipd attach --wsl --busid <BUSID>
+```
+
+⚠️ **`bind` is permanent; `attach` is not.** Re-attach after every Windows reboot, after
+`wsl --shutdown`, and after physically replugging the camera. Add `--auto-attach` to keep a
+foreground watcher that re-attaches on replug, or drive `attach` from a Task Scheduler job at
+logon. If you start the server before attaching, that arm simply reports the camera
+unavailable — attach, then restart the server.
 
 Options, best first:
 
