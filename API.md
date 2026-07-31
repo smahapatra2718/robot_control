@@ -195,6 +195,11 @@ Returns the latest [`RobotState`](#6-data-shapes) (see §6).
 ```bash
 curl -s localhost:8000/state -H "Authorization: Bearer $TOK"
 ```
+Add `?flat=1` for the [flat shape](#flat-shape--flat1) — the same data with every value a
+scalar (`q_0`…`q_5`, `pose_pos_x`, `command_status`, …), for clients that can't walk nested JSON.
+```bash
+curl -s "localhost:8000/state?flat=1" -H "Authorization: Bearer $TOK"
+```
 
 ### POST /control/acquire
 Body (optional): `{"force": false}`.
@@ -321,13 +326,14 @@ curl -s -X POST localhost:8000/estop -H "Authorization: Bearer $TOK"   # {"estop
 ## 5. Telemetry WebSocket
 
 ```
-WS /telemetry?token=<token>&lease=<lease_token>
+WS /telemetry?token=<token>&lease=<lease_token>&flat=1
 ```
 
 Streams a JSON [`RobotState`](#6-data-shapes) at `telem_hz` (**default 20 Hz**).
 `token` is required; `lease` is optional — supplying a lease that matches the
 current holder turns the connection into the [heartbeat](#telemetry-heartbeat--deadman-watchdog).
-A bad token closes the socket with code `1008`.
+`flat` is optional — `1`/`true`/`yes`/`on` streams the [flat shape](#flat-shape--flat1)
+instead, exactly as `GET /state?flat=1` does. A bad token closes the socket with code `1008`.
 
 ```python
 import json, websockets, asyncio
@@ -343,6 +349,11 @@ asyncio.run(watch())
 ---
 
 ## 6. Data shapes
+
+> **Exhaustive field reference: [`docs/robot-state-reference.md`](docs/robot-state-reference.md)** —
+> every possible value of `activity`, `safety_state`, `controller_state`, `health` and the
+> command object, per arm, plus the `progress` and deadman gotchas. The summary below is the
+> shape; that file is the contract.
 
 ### RobotState
 Returned by `GET /state` and streamed over `/telemetry`.
@@ -362,11 +373,81 @@ Returned by `GET /state` and streamed over `/telemetry`.
   "safety_state": "NORMAL",            // robot-reported safety state
   "controller_state": "ok",            // robot-reported controller/exec state
   "activity": "idle",                  // "idle" | "moving" | "playing" | "freedrive" | "stopped"
-  "active_command": null,              // command object (below) or null
+  "active_command": {                  // command object (below) — never null; sub-keys are
+    "id": null,                        //   always present and all null until the first
+    "kind": null,                      //   command of the session runs
+    "status": null,
+    "progress": null,
+    "error": null
+  },
   "conn_ok": true,                     // last hardware read succeeded
-  "health": {}                         // transport-specific extras
+  "health": {}                         // transport-specific extras; fixed key set per arm —
+                                       //   UR15 always {}, GoFa always
+                                       //   {"egm_rx": <int|null>, "egm_tx": <int|null>}
 }
 ```
+
+#### The shape never changes
+
+Every key above — and every sub-key of `active_command` and `health` — is present on **every
+poll, from the first one**, for the life of the connection. No field starts empty and later
+grows sub-keys, so a client can walk `state.active_command.status` or `state.health.egm_rx`
+without guarding each level. When there's nothing to report the **value** is `null`; the key
+stays. The only per-arm difference is which `health` keys exist (see the table above), and that
+is fixed for a given arm at compile time, not discovered at runtime.
+
+Two consequences worth pinning:
+
+- **`active_command` is never `null`.** Test `active_command.id !== null` (or `status`), *not*
+  the truthiness of the object itself — an always-present object is always truthy.
+- **`active_command` is the *last* command, not necessarily a running one.** It keeps
+  `status: "done"` after completion. `activity` is the field that says whether the arm is busy.
+
+#### Flat shape — `?flat=1`
+
+`GET /state?flat=1` and `WS /telemetry?…&flat=1` return the **same data with every value a
+scalar** — no arrays, no sub-objects — for clients that can't walk nested JSON. Types are
+unchanged (floats stay floats, `conn_ok` stays a bool); only the nesting is gone.
+
+```jsonc
+{
+  "ts": 1209557.230674125,
+  "robot": "ur15",
+  "q_0": 0.0, "q_1": -1.5708, "q_2": 1.5708,   // …through q_5
+  "q_3": -1.5708, "q_4": -1.5708, "q_5": 0.0,
+  "pose_pos_x": 0.652499, "pose_pos_y": 0.182399, "pose_pos_z": 0.566200,
+  "pose_wxyz_w": 0.0, "pose_wxyz_x": 0.707107,
+  "pose_wxyz_y": -0.707107, "pose_wxyz_z": 0.0000026,
+  "gripper_frac": 0.0,
+  "safety_state": "NORMAL",
+  "controller_state": "1",
+  "activity": "idle",
+  "command_id": null,                  // active_command flattened to command_*;
+  "command_kind": null,                //   all null when no command is active
+  "command_status": null,
+  "command_progress": null,
+  "command_error": null,
+  "conn_ok": true
+                                       // + health_<key> per health entry — GoFa adds
+                                       //   health_egm_rx / health_egm_tx
+}
+```
+
+Mapping: `q` → `q_0`…`q_5`, `pose.pos` → `pose_pos_{x,y,z}`, `pose.wxyz` →
+`pose_wxyz_{w,x,y,z}`, `active_command` → `command_{id,kind,status,progress,error}`,
+`health` → `health_<key>`. Everything else keeps its name.
+
+**The key set is stable**, exactly as in the nested shape. Every key above is present on every
+frame for the life of the connection — an absent value is `null`, never a missing key. So
+`gripper_frac` is present-and-`null` on the GoFa, and the five `command_*` keys are
+present-and-`null` until the first command runs.
+
+`health_*` mirrors `health`, so it is fixed **per arm** rather than shared across both: the
+GoFa always emits `health_egm_rx`/`health_egm_tx` (`null` before an EGM session exists), and
+the UR15 emits no `health_*` keys at all. Fixed columns per arm — just not the *same* columns.
+
+Omitting `flat` (or `flat=0`) returns the nested shape above, unchanged — this is purely
+additive, so existing clients are unaffected.
 
 ### Command object
 Returned by `GET /command/{id}`; also embedded as `active_command` in `RobotState`.

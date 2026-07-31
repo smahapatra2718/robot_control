@@ -794,9 +794,9 @@ function render(s){
     $("gripTag").textContent = "no gripper";
   }
 
-  // active command
+  // active command — sub-keys are always present, so test id (null until one runs)
   const ac = s.active_command;
-  if(ac){
+  if(ac && ac.id !== null && ac.id !== undefined){
     $("ac_id").textContent = "CMD #"+ac.id;
     $("ac_kind").textContent = ac.kind||"—";
     const st = ac.status||"none";
@@ -1128,11 +1128,18 @@ const JOINTS = {
 const FINGER_JOINT = "robotiq_hande_left_finger_joint";
 const FINGER_OPEN = 0.025;            // m; gripper_frac 0=open..1=closed
 
+// View-only yaw (deg about Z) applied to the whole robot frame so the render lines up
+// with how the arm actually sits in the room. Purely cosmetic: the gizmo target rides
+// the same rotated frame, so the pose numbers stay in the robot's own base frame and
+// what gets sent to /move/pose is unchanged. Flip the sign if it turns the wrong way.
+const BASE_YAW_DEG = { ur15: 60, gofa: 0 };
+
 const mount = document.getElementById("viewer3d");
 const note  = document.getElementById("viewer3dNote");
 let renderer, scene, camera, controls;
 let robot = null, hande = null, tool0 = null, curArm = null, loadTok = 0;
 let gizmo = null, target = null;                // TransformControls + the pose marker it drags
+let root = null;                                // robot-base frame: holds the arm + the target
 
 const showNote = m => { if(note){ note.textContent = m || ""; note.style.display = m ? "" : "none"; } };
 
@@ -1162,12 +1169,18 @@ function init(){
   resize();
   new ResizeObserver(resize).observe(mount);
 
+  // Everything in the robot's base frame goes under root, which carries the cosmetic
+  // BASE_YAW. The grid stays unrotated — it represents the room, not the robot.
+  root = new THREE.Group();
+  scene.add(root);
+
   // ---- target gizmo: drag a pose, then Send /move/pose. Display-only until you send;
   // the arm is NOT driven by the drag (there is no IK in the browser).
   target = new THREE.Object3D();
   target.add(new THREE.AxesHelper(0.13));
   target.visible = false;
-  scene.add(target);
+  root.add(target);          // child of root => its position/quaternion stay base-frame
+                             // (TransformControls writes back through the parent transform)
   gizmo = new TransformControls(camera, renderer.domElement);
   gizmo.setSize(0.75);
   gizmo.attach(target);
@@ -1212,7 +1225,7 @@ function makeLoader(){
   return loader;
 }
 
-function clearRobot(){ if(robot) scene.remove(robot); robot = null; hande = null; tool0 = null; }
+function clearRobot(){ if(robot && root) root.remove(robot); robot = null; hande = null; tool0 = null; }
 
 function frameCamera(){
   const box = new THREE.Box3().setFromObject(robot);
@@ -1234,12 +1247,16 @@ function load(arm, origin){
   const baseUrl = (origin || location.origin).replace(/\/$/, "");
   makeLoader().load(`${baseUrl}/models/${arm}/${arm}.urdf`, obj => {
     if(tok !== loadTok) return;                   // superseded
-    robot = obj; scene.add(robot); showNote(""); frameCamera();
+    robot = obj;
+    root.rotation.z = (BASE_YAW_DEG[arm] || 0) * Math.PI / 180;
+    root.add(robot);
+    root.updateMatrixWorld(true);                 // so frameCamera's bbox sees the yaw
+    showNote(""); frameCamera();
     if(arm === "ur15"){
       tool0 = robot.links && robot.links["tool0"];
       makeLoader().load(`${baseUrl}/models/ur15/hande.urdf`, h => {
         if(tok !== loadTok) return;
-        hande = h; (tool0 || scene).add(hande);
+        hande = h; (tool0 || root).add(hande);
       }, undefined, () => {});                     // gripper is best-effort
     }
   }, undefined, err => {

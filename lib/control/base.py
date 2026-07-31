@@ -22,7 +22,7 @@ import numpy as np
 
 import robot_common as rc
 
-from .state import RobotState
+from .state import RobotState, empty_command
 
 
 class Busy(Exception):
@@ -153,7 +153,9 @@ class RobotController:
                     self._state.conn_ok = False
             return
         with self._cmd_lock:
-            active = copy.deepcopy(self._active) if self._active else None
+            # never None on a served state: before the first command it's the all-None
+            # command object, so a client can read active_command.status unconditionally.
+            active = copy.deepcopy(self._active) if self._active else empty_command()
         st = RobotState(
             ts=time.monotonic(), robot=self.robot_name, q=q.tolist(),
             pose={"pos": [float(v) for v in pos], "wxyz": [float(v) for v in wxyz]},
@@ -164,10 +166,10 @@ class RobotController:
         with self._lock:
             self._state = st
 
-    def _activity(self, active: dict | None) -> str:
+    def _activity(self, active: dict) -> str:
         # _cmd_stop is read outside _cmd_lock, so activity and active_command can be
         # transiently inconsistent by one poll cycle at a stop/start boundary.
-        if active is not None and active["status"] == "running":
+        if active.get("status") == "running":
             return active["kind"]
         if self._freedrive:
             return "freedrive"

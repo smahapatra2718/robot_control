@@ -58,15 +58,21 @@ class GoFaController(RobotController):
     def _read_q(self):
         return np.asarray(self._rws.get_joints(), dtype=float)
 
+    def _health(self) -> dict:
+        """Cumulative EGM UDP packet counts. Fixed key set — both keys are always present,
+        None before an EGM session object exists, so the served shape never changes."""
+        egm = self._egm
+        return {"egm_rx": egm.packets_rx if egm else None,
+                "egm_tx": egm.packets_tx if egm else None}
+
     def _read_safety(self):
         # GoFa's RWS exposes a single controller-state signal; use it for both the
         # safety_state and controller_state fields.
         try:
             st = self._rws.get_controller_state()
-            health = {"egm_rx": self._egm.packets_rx, "egm_tx": self._egm.packets_tx} if self._egm else {}
-            return st, st, True, health
+            return st, st, True, self._health()
         except Exception:
-            return "UNKNOWN", "?", False, {}
+            return "UNKNOWN", "?", False, self._health()
 
     def _fk_pose(self, q):
         Ts = self._robot.forward_kinematics(cfg=jnp.array(q))

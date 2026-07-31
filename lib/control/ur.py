@@ -82,6 +82,8 @@ class URController(RobotController):
         return np.asarray(self._r.getActualQ(), dtype=float)
 
     def _read_safety(self):
+        # health is always {} on both paths — the RTDE transport has no extras to report.
+        # Fixed key set (here, the empty one), so the served shape never changes.
         try:
             mode = self._r.getSafetyMode()
             return _UR_SAFETY_MODES.get(mode, f"mode {mode}"), str(mode), True, {}

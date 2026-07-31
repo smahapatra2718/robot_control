@@ -15,7 +15,7 @@ for _p in (_ROOT, os.path.join(_ROOT, "lib")):
         sys.path.insert(0, _p)
 
 import robot_sim  # noqa: E402
-from control.state import RobotState  # noqa: E402
+from control.state import COMMAND_KEYS, RobotState, empty_command  # noqa: E402
 
 
 def test_state_dataclass():
@@ -23,7 +23,7 @@ def test_state_dataclass():
         ts=1.0, robot="ur15", q=[0.0] * 6,
         pose={"pos": [0.1, 0.2, 0.3], "wxyz": [1.0, 0.0, 0.0, 0.0]},
         gripper_frac=0.0, safety_state="NORMAL", controller_state="ok",
-        activity="idle", active_command=None, conn_ok=True,
+        activity="idle", active_command=empty_command(), conn_ok=True,
     )
     d = s.to_dict()
     assert d["robot"] == "ur15"
@@ -33,7 +33,8 @@ def test_state_dataclass():
     assert d["ts"] == 1.0
     assert d["gripper_frac"] == 0.0
     assert d["conn_ok"] is True
-    assert d["active_command"] is None
+    # sub-keys always present, all None until a command runs (never a bare null)
+    assert d["active_command"] == {k: None for k in COMMAND_KEYS}
     assert d["health"] == {}
     print("PASS test_state_dataclass")
 

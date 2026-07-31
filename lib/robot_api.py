@@ -67,9 +67,12 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
         return {"ok": True, "robot": controller.robot_name}
 
     @app.get("/state")
-    def state(authorization: str = Header(None)):
+    def state(flat: bool = False, authorization: str = Header(None)):
         check_auth(authorization)
-        return controller.get_state().to_dict()
+        st = controller.get_state()
+        # flat=1 => every value a scalar (q_0.., pose_pos_x.., command_*), for clients
+        # that can't walk nested JSON. Same data, same types — see RobotState.
+        return st.to_flat_dict() if flat else st.to_dict()
 
     # The caller holds _lease_lock when the lease check must be atomic with a state
     # change (acquire/release here; validate-then-submit in the command endpoints).
@@ -278,12 +281,16 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
             return
         await ws.accept()
         ws_lease = ws.query_params.get("lease")
+        # query params are strings here (no FastAPI coercion) — accept the same
+        # truthy spellings Starlette/FastAPI would for a bool query param.
+        flat = ws.query_params.get("flat", "").lower() in ("1", "true", "yes", "on")
         try:
             while True:
                 # an open WS from the lease holder is the heartbeat
                 if ws_lease and ws_lease == lease["token"]:
                     lease["last_seen"] = time.monotonic()
-                await ws.send_json(controller.get_state().to_dict())
+                st = controller.get_state()
+                await ws.send_json(st.to_flat_dict() if flat else st.to_dict())
                 await asyncio.sleep(1.0 / telem_hz)
         except WebSocketDisconnect:
             pass
@@ -300,7 +307,7 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
                 continue
             st = controller.get_state()
             ac = st.active_command
-            live = (ac is not None and ac["status"] == "running") or st.activity == "freedrive"
+            live = ac.get("status") == "running" or st.activity == "freedrive"
             if not live:
                 continue
             if (time.monotonic() - lease["last_seen"]) <= watchdog_timeout_s:

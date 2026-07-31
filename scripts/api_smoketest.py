@@ -56,6 +56,119 @@ def test_state_and_auth():
     print("PASS test_state_and_auth")
 
 
+def test_state_stable_shape():
+    """The nested /state never changes shape: no field starts empty and later grows
+    sub-keys. active_command and health carry their full key set from the first poll,
+    with None values, so a client can walk them without guarding every level."""
+    def keyshape(d):
+        """Recursive key set — {"pose.pos", "active_command.id", ...}."""
+        out = set()
+        for k, v in d.items():
+            out.add(k)
+            if isinstance(v, dict):
+                out |= {f"{k}.{sub}" for sub in keyshape(v)}
+        return out
+
+    cmd_keys = {"id", "kind", "status", "progress", "error"}
+    client, c = _client("ur15")
+    try:
+        idle = client.get("/state", headers=_auth()).json()
+        # never a bare null: sub-keys present from boot, all None until a command runs
+        assert idle["active_command"] == {k: None for k in cmd_keys}, idle["active_command"]
+        assert idle["health"] == {}, idle["health"]     # UR: fixed empty key set
+        before = keyshape(idle)
+        # run a command, then compare the shape mid-flight and after it completes
+        lease = client.post("/control/acquire", headers=_auth()).json()["lease_token"]
+        h = {**_auth(), "X-Lease": lease}
+        r = client.post("/move/joints", headers=h,
+                        json={"q": [0.0, -1.4, 1.4, -1.4, -1.4, 0.2], "speed": 1.0})
+        assert r.status_code == 202, r.text
+        during = client.get("/state", headers=_auth()).json()
+        assert keyshape(during) == before, keyshape(during) ^ before
+        assert set(during["active_command"]) == cmd_keys
+        assert _poll_command(client, r.json()["command_id"]) == "done"
+        # /state's active_command is written by the state-poll thread, so it lags
+        # GET /command/{id} by up to one poll period — let it catch up before reading.
+        for _ in range(100):
+            after = client.get("/state", headers=_auth()).json()
+            if after["active_command"]["status"] == "done":
+                break
+            time.sleep(0.02)
+        assert keyshape(after) == before, keyshape(after) ^ before
+        # values did change — the shape held, but it isn't frozen data
+        assert after["active_command"]["status"] == "done", after["active_command"]
+        assert after["active_command"]["id"] is not None
+    finally:
+        c.close()
+
+    client, c = _client("gofa")
+    try:
+        idle = client.get("/state", headers=_auth()).json()
+        assert idle["active_command"] == {k: None for k in cmd_keys}
+        # GoFa health: both keys present from the first poll, before any EGM session
+        assert set(idle["health"]) == {"egm_rx", "egm_tx"}, idle["health"]
+        before = keyshape(idle)
+        lease = client.post("/control/acquire", headers=_auth()).json()["lease_token"]
+        h = {**_auth(), "X-Lease": lease}
+        r = client.post("/move/joints", headers=h,
+                        json={"q": [0.0, 0.0, 0.0, 0.0, 1.0, 0.0], "speed": 1.0})
+        assert r.status_code == 202, r.text
+        assert _poll_command(client, r.json()["command_id"]) == "done"
+        after = client.get("/state", headers=_auth()).json()
+        # an EGM session ran: health keys are unchanged, only their values moved
+        assert keyshape(after) == before, keyshape(after) ^ before
+        assert set(after["health"]) == {"egm_rx", "egm_tx"}
+    finally:
+        c.close()
+    print("PASS test_state_stable_shape")
+
+
+def test_state_flat():
+    """?flat=1 -> every value a scalar, same data, stable key set on both arms."""
+    client, c = _client("ur15")
+    try:
+        nested = client.get("/state", headers=_auth()).json()
+        flat = client.get("/state?flat=1", headers=_auth()).json()
+        # the whole point: nothing nested survives
+        assert all(not isinstance(v, (dict, list)) for v in flat.values()), flat
+        # types are preserved, not stringified
+        assert isinstance(flat["q_0"], float) and isinstance(flat["conn_ok"], bool)
+        # same data as the nested shape
+        assert [flat[f"q_{i}"] for i in range(6)] == nested["q"]
+        assert [flat[f"pose_pos_{a}"] for a in "xyz"] == nested["pose"]["pos"]
+        assert [flat[f"pose_wxyz_{a}"] for a in "wxyz"] == nested["pose"]["wxyz"]
+        assert flat["robot"] == "ur15" and flat["activity"] == nested["activity"]
+        # idle => command_* present but None (keys never disappear)
+        assert nested["active_command"] == {k: None for k in
+                                            ("id", "kind", "status", "progress", "error")}
+        for k in ("id", "kind", "status", "progress", "error"):
+            assert f"command_{k}" in flat and flat[f"command_{k}"] is None
+        # flat=0 / absent is still the nested shape
+        assert "pose" in client.get("/state?flat=0", headers=_auth()).json()
+        with client.websocket_connect(f"/telemetry?token={TOKEN}&flat=1") as ws:
+            msg = ws.receive_json()
+            assert all(not isinstance(v, (dict, list)) for v in msg.values()), msg
+            assert msg["robot"] == "ur15" and "q_5" in msg
+        core = {k for k in flat if not k.startswith("health_")}
+    finally:
+        c.close()
+
+    client, c = _client("gofa")
+    try:
+        flat = client.get("/state?flat=1", headers=_auth()).json()
+        assert all(not isinstance(v, (dict, list)) for v in flat.values()), flat
+        # gripper-less arm: the key is present and None, not missing
+        assert "gripper_frac" in flat and flat["gripper_frac"] is None
+        # core key set is identical across arms (health_* is transport-specific)
+        assert {k for k in flat if not k.startswith("health_")} == core
+        # GoFa's health_* keys are present from the first poll, None before an EGM session
+        assert flat["health_egm_rx"] is None or isinstance(flat["health_egm_rx"], int)
+        assert "health_egm_tx" in flat
+    finally:
+        c.close()
+    print("PASS test_state_flat")
+
+
 def test_lease():
     client, c = _client("ur15")
     try:
@@ -475,6 +588,8 @@ def test_e2e_subprocess():
 
 def main():
     test_state_and_auth()
+    test_state_stable_shape()
+    test_state_flat()
     test_lease()
     test_commands()
     test_gofa_no_gripper()
