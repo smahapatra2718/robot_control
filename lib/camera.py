@@ -20,6 +20,9 @@ Capture is best-effort, like the Hand-E gripper: if cv2 is missing or the device
 """
 from __future__ import annotations
 
+import glob
+import os
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -43,10 +46,11 @@ class Frame:
 class CameraSource:
     """Background grab loop over one capture device, exposing the latest JPEG frame."""
 
-    def __init__(self, index: int, width: int, height: int, fps: int, quality: int,
+    def __init__(self, index, width: int, height: int, fps: int, quality: int,
                  name: str = "camera") -> None:
-        self.index, self.name = index, name
+        self.index, self.name = index, name      # int index or a "/dev/videoN" path
         self.width, self.height, self.fps, self.quality = width, height, fps, quality
+        self.error: str | None = None            # why open() failed, surfaced by /camera/info
         self._cap = None
         self._frame: Frame | None = None
         self._seq = 0
@@ -55,26 +59,78 @@ class CameraSource:
         self._thread: threading.Thread | None = None
 
     # ---- lifecycle ----
+    def _backends(self):
+        """Backends to try, best first. Naming one matters: with no /dev/video* present,
+        cv2 silently falls through to CAP_FFMPEG and reports 'configure with libavdevice',
+        which points at the wrong problem entirely (it's a missing device, not a build
+        option). Trying V4L2 explicitly makes the real failure the one you see."""
+        if isinstance(self.index, str):
+            return [("V4L2", cv2.CAP_V4L2), ("default", cv2.CAP_ANY)]
+        if sys.platform.startswith("linux"):
+            return [("V4L2", cv2.CAP_V4L2), ("default", cv2.CAP_ANY)]
+        if sys.platform == "darwin":
+            return [("AVFoundation", cv2.CAP_AVFOUNDATION), ("default", cv2.CAP_ANY)]
+        return [("default", cv2.CAP_ANY)]        # Windows: MSMF/DSHOW auto-select is fine
+
+    @staticmethod
+    def _linux_hint() -> str:
+        """Explain an open failure on Linux when there are simply no capture devices.
+
+        This is the WSL2 case and it's worth naming: the default WSL kernel ships no
+        uvcvideo/V4L2, so a USB camera never appears as /dev/video* even after
+        `usbipd attach`, and OpenCV's fallback to CAP_FFMPEG then reports 'configure with
+        libavdevice' — which points at a build option rather than the real cause.
+
+        Checked here, after the open attempt, rather than as a precondition: the sim
+        shadows cv2 with a synthetic device that has no /dev node, and gating on one
+        would break offline runs on Linux.
+        """
+        if not sys.platform.startswith("linux") or glob.glob("/dev/video*"):
+            return ""
+        return (". No /dev/video* devices exist on this host, so no camera is visible to "
+                "Linux at all. Under WSL2 this is the default: its kernel has no uvcvideo/"
+                "V4L2 support, so USB cameras never appear even after `usbipd attach` — "
+                "run the server on Windows, or build a WSL kernel with UVC")
+
     def open(self) -> bool:
-        """Open the device and start grabbing. False if unavailable (never raises)."""
-        if not CV2_AVAILABLE or self.index < 0:
+        """Open the device and start grabbing. False if unavailable (never raises);
+        `self.error` then says why, so the server can print something actionable."""
+        if not CV2_AVAILABLE:
+            self.error = "opencv is not installed (pip/uv add opencv-python-headless)"
             return False
-        try:
-            cap = cv2.VideoCapture(self.index)
-            if not cap.isOpened():
-                cap.release()
-                return False
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-            cap.set(cv2.CAP_PROP_FPS, self.fps)
-            # isOpened() lies on some backends — a device can open and never deliver. Require
-            # one real frame before declaring the camera up, so /camera/info can't say
-            # available on a camera that will only ever 503.
-            ok, img = cap.read()
-            if not ok or img is None:
-                cap.release()
-                return False
-        except Exception:                        # noqa: BLE001 - any capture failure = no camera
+        if isinstance(self.index, int) and self.index < 0:
+            self.error = "disabled (index -1)"
+            return False
+        if isinstance(self.index, str) and not os.path.exists(self.index):
+            self.error = f"{self.index} does not exist"
+            return False
+        tried = []
+        for label, backend in self._backends():
+            try:
+                cap = cv2.VideoCapture(self.index, backend)
+                if not cap.isOpened():
+                    cap.release()
+                    tried.append(f"{label}: would not open")
+                    continue
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                cap.set(cv2.CAP_PROP_FPS, self.fps)
+                # isOpened() lies on some backends — a device can open and never deliver.
+                # Require one real frame before declaring the camera up, so /camera/info
+                # can't say available on a camera that will only ever 503.
+                ok, img = cap.read()
+                if not ok or img is None:
+                    cap.release()
+                    tried.append(f"{label}: opened but delivered no frame")
+                    continue
+            except Exception as e:               # noqa: BLE001 - any capture failure = no camera
+                tried.append(f"{label}: {e}")
+                continue
+            self.error = None
+            self.backend = label
+            break
+        else:
+            self.error = f"could not open {self.index!r} — " + "; ".join(tried) + self._linux_hint()
             return False
         self._cap = cap
         # publish the validation frame rather than dropping it: otherwise `latest()` is None
@@ -142,19 +198,24 @@ class CameraSource:
     def info(self) -> dict:
         f = self.latest()
         return {"available": self._cap is not None, "index": self.index,
+                "backend": getattr(self, "backend", None), "error": self.error,
                 "width": self.width, "height": self.height, "fps": self.fps,
                 "seq": self._seq, "ts": f.ts if f else None,
                 "ts_unix": f.ts_unix if f else None}
 
 
-def open_camera(robot: str, index: int | None = None) -> CameraSource | None:
-    """Build and start the camera for an arm, or None if there isn't a usable one.
+def open_camera(robot: str, index=None) -> CameraSource:
+    """Build and start the camera for an arm. Always returns a CameraSource — check
+    `.error` / `info()["available"]`, don't test for None.
 
-    Best-effort by design: a missing camera degrades the API (endpoints 503) instead of
-    stopping the server, the same way an unreachable Hand-E socket leaves the UR viz-only.
+    A failed open still returns the object so the *reason* survives to `/camera/info` and
+    the startup log. Best-effort by design: a missing camera degrades the API (endpoints
+    503) instead of stopping the server, the same way an unreachable Hand-E socket leaves
+    the UR viz-only.
     """
     import robot_common as rc
     idx = rc.camera_index(robot) if index is None else index
     src = CameraSource(idx, rc.CAMERA_WIDTH, rc.CAMERA_HEIGHT, rc.CAMERA_FPS,
                        rc.CAMERA_JPEG_QUALITY, name=robot)
-    return src if src.open() else None
+    src.open()
+    return src

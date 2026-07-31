@@ -200,7 +200,20 @@ continuous motion), or inline `waypoints`. `/gripper` 400s on a gripper-less arm
   `RobotState.ts`, which is what makes a frame pairable with telemetry — and `ts_unix` is wall
   time. One frame therefore anchors the monotonic clock (`ts_unix - ts` converts any
   `RobotState.ts` to absolute time), so `RobotState` needs no extra field. Best-effort like the
-  Hand-E: no camera ⇒ `503` + `{"available": false}`, never a startup failure.
+  Hand-E: no camera ⇒ `503` + `{"available": false, "error": "<why>"}`, never a startup failure —
+  the reason is carried, not swallowed, and printed at startup.
+
+**Camera device selection.** `UR_CAMERA_INDEX` / `GOFA_CAMERA_INDEX` take an index *or* a device
+path (`/dev/video0`, or better a stable `/dev/v4l/by-id/...` symlink); `-1` disables. `camera.py`
+names the backend explicitly (V4L2 on Linux, AVFoundation on macOS) rather than letting cv2
+auto-select — with no device present cv2 silently falls through to `CAP_FFMPEG` and reports
+"configure with libavdevice", which points at a build option instead of the missing camera.
+⚠️ **WSL2 has no USB cameras by default**: its kernel ships no `uvcvideo`, so nothing appears
+under `/dev/video*` even after `usbipd attach`. Run the server on Windows, or build a WSL kernel
+with UVC — a separate capture process would break the same-process monotonic clock that makes
+frames pairable. `camera.py` detects the no-`/dev/video*` case and says all this in the error
+(as a *hint appended after* a failed open, not a precondition — the sim's synthetic device has
+no `/dev` node and gating on one would break offline runs on Linux). See API.md → Cameras.
 
 **Both arms from one server** — run `api` with **no arm** (`real.py api` / `sim.py api`) and
 `build_multi_app` mounts a full `build_app` under `/ur15` and `/gofa`, advertises the roster at

@@ -67,7 +67,7 @@ def test_camera():
     from robot_api import build_app
     c = make_controller("ur15"); c.connect()
     cam = open_camera("ur15")
-    assert cam is not None, "sim camera did not open"
+    assert cam.error is None, f"sim camera did not open: {cam.error}"
     client = TestClient(build_app(c, token=TOKEN, camera=cam))
     try:
         assert client.get("/camera/frame").status_code == 401          # auth required
@@ -100,13 +100,31 @@ def test_camera():
     finally:
         client.close(); cam.close(); c.close()
 
-    # a gripper-less/camera-less arm: endpoints 503 rather than erroring the server
+    # a camera-less arm: endpoints 503 rather than erroring the server
     c = make_controller("ur15"); c.connect()
     client = TestClient(build_app(c, token=TOKEN, camera=None))
     try:
         assert client.get("/camera/info", headers=_auth()).json()["available"] is False
         assert client.get("/camera/frame", headers=_auth()).status_code == 503
         assert client.get("/camera/frame.json", headers=_auth()).status_code == 503
+        assert client.get("/camera/stream", headers=_auth()).status_code == 503
+    finally:
+        client.close(); c.close()
+
+    # a failed open must REPORT WHY — a silent "unavailable" sends you hunting the wrong
+    # thing (this is what made the WSL/libavdevice failure hard to read)
+    disabled = open_camera("ur15", index=-1)
+    assert disabled.error and "disabled" in disabled.error, disabled.error
+    assert disabled.info()["available"] is False
+    missing = open_camera("ur15", index="/dev/definitely-not-a-camera")
+    assert missing.error and "does not exist" in missing.error, missing.error
+    # and the error travels to the endpoint, not just the log
+    c = make_controller("ur15"); c.connect()
+    client = TestClient(build_app(c, token=TOKEN, camera=missing))
+    try:
+        info = client.get("/camera/info", headers=_auth()).json()
+        assert info["available"] is False and info["error"], info
+        assert client.get("/camera/frame", headers=_auth()).status_code == 503
     finally:
         client.close(); c.close()
     print("PASS test_camera")

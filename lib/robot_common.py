@@ -36,19 +36,34 @@ GRIP_PREDELAY_S = 0.5            # settle the arm this long before actuating the
 GRIP_EPS = 0.02                  # min change in gripper fraction (2%) before a waypoint re-actuates
 
 # ---- USB cameras (one per arm, served by the remote API) ----
-# Device indices are machine-specific — which /dev/videoN or AVFoundation slot a given
+# Device selection is machine-specific — which /dev/videoN or AVFoundation slot a given
 # USB camera lands on depends on enumeration order, so override per host via env rather
 # than editing this file. -1 disables that arm's camera.
-UR_CAMERA_INDEX = int(os.environ.get("UR_CAMERA_INDEX", "0"))
-GOFA_CAMERA_INDEX = int(os.environ.get("GOFA_CAMERA_INDEX", "1"))
+#
+# Either an index (0, 1, …) or a device path ("/dev/video0"). Prefer a path on Linux:
+# indices shift when devices re-enumerate, and one physical camera often exposes several
+# /dev/video* nodes of which only the first actually yields frames. A stable
+# /dev/v4l/by-id/... symlink is the most robust choice of all.
+def _camera_dev(env: str, default: str):
+    """Env value as an int index, or a string device path if it isn't a plain integer."""
+    raw = os.environ.get(env, default).strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+UR_CAMERA_INDEX = _camera_dev("UR_CAMERA_INDEX", "0")
+GOFA_CAMERA_INDEX = _camera_dev("GOFA_CAMERA_INDEX", "1")
 CAMERA_WIDTH = int(os.environ.get("CAMERA_WIDTH", "640"))
 CAMERA_HEIGHT = int(os.environ.get("CAMERA_HEIGHT", "480"))
 CAMERA_FPS = int(os.environ.get("CAMERA_FPS", "15"))       # grab rate; also caps the MJPEG stream
 CAMERA_JPEG_QUALITY = int(os.environ.get("CAMERA_JPEG_QUALITY", "80"))   # cv2 IMWRITE_JPEG_QUALITY
 
 
-def camera_index(robot: str) -> int:
-    """Configured camera device index for an arm ('ur15' | 'gofa'); -1 = disabled."""
+def camera_index(robot: str):
+    """Configured camera device for an arm ('ur15' | 'gofa') — an int index or a device
+    path string. -1 = disabled."""
     return {"ur15": UR_CAMERA_INDEX, "gofa": GOFA_CAMERA_INDEX}.get(robot, -1)
 
 

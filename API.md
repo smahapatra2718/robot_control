@@ -395,6 +395,41 @@ UR_CAMERA_INDEX=0 GOFA_CAMERA_INDEX=2 ROBOT_API_TOKEN=… uv run scripts/real.py
 `CAMERA_WIDTH`, `CAMERA_HEIGHT`, `CAMERA_FPS` and `CAMERA_JPEG_QUALITY` are the other knobs
 (`robot_common.py`). `-1` disables an arm's camera.
 
+Either env var also accepts a **device path** instead of an index — prefer that on Linux,
+where indices shift on re-enumeration and one physical camera often exposes several
+`/dev/video*` nodes of which only the first delivers frames:
+
+```bash
+UR_CAMERA_INDEX=/dev/v4l/by-id/usb-Foo_Camera-video-index0 uv run scripts/real.py api ur15
+```
+
+When a camera won't open, `/camera/info` carries the **reason** (and the server prints it at
+startup) — `{"available": false, "error": "could not open 0 — V4L2: would not open; …"}`.
+
+#### ⚠️ WSL2 has no USB cameras by default
+
+Running the server under WSL2 and seeing *"can't open camera by index"* / *"OpenCV should be
+configured with libavdevice"*? That FFmpeg message is a red herring. The real cause: the stock
+WSL2 kernel ships **no `uvcvideo`/V4L2 support**, so a USB camera never appears as
+`/dev/video*` — even after `usbipd attach` binds it to WSL. OpenCV finds nothing on V4L2,
+falls back to `CAP_FFMPEG`, and complains about a build option instead of the missing device.
+
+Confirm with:
+
+```bash
+ls /dev/video*            # no such file  -> the camera is not visible to Linux at all
+lsmod | grep uvcvideo     # empty         -> the kernel has no UVC driver
+usbipd.exe list           # (from WSL) is the device even attached?
+```
+
+Options, best first:
+
+| Approach | Notes |
+|---|---|
+| **Run the API server on Windows** | Cameras work natively (MSMF/DSHOW), and both arms are reached over the network anyway, so nothing else changes. Simplest fix. |
+| **Build a WSL kernel with UVC** | Keeps one process — and therefore the monotonic-clock pairing above. Requires compiling a custom WSL2 kernel with `CONFIG_USB_VIDEO_CLASS`, plus `usbipd attach`. |
+| **Camera bridge process** | Capture on Windows, serve frames to the WSL API server. ⚠️ This **breaks `ts` pairing**: the monotonic clocks of two processes are unrelated, so frames could only be joined on `ts_unix`. |
+
 ---
 
 ## 5. Telemetry WebSocket

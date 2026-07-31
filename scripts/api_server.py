@@ -45,13 +45,17 @@ def main() -> None:
     cameras: dict = {}
 
     def _open_camera(name: str):
-        """Best-effort: a missing camera degrades /camera/* to 503, it never blocks serving."""
+        """Best-effort: a missing camera degrades /camera/* to 503, it never blocks serving.
+        Print the reason on failure — a silent 'none' sends you hunting the wrong thing."""
         cam = open_camera(name)
-        idx = rc.camera_index(name)
-        print(f"  {name} camera: " + (f"index {idx} ({cam.width}x{cam.height} @{cam.fps})"
-                                      if cam else f"none (index {idx})"))
-        if cam:
-            cameras[name] = cam
+        if cam.error is None:
+            print(f"  {name} camera: {cam.index!r} via {cam.backend} "
+                  f"({cam.width}x{cam.height} @{cam.fps})")
+        else:
+            print(f"  {name} camera: unavailable — {cam.error}")
+        # register it either way: a failed source has no frames so /camera/* still 503s,
+        # but /camera/info can then report *why* instead of a bare "available: false".
+        cameras[name] = cam
         return cam
 
     try:
