@@ -20,7 +20,7 @@ The struct is `lib/control/state.py`; it is filled once per poll by `RobotContro
   "safety_state": "NORMAL",
   "controller_state": "1",
   "activity": "idle",
-  "active_command": {              // never null; all-null sub-keys until the first command
+  "active_command": {              // never null; all-null whenever nothing is running
     "id": null, "kind": null, "status": null, "progress": null, "error": null
   },
   "conn_ok": true,
@@ -141,6 +141,14 @@ gripper command is accepted, then the fingers take ≈0.8 s to actually travel (
 | anything else | `"mode <n>"` — e.g. `"mode 12"` if UR adds one |
 | read failed | `"UNKNOWN"` (and `conn_ok: false`) |
 
+⚠️ **`POST /estop` produces `"PROTECTIVE_STOP"` (mode 3), not an emergency-stop value.** It calls
+RTDE `triggerProtectiveStop()` (`ur.py:151`) — the strongest stop software can command. Modes 6
+and 7 come from the **physical** e-stop circuit only: asserting that chain from software is
+impossible by design, which is the point of a hardware e-stop. So if you press the console's
+E-STOP and expect `safety_state` to read `ROBOT_EMERGENCY_STOP`, it never will; check for
+`PROTECTIVE_STOP`, or just watch `activity` go to `"stopped"`. A protective stop is also
+**not clearable over RTDE** — release it from the pendant.
+
 **GoFa** — the raw RWS controller state from `/rw/panel/ctrl-state` (`abb_rws.py:90`), which is
 **also copied into `controller_state`** because RWS exposes only that one signal
 (`gofa.py:61`). Typical values are ABB's own vocabulary: `"init"`, `"motoron"`, `"motoroff"`,
@@ -187,32 +195,45 @@ Don't assert consistency between them in client logic.
 
 ## `active_command` — object (never `null`)
 
-**Always an object with all five sub-keys present**, from the first poll of the session. Until
-the first command runs, every value is `null` (`empty_command()`, `state.py:8`, substituted in
-`_poll_once` at `base.py:157`). After that it holds the *most recent* command and is never
-cleared — nothing assigns `_active = None` after construction.
+**Always an object with all five sub-keys present**, from the first poll of the session. It
+carries the **running** command and nothing else: the moment that command reaches a terminal
+state, every value goes back to `null` (`empty_command()`, `state.py:8`, selected in
+`_poll_once` at `base.py:160`). Idle after a command therefore looks identical to fresh boot.
 
 ```jsonc
-// before any command — the shape is already there
+// idle — at boot, and again the instant a command ends
 "active_command": { "id": null, "kind": null, "status": null, "progress": null, "error": null }
 
-// after one has run
-"active_command": { "id": 1, "kind": "moving", "status": "done", "progress": 1.0, "error": null }
+// mid-motion — the only time it is populated
+"active_command": { "id": 1, "kind": "moving", "status": "running", "progress": 0.4, "error": null }
+```
+
+Measured transition on a UR15 move (sim, 30 Hz poll):
+
+```
+t=0.00s  id=None  status=None      progress=None  activity=idle
+t=0.02s  id=1     status=running   progress=0.0   activity=moving
+t=0.62s  id=1     status=running   progress=1.0   activity=moving
+t=0.88s  id=None  status=None      progress=None  activity=idle
 ```
 
 Three traps:
 
-- **Don't test the object's truthiness.** `if (state.active_command)` is now always true. Test
-  `active_command.id !== null`, or better, `status === "running"`.
-- **A populated `active_command` does not mean something is running.** It keeps
-  `status: "done"` indefinitely after completion. `activity` is the field that answers
-  "is the arm busy" — it is derived from exactly this `status == "running"` check (`base.py:169`).
-- **It lags `GET /command/{id}` by up to one poll period.** The command endpoint reads the
-  live command record, while `active_command` is a copy taken by the state-poll thread
-  (`base.py:157`). So a command can report `done` on `/command/{id}` while `/state` still shows
-  it `running` — for up to 33 ms on the UR15, 100 ms on the GoFa. Treat `/command/{id}` as
-  authoritative for completion; don't wait on `/state` to confirm a transition it may not have
-  observed yet.
+- **Don't test the object's truthiness.** `if (state.active_command)` is always true — it's
+  always an object. Test `active_command.id !== null`, or better, `status === "running"`.
+- **`status` is only ever `"running"` or `null` here.** Note the trace above: it goes
+  `running` → all-`null` with no intervening tick. **`done` / `failed` / `stopped` never appear
+  in `/state` at all**, so the outcome of a command — and any `error` string — is *not*
+  observable from state polling or the telemetry stream. `GET /command/{id}` retains it (backed
+  by `_cmd_history`, `base.py:222`) and is the only source. If you submit a command whose result
+  matters, hold its id and poll it. `activity` will tell you the arm went idle; only
+  `/command/{id}` will tell you whether it succeeded.
+- **It lags `GET /command/{id}` by up to one poll period.** The command endpoint reads the live
+  record, while this is a copy taken by the state-poll thread (`base.py:156`). So a command can
+  report `done` on `/command/{id}` while `/state` still shows it `running` — up to 33 ms on the
+  UR15, 100 ms on the GoFa. Another reason to treat `/command/{id}` as authoritative.
+
+The sub-key table below describes the values while a command is running.
 
 | Field | Type | Values |
 |---|---|---|
@@ -318,7 +339,7 @@ verbatim to the flattened key.
 | `q[i]` | `q_0` … `q_5` | index order is the joint order tabled above |
 | `pose.pos` | `pose_pos_x`, `pose_pos_y`, `pose_pos_z` | metres |
 | `pose.wxyz` | `pose_wxyz_w`, `pose_wxyz_x`, `pose_wxyz_y`, `pose_wxyz_z` | quaternion, `w` first |
-| `active_command.<k>` | `command_id`, `command_kind`, `command_status`, `command_progress`, `command_error` | all `null` when `active_command` is `null` |
+| `active_command.<k>` | `command_id`, `command_kind`, `command_status`, `command_progress`, `command_error` | all `null` whenever nothing is running |
 | `health.<k>` | `health_<k>` | e.g. `health_egm_rx` |
 
 ### Stability of the key set
@@ -327,7 +348,7 @@ The flat shape inherits the nested one's guarantee: every key is present on **ev
 the life of the connection — an absent value is `null`, never a missing key. So:
 
 - `gripper_frac` is present-and-`null` on the GoFa (and on a UR15 whose Hand-E socket is down).
-- The five `command_*` keys are present-and-`null` until the first command runs, so a client can
+- The five `command_*` keys are present-and-`null` whenever nothing is running, so a client can
   read `command_progress` unconditionally.
 - `health_*` keys are fixed per arm: a GoFa always has `health_egm_rx`/`health_egm_tx` (`null`
   before an EGM session), a UR15 never has any.
@@ -375,7 +396,7 @@ mid-command, and post-command.)
   dataclass serialized with `asdict()`, so no key is ever omitted — and so are the sub-keys of
   the two nested objects: `active_command` always carries its five, `health` always carries its
   arm's set. Nothing starts empty and later grows keys, so every level can be walked unguarded.
-  Only values vary. (The `?flat=1` variant is stable on the same terms.)
+  Only values vary. (`?flat=1` is stable on the same terms.)
 - **Nullable values:** `gripper_frac`, every sub-key of `active_command`, and the GoFa's two
   `health` counters. All are null-*valued*, never absent.
 - **`GET /state` before the first poll** raises, surfacing as a `500`, not an empty state

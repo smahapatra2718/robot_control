@@ -321,6 +321,13 @@ curl -s -X POST localhost:8000/stop  -H "Authorization: Bearer $TOK"   # {"stopp
 curl -s -X POST localhost:8000/estop -H "Authorization: Bearer $TOK"   # {"estopped": true}
 ```
 
+⚠️ **`/estop` is a software stop, not the hardware e-stop.** On the UR15 it calls RTDE
+`triggerProtectiveStop()`, so afterwards `safety_state` reads **`"PROTECTIVE_STOP"`** — *not*
+`ROBOT_EMERGENCY_STOP`. Modes 6/7 come only from the physical e-stop circuit, which by design
+cannot be asserted from software. Clear a protective stop from the pendant; RTDE can't. To
+detect either kind programmatically, watch `activity == "stopped"` rather than matching one
+`safety_state` string.
+
 ---
 
 ## 5. Telemetry WebSocket
@@ -373,11 +380,11 @@ Returned by `GET /state` and streamed over `/telemetry`.
   "safety_state": "NORMAL",            // robot-reported safety state
   "controller_state": "ok",            // robot-reported controller/exec state
   "activity": "idle",                  // "idle" | "moving" | "playing" | "freedrive" | "stopped"
-  "active_command": {                  // command object (below) — never null; sub-keys are
-    "id": null,                        //   always present and all null until the first
-    "kind": null,                      //   command of the session runs
-    "status": null,
-    "progress": null,
+  "active_command": {                  // the RUNNING command (object below) — never null;
+    "id": null,                        //   all-null whenever nothing is running, so idle
+    "kind": null,                      //   looks the same as fresh boot. The terminal
+    "status": null,                    //   status never appears here — GET /command/{id}
+    "progress": null,                  //   is the only place it lives.
     "error": null
   },
   "conn_ok": true,                     // last hardware read succeeded
@@ -400,8 +407,11 @@ Two consequences worth pinning:
 
 - **`active_command` is never `null`.** Test `active_command.id !== null` (or `status`), *not*
   the truthiness of the object itself — an always-present object is always truthy.
-- **`active_command` is the *last* command, not necessarily a running one.** It keeps
-  `status: "done"` after completion. `activity` is the field that says whether the arm is busy.
+- **It clears the moment a command finishes, so no poll of `/state` ever sees the terminal
+  status.** It goes `running` → all-null directly; `done` / `failed` / `stopped` never appear
+  in it. Use `/state` for "is the arm busy right now", and **`GET /command/{id}` for how a
+  command ended** — that is the only place the outcome and any `error` are retained. If you
+  submit a command you care about the result of, poll its id; don't watch `/state` for it.
 
 #### Flat shape — `?flat=1`
 
@@ -423,7 +433,7 @@ unchanged (floats stay floats, `conn_ok` stays a bool); only the nesting is gone
   "controller_state": "1",
   "activity": "idle",
   "command_id": null,                  // active_command flattened to command_*;
-  "command_kind": null,                //   all null when no command is active
+  "command_kind": null,                //   all null when nothing is running
   "command_status": null,
   "command_progress": null,
   "command_error": null,
@@ -440,7 +450,7 @@ Mapping: `q` → `q_0`…`q_5`, `pose.pos` → `pose_pos_{x,y,z}`, `pose.wxyz` �
 **The key set is stable**, exactly as in the nested shape. Every key above is present on every
 frame for the life of the connection — an absent value is `null`, never a missing key. So
 `gripper_frac` is present-and-`null` on the GoFa, and the five `command_*` keys are
-present-and-`null` until the first command runs.
+present-and-`null` whenever nothing is running.
 
 `health_*` mirrors `health`, so it is fixed **per arm** rather than shared across both: the
 GoFa always emits `health_egm_rx`/`health_egm_tx` (`null` before an EGM session exists), and

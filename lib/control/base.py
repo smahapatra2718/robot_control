@@ -153,9 +153,12 @@ class RobotController:
                     self._state.conn_ok = False
             return
         with self._cmd_lock:
-            # never None on a served state: before the first command it's the all-None
-            # command object, so a client can read active_command.status unconditionally.
-            active = copy.deepcopy(self._active) if self._active else empty_command()
+            cmd = copy.deepcopy(self._active) if self._active else None
+        # _active holds the most recent command, running or finished; serve only the running
+        # one, so idle looks like idle rather than holding a stale finished command. Never
+        # None — the sub-keys are always present, all None when nothing is running. The
+        # terminal status is therefore never visible here; GET /command/{id} retains it.
+        active = cmd if (cmd and cmd["status"] == "running") else empty_command()
         st = RobotState(
             ts=time.monotonic(), robot=self.robot_name, q=q.tolist(),
             pose={"pos": [float(v) for v in pos], "wxyz": [float(v) for v in wxyz]},

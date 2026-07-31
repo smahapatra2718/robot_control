@@ -40,6 +40,10 @@ class SimWorld:
             self.q = list(home)
             self.flags = {"egm_go": False, "lead_go": False}
             self.grip_frac = 0.0
+            # UR safety mode, as RTDE getSafetyMode() reports it: 1 NORMAL, 3 PROTECTIVE_STOP.
+            # triggerProtectiveStop() moves it to 3 and nothing here clears it — same as the
+            # real arm, where a protective stop is released from the pendant, not over RTDE.
+            self.safety_mode = 1
             # EGM supervisor bookkeeping (populated by FakeEGM's supervisor thread)
             self.egm_target = None
             self.egm_last_target = None
@@ -78,7 +82,9 @@ class FakeRTDEControl:
     def endTeachMode(self, *a, **kw) -> None: pass
     def servoStop(self, *a, **kw) -> None: pass
     def stopScript(self, *a, **kw) -> None: pass
-    def triggerProtectiveStop(self, *a, **kw) -> None: pass
+    def triggerProtectiveStop(self, *a, **kw) -> None:
+        with SIM.lock:
+            SIM.safety_mode = 3          # PROTECTIVE_STOP, as the real arm reports it
     def disconnect(self, *a, **kw) -> None: pass
 
 
@@ -90,7 +96,8 @@ class FakeRTDEReceive:
             return list(SIM.q)
 
     def getSafetyMode(self) -> int:
-        return 1  # NORMAL
+        with SIM.lock:
+            return SIM.safety_mode
 
     def disconnect(self, *a, **kw) -> None: pass
 

@@ -794,7 +794,10 @@ function render(s){
     $("gripTag").textContent = "no gripper";
   }
 
-  // active command — sub-keys are always present, so test id (null until one runs)
+  // active command — sub-keys are always present, so test id (null when nothing runs).
+  // It clears the moment the command ends, so reset the panel instead of leaving a stale
+  // "running" up. The terminal status is only observable via GET /command/{id}, which the
+  // console log below already polls to completion.
   const ac = s.active_command;
   if(ac && ac.id !== null && ac.id !== undefined){
     $("ac_id").textContent = "CMD #"+ac.id;
@@ -802,6 +805,11 @@ function render(s){
     const st = ac.status||"none";
     $("ac_status").className = "pill "+st; $("ac_status").textContent = st;
     $("ac_prog").style.width = Math.round((ac.progress||0)*100)+"%";
+  } else {
+    $("ac_id").textContent = "CMD —";
+    $("ac_kind").textContent = "idle";
+    $("ac_status").className = "pill"; $("ac_status").textContent = "none";
+    $("ac_prog").style.width = "0%";
   }
 
   if(!prefilled){ prefilled=true; loadJoints(); loadPose(); }

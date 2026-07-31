@@ -83,21 +83,29 @@ def test_state_stable_shape():
         r = client.post("/move/joints", headers=h,
                         json={"q": [0.0, -1.4, 1.4, -1.4, -1.4, 0.2], "speed": 1.0})
         assert r.status_code == 202, r.text
-        during = client.get("/state", headers=_auth()).json()
+        # while it runs: active_command populated, and only ever with status "running"
+        for _ in range(200):
+            during = client.get("/state", headers=_auth()).json()
+            if during["active_command"]["id"] is not None:
+                break
+            time.sleep(0.01)
         assert keyshape(during) == before, keyshape(during) ^ before
-        assert set(during["active_command"]) == cmd_keys
+        assert during["active_command"]["status"] == "running", during["active_command"]
+        assert during["activity"] == "moving", during["activity"]
         assert _poll_command(client, r.json()["command_id"]) == "done"
-        # /state's active_command is written by the state-poll thread, so it lags
-        # GET /command/{id} by up to one poll period — let it catch up before reading.
+        # /state is written by the state-poll thread, so it lags GET /command/{id} by up
+        # to one poll period — let it catch up before reading.
         for _ in range(100):
             after = client.get("/state", headers=_auth()).json()
-            if after["active_command"]["status"] == "done":
+            if after["active_command"]["id"] is None:
                 break
             time.sleep(0.02)
         assert keyshape(after) == before, keyshape(after) ^ before
-        # values did change — the shape held, but it isn't frozen data
-        assert after["active_command"]["status"] == "done", after["active_command"]
-        assert after["active_command"]["id"] is not None
+        # finished => cleared back to all-None, exactly as at boot
+        assert after["active_command"] == {k: None for k in cmd_keys}, after["active_command"]
+        # the terminal status is NOT observable here — /command/{id} is the only place it lives
+        assert client.get(f"/command/{r.json()['command_id']}",
+                          headers=_auth()).json()["status"] == "done"
     finally:
         c.close()
 
@@ -114,10 +122,15 @@ def test_state_stable_shape():
                         json={"q": [0.0, 0.0, 0.0, 0.0, 1.0, 0.0], "speed": 1.0})
         assert r.status_code == 202, r.text
         assert _poll_command(client, r.json()["command_id"]) == "done"
-        after = client.get("/state", headers=_auth()).json()
+        for _ in range(100):
+            after = client.get("/state", headers=_auth()).json()
+            if after["active_command"]["id"] is None:
+                break
+            time.sleep(0.02)
         # an EGM session ran: health keys are unchanged, only their values moved
         assert keyshape(after) == before, keyshape(after) ^ before
         assert set(after["health"]) == {"egm_rx", "egm_tx"}
+        assert after["active_command"] == {k: None for k in cmd_keys}, after["active_command"]
     finally:
         c.close()
     print("PASS test_state_stable_shape")

@@ -359,7 +359,7 @@ ROBOT_API_TOKEN=<span class="s">'a-long-random-secret'</span> \
   <span class="s">"pose"</span>: { <span class="s">"pos"</span>: [0.40, 0.10, 0.30], <span class="s">"wxyz"</span>: [0,1,0,0] },
   <span class="s">"gripper_frac"</span>: 0.0,        <span class="c">// 0 open .. 1 closed; null on GoFa</span>
   <span class="s">"activity"</span>: <span class="s">"idle"</span>,       <span class="c">// idle | moving | playing | freedrive | stopped</span>
-  <span class="s">"active_command"</span>: {          <span class="c">// never null; all-null until a command runs</span>
+  <span class="s">"active_command"</span>: {          <span class="c">// never null; all-null when nothing runs</span>
     <span class="s">"id"</span>: null, <span class="s">"kind"</span>: null, <span class="s">"status"</span>: null,
     <span class="s">"progress"</span>: null, <span class="s">"error"</span>: null
   },

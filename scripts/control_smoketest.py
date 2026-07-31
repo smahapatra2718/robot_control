@@ -33,7 +33,7 @@ def test_state_dataclass():
     assert d["ts"] == 1.0
     assert d["gripper_frac"] == 0.0
     assert d["conn_ok"] is True
-    # sub-keys always present, all None until a command runs (never a bare null)
+    # sub-keys always present, all None when nothing is running (never a bare null)
     assert d["active_command"] == {k: None for k in COMMAND_KEYS}
     assert d["health"] == {}
     print("PASS test_state_dataclass")
@@ -73,6 +73,34 @@ def test_ur_move():
     finally:
         c.close()
     print("PASS test_ur_move")
+
+
+def test_ur_estop_safety_state():
+    """estop() must be visible in safety_state, not just activity. The sim used to hardcode
+    getSafetyMode()->NORMAL, so an e-stop changed nothing and this was untestable offline."""
+    robot_sim.install("ur15")
+    from control import make_controller
+    c = make_controller("ur15")
+    c.connect()
+    try:
+        assert c.get_state().safety_state == "NORMAL", c.get_state().safety_state
+        c.estop()
+        for _ in range(100):                      # poll thread runs at 30 Hz
+            st = c.get_state()
+            if st.safety_state != "NORMAL":
+                break
+            time.sleep(0.02)
+        # /estop is triggerProtectiveStop(), so this is PROTECTIVE_STOP — the emergency-stop
+        # modes (6/7) come only from the physical circuit and can't be asserted in software.
+        assert st.safety_state == "PROTECTIVE_STOP", st.safety_state
+        assert st.controller_state == "3", st.controller_state
+        assert st.activity == "stopped", st.activity
+        # and it does not clear itself — a real protective stop is released at the pendant
+        time.sleep(0.2)
+        assert c.get_state().safety_state == "PROTECTIVE_STOP"
+    finally:
+        c.close()
+    print("PASS test_ur_estop_safety_state")
 
 
 def test_ur_play_gripper():
@@ -287,6 +315,7 @@ def main():
     test_state_dataclass()
     test_ur_connect_state()
     test_ur_move()
+    test_ur_estop_safety_state()
     test_ur_play_gripper()
     test_gofa_connect_state()
     test_gofa_move_play()

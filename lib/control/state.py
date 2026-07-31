@@ -10,9 +10,9 @@ COMMAND_KEYS = ("id", "kind", "status", "progress", "error")
 
 def empty_command() -> dict:
     """A command object with every key present and None — what `active_command` holds
-    before the first command of the session runs. Keeping the sub-keys present from boot
-    means a client can read `active_command.status` without null-checking the parent, and
-    the served shape never changes underneath it."""
+    whenever nothing is running. Keeping the sub-keys present means a client can read
+    `active_command.status` without null-checking the parent, and the served shape never
+    changes underneath it."""
     return {k: None for k in COMMAND_KEYS}
 
 
@@ -26,8 +26,9 @@ class RobotState:
     safety_state: str               # robot-reported safety state
     controller_state: str           # robot-reported controller/exec state
     activity: str                   # "idle"|"moving"|"playing"|"stopped"
-    active_command: dict            # {"id","kind","status","progress","error"}; sub-keys are
-                                    #   always present, all None until the first command runs
+    active_command: dict            # the *running* command, else all-None. Sub-keys always
+                                    #   present: {"id","kind","status","progress","error"}.
+                                    #   Terminal status is never shown here — see GET /command/{id}
     conn_ok: bool                   # last hardware read succeeded
     health: dict = field(default_factory=dict)   # transport-specific extras
 
