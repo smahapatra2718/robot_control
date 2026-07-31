@@ -18,6 +18,8 @@ import uvicorn  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+import robot_common as rc  # noqa: E402
+from camera import open_camera  # noqa: E402
 from control import make_controller  # noqa: E402
 from robot_api import build_app, build_multi_app  # noqa: E402
 
@@ -40,13 +42,26 @@ def main() -> None:
         print("WARNING: ROBOT_API_TOKEN not set — using 'changeme'. Set it before real use.")
 
     controllers: dict = {}
+    cameras: dict = {}
+
+    def _open_camera(name: str):
+        """Best-effort: a missing camera degrades /camera/* to 503, it never blocks serving."""
+        cam = open_camera(name)
+        idx = rc.camera_index(name)
+        print(f"  {name} camera: " + (f"index {idx} ({cam.width}x{cam.height} @{cam.fps})"
+                                      if cam else f"none (index {idx})"))
+        if cam:
+            cameras[name] = cam
+        return cam
+
     try:
         if args.robot:
             print(f"Connecting to {args.robot} ...")
             c = make_controller(args.robot)
             c.connect()
             controllers[args.robot] = c
-            app = build_app(c, token=token)
+            _open_camera(args.robot)
+            app = build_app(c, token=token, camera=cameras.get(args.robot))
             print(f"Remote API on http://{args.host}:{args.port}  (robot={args.robot})")
         else:
             unavailable = []
@@ -57,12 +72,14 @@ def main() -> None:
                     c.connect()
                     controllers[name] = c
                     print(f"  {name}: online")
+                    _open_camera(name)
                 except Exception as e:               # noqa: BLE001 - one arm down shouldn't sink the server
                     unavailable.append(name)
                     print(f"  {name}: UNAVAILABLE ({e})")
             if not controllers:
                 raise SystemExit("no arms reachable — nothing to serve")
-            app = build_multi_app(controllers, token=token, unavailable=unavailable)
+            app = build_multi_app(controllers, token=token, unavailable=unavailable,
+                                  cameras=cameras)
             print(f"Remote API on http://{args.host}:{args.port}  "
                   f"(multi: online={list(controllers)} unavailable={unavailable})")
 
@@ -84,6 +101,8 @@ def main() -> None:
         print(f"Web console:  http://{args.host}:{args.port}/")
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     finally:
+        for cam in cameras.values():
+            cam.close()
         for c in controllers.values():
             c.close()
 

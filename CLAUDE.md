@@ -40,6 +40,7 @@ robot_control/                  # (repo name; the local dev folder may differ)
 │   ├── abb_egm.py              #   minimal EGM UDP client (protobuf wire format)
 │   ├── egm_pb2.py / egm.proto  #   EGM protobuf bindings + the schema they're generated from
 │   ├── hande_gripper.py        #   minimal Hand-E URCap-socket client
+│   ├── camera.py               #   USB camera capture (cv2) — one grab thread per arm, dual-clock JPEG frames
 │   ├── robot_sim.py            #   offline sim: SimWorld + fake transports + install() (sys.modules shim)
 │   ├── dispatch.py             #   shared target->script map + dispatch() for real.py / sim.py
 │   ├── control/                #   RobotController core (state.py, base.py, ur.py, gofa.py) — one motion impl
@@ -71,10 +72,11 @@ robot_control/                  # (repo name; the local dev folder may differ)
 Managed with [uv](https://docs.astral.sh/uv/). `uv sync` builds `.venv/` from `uv.lock`;
 `uv run <script>` runs against it with no activation. See README → "Setup".
 
-Python: numpy, viser, yourdfpy, jaxlie, jax, jaxlib, robot_descriptions, trimesh, xacrodoc, pyroki (editable, from `pyroki_src/`), ur_rtde 1.6.3, requests, urllib3, protobuf, fastapi, uvicorn[standard], httpx. Dev group: grpcio-tools (only to regenerate `lib/egm_pb2.py`). System (brew): cmake, **boost@1.85** (keg-only, for the ur_rtde build only).
+Python: numpy, viser, yourdfpy, jaxlie, jax, jaxlib, robot_descriptions, trimesh, xacrodoc, pyroki (editable, from `pyroki_src/`), ur_rtde 1.6.3, requests, urllib3, protobuf, fastapi, uvicorn[standard], httpx, opencv-python-headless. Dev group: grpcio-tools (only to regenerate `lib/egm_pb2.py`). System (brew): cmake, **boost@1.85** (keg-only, for the ur_rtde build only).
 
 Notes on the manifest, since a few entries are non-obvious:
 - **`protobuf` is a direct dependency** — `lib/egm_pb2.py` imports `google.protobuf` at runtime, and nothing else pulls it in. Dropping it silently breaks the GoFa EGM path.
+- **`opencv-python-headless`, not `opencv-python`** — `lib/camera.py` only grabs and JPEG-encodes; the server never opens a window, so the GUI build's extra system libs are dead weight. `camera.py` imports it defensively, so the repo still runs without it (cameras just report unavailable).
 - **`xacrodoc` is not imported anywhere** — it regenerates `urdf/*.urdf` from xacro; the generated URDFs are committed, so it's only needed to rebuild them.
 - **`pyroki` provides jax/jaxlib/jaxlie/viser/yourdfpy/trimesh/robot_descriptions transitively**, but we declare the ones we import ourselves so a pyroki change can't remove them from under us.
 - **`uv` manages the interpreter** (`python-preference = "only-managed"`): builds never use a system or conda Python. The pre-uv venv was built against miniconda and broke when the repo directory moved.
@@ -191,6 +193,14 @@ continuous motion), or inline `waypoints`. `/gripper` 400s on a gripper-less arm
   WS is the **heartbeat**. If the lease holder goes silent while the arm is live (a motion running
   or free-drive engaged), a watchdog
   stops the arm and releases the lease (deadman).
+- `GET /camera/info` | `/camera/frame` | `/camera/frame.json` | `/camera/stream` — one USB camera
+  per arm (auth-only reads; `?token=` accepted since an `<img>` can't set headers). `frame` is a
+  JPEG with timestamps in `X-Frame-*` headers, `frame.json` the same as base64, `stream` an MJPEG
+  live feed. **Every frame carries two clocks**: `ts` is `time.monotonic()` — the *same clock* as
+  `RobotState.ts`, which is what makes a frame pairable with telemetry — and `ts_unix` is wall
+  time. One frame therefore anchors the monotonic clock (`ts_unix - ts` converts any
+  `RobotState.ts` to absolute time), so `RobotState` needs no extra field. Best-effort like the
+  Hand-E: no camera ⇒ `503` + `{"available": false}`, never a startup failure.
 
 **Both arms from one server** — run `api` with **no arm** (`real.py api` / `sim.py api`) and
 `build_multi_app` mounts a full `build_app` under `/ur15` and `/gofa`, advertises the roster at
@@ -226,7 +236,15 @@ client-side composition; a single pick plays by `name`) — always-live STOP/E-S
 that polls `/command/{id}` to completion. The open WS carries the lease so it doubles as the
 deadman heartbeat. Vanilla HTML/JS, no build step.
 
-A **3D View** card at the top of the left column renders the live arm in three.js — a
+A **View** card at the top of the left column carries a `[3D | Camera]` header toggle. **3D**
+renders the live arm in three.js (below); **Camera** swaps in that arm's USB feed as an `<img>`
+pointed at `/camera/stream?token=…`. Leaving the Camera tab **removes the `src`** rather than
+hiding the element — an MJPEG connection stays open as long as `src` is set — and the feed is torn
+down and re-established on disconnect and arm switch so one arm's video can't linger on another's
+panel. The Gizmo controls hide in Camera mode (they drive the 3D scene, not a video frame), and an
+arm with no camera shows a quiet "no camera on ‹ARM›" note off `/camera/info`.
+
+The **3D** mode renders the live arm in three.js — a
 vendored `urdf-loader` (under `web/vendor/`) loads a baked glTF bundle from `web/models/<arm>/`
 (served at `/models`) and is driven entirely off the open `WS /telemetry` stream: each frame sets
 the six joint values from `RobotState.q`, plus the Hand-E finger from `gripper_frac` on the UR15.

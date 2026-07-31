@@ -249,6 +249,73 @@ class FakeEGM:
 
 
 # ---------- install ----------
+def _install_fake_cv2() -> None:
+    """Shadow `cv2.VideoCapture` with a synthetic device, leaving the rest of cv2 real.
+
+    Only the *device* is fake — lib/camera.py's grab thread, JPEG encoding and dual-clock
+    stamping all run unmodified, so the camera endpoints behave offline exactly as they do
+    on hardware. Same reasoning as the RTDE/RWS fakes: shadow the transport, not our code.
+
+    No-op if cv2 isn't installed (then the sim has no camera either, which is correct).
+    Must run before anything imports camera.py, which binds `cv2` at import time.
+    """
+    # install() runs once per sim launch, but the test suite calls it many times in one
+    # process. Without this guard each call would `import cv2` -> get the *previous* fake
+    # and wrap it again, nesting the __getattr__ delegation one level deeper every time.
+    if type(sys.modules.get("cv2")).__name__ == "_FakeCv2":
+        return
+    try:
+        import cv2 as _real_cv2
+        import numpy as _np
+    except Exception:                            # noqa: BLE001 - optional dependency
+        return
+
+    class _FakeVideoCapture:
+        """Moving test pattern, so successive frames visibly differ and a stuck feed shows."""
+
+        def __init__(self, index=0, *a, **kw) -> None:
+            self._w, self._h, self._i = 640, 480, 0
+            self._open = index is not None and index >= 0
+
+        def isOpened(self) -> bool:
+            return self._open
+
+        def set(self, prop, val) -> bool:
+            if prop == _real_cv2.CAP_PROP_FRAME_WIDTH:
+                self._w = int(val)
+            elif prop == _real_cv2.CAP_PROP_FRAME_HEIGHT:
+                self._h = int(val)
+            return True
+
+        def get(self, prop) -> float:
+            return float({_real_cv2.CAP_PROP_FRAME_WIDTH: self._w,
+                          _real_cv2.CAP_PROP_FRAME_HEIGHT: self._h}.get(prop, 0))
+
+        def read(self):
+            if not self._open:
+                return False, None
+            self._i += 1
+            img = _np.zeros((self._h, self._w, 3), dtype=_np.uint8)
+            img[:, :, 0] = _np.linspace(40, 200, self._w, dtype=_np.uint8)   # blue gradient
+            img[:, :, 1] = 30
+            x = (self._i * 7) % max(1, self._w - 40)                         # sweeping bar
+            img[:, x:x + 40, :] = 220
+            _real_cv2.putText(img, f"SIM {self._i}", (12, 34),
+                              _real_cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+            return True, img
+
+        def release(self) -> None:
+            self._open = False
+
+    class _FakeCv2(types.ModuleType):
+        VideoCapture = _FakeVideoCapture
+
+        def __getattr__(self, name):             # everything else is the real cv2
+            return getattr(_real_cv2, name)
+
+    sys.modules["cv2"] = _FakeCv2("cv2")
+
+
 def _module(name: str, **attrs) -> types.ModuleType:
     m = types.ModuleType(name)
     for k, v in attrs.items():
@@ -266,5 +333,6 @@ def install(robot_hint: str | None = None) -> None:
     )
     sys.modules["abb_rws"] = _module("abb_rws", RWSClient=FakeRWS)
     sys.modules["abb_egm"] = _module("abb_egm", EGMSession=FakeEGM)
+    _install_fake_cv2()
     home = {"ur15": UR_HOME, "gofa": GOFA_HOME}.get(robot_hint, NEUTRAL_HOME)
     SIM.reset(home)

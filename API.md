@@ -182,6 +182,10 @@ the arm. `/stop` is a graceful decelerated stop; `/estop` is a hard stop.
 | `GET`  | `/command/{id}` | — | `200` | Status of a submitted command |
 | `POST` | `/stop` | — | `200` | Graceful stop |
 | `POST` | `/estop` | — | `200` | Hard stop |
+| `GET`  | `/camera/info` | — | `200` | Camera availability + geometry for the arm |
+| `GET`  | `/camera/frame` | — | `200` | Latest JPEG, timestamps in `X-Frame-*` headers |
+| `GET`  | `/camera/frame.json` | — | `200` | Same frame as base64 + timestamps |
+| `GET`  | `/camera/stream` | — | `200` | MJPEG `multipart/x-mixed-replace` live feed |
 | `WS`   | `/telemetry` | optional | — | Stream `RobotState`; heartbeat if lease-matched |
 
 ### GET /health
@@ -327,6 +331,69 @@ curl -s -X POST localhost:8000/estop -H "Authorization: Bearer $TOK"   # {"estop
 cannot be asserted from software. Clear a protective stop from the pendant; RTDE can't. To
 detect either kind programmatically, watch `activity == "stopped"` rather than matching one
 `safety_state` string.
+
+### Cameras  ·  GET /camera/info · /camera/frame · /camera/frame.json · /camera/stream
+
+One USB camera per arm, so the endpoints are namespaced with everything else
+(`/ur15/camera/frame`, `/gofa/camera/stream`). Reads — **authentication only, no lease**.
+
+The token may be sent as a **`?token=` query param** as well as the `Authorization` header:
+an `<img src=...>` can't set headers, and the telemetry WS already uses that spelling.
+
+```bash
+curl -s localhost:8000/camera/info -H "Authorization: Bearer $TOK"
+# {"robot":"ur15","available":true,"index":0,"width":640,"height":480,"fps":15,
+#  "seq":11,"ts":1215836.808,"ts_unix":1785538137.972}
+
+curl -s -D- -o frame.jpg "localhost:8000/camera/frame?token=$TOK"
+# X-Frame-Ts: 1215836.808263416        <- monotonic, SAME clock as RobotState.ts
+# X-Frame-Ts-Unix: 1785538137.972138   <- wall clock
+# X-Frame-Seq: 11
+```
+
+`/camera/frame.json` returns `{robot, ts, ts_unix, seq, jpeg_b64}` when you'd rather have one
+JSON object than headers + body. `/camera/stream` is MJPEG for live viewing — drop it straight
+into an `<img>`; browsers don't expose its per-part headers to JS, so use `frame`/`frame.json`
+when you need to pair a frame with telemetry.
+
+#### Pairing frames with telemetry
+
+**This is the point of the two clocks.** `RobotState.ts` is `time.monotonic()` — an arbitrary
+epoch — so a wall-clock-only frame timestamp would be *unpairable* with it. Every frame
+therefore carries both, stamped together at the grab:
+
+- **`ts`** — `time.monotonic()`, the **same clock** as `RobotState.ts`. The camera thread and
+  the state poll live in one process, so `frame.ts - state.ts` is a real interval in seconds.
+  This is what you join on.
+- **`ts_unix`** — `time.time()`, wall clock, for logs and cross-machine correlation.
+
+Because one frame carries both, it also **anchors** the monotonic clock: `ts_unix - ts` is the
+offset that converts *any* `RobotState.ts` to absolute time. That's why `RobotState` needs no
+new field.
+
+```python
+f  = httpx.get(f"{BASE}/camera/frame.json", headers=H).json()
+st = httpx.get(f"{BASE}/state", headers=H).json()
+skew_s   = abs(f["ts"] - st["ts"])            # same clock -> a real interval
+state_utc = st["ts"] + (f["ts_unix"] - f["ts"])   # anchor monotonic to wall time
+```
+
+Expect a skew of up to one poll period between a frame and the nearest state (33 ms UR15,
+100 ms GoFa) — they're sampled by independent threads.
+
+#### Availability
+
+Cameras are **best-effort**, like the Hand-E gripper: if the device index isn't configured,
+cv2 is missing, or the camera won't deliver a frame, the server still starts and
+`/camera/*` returns **`503`** with `/camera/info` reporting `{"available": false}`. Device
+indices are machine-specific, so set them per host rather than editing code:
+
+```bash
+UR_CAMERA_INDEX=0 GOFA_CAMERA_INDEX=2 ROBOT_API_TOKEN=… uv run scripts/real.py api
+```
+
+`CAMERA_WIDTH`, `CAMERA_HEIGHT`, `CAMERA_FPS` and `CAMERA_JPEG_QUALITY` are the other knobs
+(`robot_common.py`). `-1` disables an arm's camera.
 
 ---
 

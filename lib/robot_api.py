@@ -8,15 +8,17 @@ owner; this module only adapts it to HTTP/WS.
 from __future__ import annotations
 
 import asyncio
+import base64
 import math
 import os
 import secrets
 import threading
 import time
 
-from fastapi import (Body, FastAPI, Header, HTTPException, Request, WebSocket,
-                     WebSocketDisconnect)
+from fastapi import (Body, FastAPI, Header, HTTPException, Query, Request,
+                     WebSocket, WebSocketDisconnect)
 from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import Response, StreamingResponse
 
 import robot_common as rc
 from control import Busy
@@ -46,7 +48,8 @@ def _local_docs(app: FastAPI) -> None:
 
 
 def build_app(controller, token: str, telem_hz: float = 20.0,
-              watchdog_timeout_s: float = 2.0) -> FastAPI:
+              watchdog_timeout_s: float = 2.0, camera=None) -> FastAPI:
+    """`camera` is an optional lib.camera.CameraSource for this arm; None => /camera/* 503s."""
     app = FastAPI(title="robot-control-api", docs_url=None, redoc_url=None)
     _local_docs(app)
     # single write lease: {"token": str|None, "last_seen": monotonic float}
@@ -274,6 +277,83 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
         controller.estop()
         return {"estopped": True}
 
+    # ---------- camera ----------
+    # Reads, so authentication only (no lease) — same as /state. The token may also come as
+    # a ?token= query param: an <img src=...> can't set an Authorization header, and the
+    # telemetry WS already established that spelling.
+    def check_auth_q(authorization: str | None, tok_q: str | None) -> None:
+        if not token:
+            return
+        if tok_q is not None and secrets.compare_digest(tok_q, token):
+            return
+        check_auth(authorization)
+
+    def _require_camera():
+        f = camera.latest() if camera is not None else None
+        if f is None:
+            raise HTTPException(status_code=503,
+                                detail="no camera for this arm (not configured, or no frame yet)")
+        return f
+
+    def _frame_headers(f) -> dict:
+        # both clocks travel with the image: X-Frame-Ts shares RobotState.ts's monotonic
+        # clock (subtract directly), X-Frame-Ts-Unix is wall time. See lib/camera.py.
+        return {"X-Frame-Ts": repr(f.ts), "X-Frame-Ts-Unix": repr(f.ts_unix),
+                "X-Frame-Seq": str(f.seq), "Cache-Control": "no-store"}
+
+    @app.get("/camera/info")
+    def camera_info(token_q: str = Query(None, alias="token"),
+                    authorization: str = Header(None)):
+        check_auth_q(authorization, token_q)
+        if camera is None:
+            return {"available": False, "robot": controller.robot_name}
+        return {"robot": controller.robot_name, **camera.info()}
+
+    @app.get("/camera/frame", responses={200: {"content": {"image/jpeg": {}}}})
+    def camera_frame(token_q: str = Query(None, alias="token"),
+                     authorization: str = Header(None)):
+        """Latest JPEG frame; timestamps in the X-Frame-* headers."""
+        check_auth_q(authorization, token_q)
+        f = _require_camera()
+        return Response(content=f.jpeg, media_type="image/jpeg", headers=_frame_headers(f))
+
+    @app.get("/camera/frame.json")
+    def camera_frame_json(token_q: str = Query(None, alias="token"),
+                          authorization: str = Header(None)):
+        """Same frame as base64 + its timestamps, for clients that want one JSON object."""
+        check_auth_q(authorization, token_q)
+        f = _require_camera()
+        return {"robot": controller.robot_name, "ts": f.ts, "ts_unix": f.ts_unix,
+                "seq": f.seq, "jpeg_b64": base64.b64encode(f.jpeg).decode("ascii")}
+
+    @app.get("/camera/stream")
+    def camera_stream(token_q: str = Query(None, alias="token"),
+                      authorization: str = Header(None)):
+        """multipart/x-mixed-replace MJPEG — drop straight into an <img src>.
+
+        Per-part X-Frame-* headers carry the same timestamps as /camera/frame, but browsers
+        don't expose them to JS; use /camera/frame(.json) when you need to pair a frame with
+        telemetry. This endpoint is for eyes."""
+        check_auth_q(authorization, token_q)
+        _require_camera()
+        boundary = "frameboundary"
+
+        def gen():
+            seq = 0
+            while True:
+                f = camera.wait_for_next(seq, timeout=5.0)
+                if f is None:                  # capture stalled — end cleanly, client reconnects
+                    return
+                seq = f.seq
+                yield (f"--{boundary}\r\nContent-Type: image/jpeg\r\n"
+                       f"Content-Length: {len(f.jpeg)}\r\n"
+                       f"X-Frame-Ts: {f.ts!r}\r\nX-Frame-Ts-Unix: {f.ts_unix!r}\r\n"
+                       f"X-Frame-Seq: {f.seq}\r\n\r\n").encode("ascii") + f.jpeg + b"\r\n"
+
+        return StreamingResponse(
+            gen(), media_type=f"multipart/x-mixed-replace; boundary={boundary}",
+            headers={"Cache-Control": "no-store"})
+
     @app.websocket("/telemetry")
     async def telemetry(ws: WebSocket):
         if token and ws.query_params.get("token") != token:
@@ -325,7 +405,7 @@ def build_app(controller, token: str, telem_hz: float = 20.0,
 
 
 def build_multi_app(controllers: dict, token: str, telem_hz: float = 20.0,
-                    watchdog_timeout_s: float = 2.0, unavailable=()) -> FastAPI:
+                    watchdog_timeout_s: float = 2.0, unavailable=(), cameras=None) -> FastAPI:
     """Serve several arms from one server: mount build_app(ctrl) at /<name> for each
     connected controller, and advertise the roster (incl. arms that failed to connect)
     at /robots so a client can render a per-arm switcher. Each arm keeps its own
@@ -361,6 +441,8 @@ def build_multi_app(controllers: dict, token: str, telem_hz: float = 20.0,
         _auth(authorization)
         return {"robots": roster}
 
+    cameras = cameras or {}
     for name, ctrl in controllers.items():
-        app.mount(f"/{name}", build_app(ctrl, token, telem_hz, watchdog_timeout_s))
+        app.mount(f"/{name}", build_app(ctrl, token, telem_hz, watchdog_timeout_s,
+                                        camera=cameras.get(name)))
     return app

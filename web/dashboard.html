@@ -346,8 +346,12 @@ addEventListener("DOMContentLoaded", () => {
   <!-- COL 1: state -->
   <div class="col">
     <section class="panel" style="animation-delay:.02s">
-      <div class="phead"><span class="idx">00</span> 3D View <span class="tag">live</span>
-        <label class="fdcheck" id="gizmoLabel" style="margin-left:auto"><input id="gizmoChk" type="checkbox" onchange="toggleGizmo(this.checked)">Gizmo</label>
+      <div class="phead"><span class="idx">00</span> View <span class="tag">live</span>
+        <div class="seg" id="viewSeg" style="margin-left:auto">
+          <button class="segbtn active" data-view="3d" onclick="setViewMode('3d')">3D</button>
+          <button class="segbtn" data-view="camera" onclick="setViewMode('camera')">Camera</button>
+        </div>
+        <label class="fdcheck" id="gizmoLabel"><input id="gizmoChk" type="checkbox" onchange="toggleGizmo(this.checked)">Gizmo</label>
         <div class="seg" id="gizmoSeg" style="display:none">
           <button class="segbtn active" data-gmode="translate" onclick="setGizmoMode('translate')">Move</button>
           <button class="segbtn" data-gmode="rotate" onclick="setGizmoMode('rotate')">Rotate</button>
@@ -357,6 +361,10 @@ addEventListener("DOMContentLoaded", () => {
       <div class="pbody" style="padding:0">
         <div id="viewer3d" class="viewer3d">
           <div id="viewer3dNote" class="viewer3d-note">connect to view</div>
+        </div>
+        <div id="viewerCam" class="viewer3d" style="display:none">
+          <img id="camImg" alt="camera feed" style="width:100%;height:100%;object-fit:contain;display:none">
+          <div id="camNote" class="viewer3d-note">connect to view</div>
         </div>
       </div>
     </section>
@@ -660,6 +668,7 @@ async function connect(){
     openStreams();
     if(window.viewer3d) window.viewer3d.load(active, base);
     else { const n=$("viewer3dNote"); if(n) n.textContent="3D libs failed to load — see console"; }
+    resetCameraUI();                 // start the feed if the card is already on Camera
     fetchTrajList();                 // populate the play picker for the active arm
     updateLeaseUI();                 // baseline (no lease yet): lock gated panels, disable Save
   }catch(e){
@@ -686,6 +695,7 @@ function disconnect(){
   $("disconnectBtn").style.display="none"; $("robotchip").style.display="none"; $("armSwitch").style.display="none";
   setLed("off","OFFLINE"); updateLeaseUI(); log("sys","disconnected");
   resetGizmoUI();
+  resetCameraUI();
   if(window.viewer3d) window.viewer3d.dispose();
 }
 
@@ -714,6 +724,7 @@ function selectArm(name){
   $("playName").value = ""; closePlayMenu(); trajList = []; fetchTrajList();
   if(lastStates[active]) render(lastStates[active]);   // re-paint panels from this arm
   resetGizmoUI();                                      // the target belonged to the other arm
+  resetCameraUI();                                     // ...and so did the camera feed
   if(window.viewer3d) window.viewer3d.load(active, base);
   updateLeaseUI();
   log("sys","→ "+name.toUpperCase());
@@ -1087,6 +1098,57 @@ function snapGizmo(){
   loadPose();                                      // fills the fields and moves the marker
   return true;
 }
+// ---------- View card: [3D | Camera] ----------
+// The camera feed is an <img> pointed at the MJPEG stream. Two consequences drive this code:
+// an <img> can't send an Authorization header (hence ?token=), and the browser holds the
+// connection open for as long as src is set — so leaving the card is a src teardown, not a
+// hide. One decode at a time, and a backgrounded feed costs nothing.
+let viewMode = "3d";
+
+function setViewMode(m){
+  viewMode = m;
+  document.querySelectorAll("#viewSeg .segbtn").forEach(b=> b.classList.toggle("active", b.dataset.view===m));
+  const cam = m === "camera";
+  $("viewer3d").style.display = cam ? "none" : "";
+  $("viewerCam").style.display = cam ? "" : "none";
+  // the gizmo drives the 3D scene, so its controls have no meaning over a video frame
+  $("gizmoLabel").style.display = cam ? "none" : "";
+  if(cam){ $("gizmoSeg").style.display = $("gizmoSnap").style.display = "none"; }
+  else if($("gizmoChk").checked){ $("gizmoSeg").style.display = $("gizmoSnap").style.display = ""; }
+  cam ? startCamera() : stopCamera();
+}
+
+async function startCamera(){
+  const img = $("camImg"), note = $("camNote");
+  if(!connected){ img.style.display="none"; note.style.display=""; note.textContent="connect to view"; return; }
+  note.style.display=""; note.textContent="starting camera…"; img.style.display="none";
+  try{
+    const info = await api("/camera/info");
+    if(!info.available){ note.textContent = "no camera on "+active.toUpperCase(); return; }
+    // cache-bust so switching arms/reconnecting can't reuse the previous stream
+    img.onload  = ()=>{ note.style.display="none"; img.style.display=""; };
+    img.onerror = ()=>{ img.style.display="none"; note.style.display=""; note.textContent="camera stream failed"; };
+    img.src = base+armPrefix(active)+"/camera/stream?token="+encodeURIComponent(token)+"&t="+Date.now();
+  }catch(e){
+    note.textContent = e.status===503 ? "no camera on "+active.toUpperCase()
+                                      : "camera unavailable ["+(e.status||"net")+"]";
+  }
+}
+
+function stopCamera(){
+  const img = $("camImg");
+  img.onload = img.onerror = null;
+  img.removeAttribute("src");      // drops the MJPEG connection; hiding alone would not
+  img.style.display = "none";
+}
+
+function resetCameraUI(){          // disconnect / arm switch — the feed belonged to that arm
+  stopCamera();
+  const note = $("camNote");
+  note.style.display = ""; note.textContent = connected ? "starting camera…" : "connect to view";
+  if(viewMode === "camera") startCamera();
+}
+
 function resetGizmoUI(){                           // disconnect / arm switch — drop a stale target
   $("gizmoChk").checked = false;
   $("gizmoSeg").style.display = $("gizmoSnap").style.display = "none";

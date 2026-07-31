@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 
 dependencies = [
     # kinematics / viz
-    "pyroki",                # editable, from the vendored pyroki_src/ (see [tool.uv.sources])
+    "pyroki", # editable, from the vendored pyroki_src/ (see [tool.uv.sources])
     "numpy",
     "viser",
     "yourdfpy",
@@ -15,21 +15,19 @@ dependencies = [
     "jaxlib",
     "jaxlie",
     "robot_descriptions",
-    "trimesh",               # scripts/export_web_models.py — bakes the console's glTF bundles
-    "xacrodoc",              # regenerates urdf/*.urdf from xacro (not imported at runtime)
-
+    "trimesh", # scripts/export_web_models.py — bakes the console's glTF bundles
+    "xacrodoc", # regenerates urdf/*.urdf from xacro (not imported at runtime)
     # ABB GoFa transport
-    "requests",              # lib/abb_rws.py — RWS over HTTPS
-    "urllib3",               # lib/abb_rws.py — InsecureRequestWarning suppression
-    "protobuf",              # lib/egm_pb2.py — EGM wire format. Nothing else pulls this in.
-
+    "requests", # lib/abb_rws.py — RWS over HTTPS
+    "urllib3", # lib/abb_rws.py — InsecureRequestWarning suppression
+    "protobuf", # lib/egm_pb2.py — EGM wire format. Nothing else pulls this in.
     # UR15 transport. Builds from sdist on macOS and needs boost@1.85 — see README "Setup".
     "ur_rtde==1.6.3",
-
     # remote API + web console
     "fastapi",
     "uvicorn[standard]",
-    "httpx",                 # scripts/api_smoketest.py + fastapi's TestClient
+    "httpx", # scripts/api_smoketest.py + fastapi's TestClient
+    "opencv-python-headless>=5.0.0.93",
 ]
 
 [dependency-groups]

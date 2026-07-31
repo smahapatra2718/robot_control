@@ -5,6 +5,7 @@ TestClient over a controller wired to the sim fakes. No robot, no network.
 
 Exits 0 on success, 1 on the first failed assertion.
 """
+import base64
 import os
 import sys
 import time
@@ -54,6 +55,61 @@ def test_state_and_auth():
     finally:
         c.close()
     print("PASS test_state_and_auth")
+
+
+def test_camera():
+    """Camera endpoints over the sim's synthetic device: real JPEG bytes, both clocks, and
+    a monotonic ts on the SAME clock as RobotState.ts (that pairing is the whole point)."""
+    robot_sim.install("ur15")
+    from camera import open_camera          # import after install() so cv2 is shadowed
+    from control import make_controller
+    from fastapi.testclient import TestClient
+    from robot_api import build_app
+    c = make_controller("ur15"); c.connect()
+    cam = open_camera("ur15")
+    assert cam is not None, "sim camera did not open"
+    client = TestClient(build_app(c, token=TOKEN, camera=cam))
+    try:
+        assert client.get("/camera/frame").status_code == 401          # auth required
+        assert client.get("/camera/info", headers=_auth()).json()["available"] is True
+        r = client.get("/camera/frame", headers=_auth())
+        assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+        assert r.content[:3] == b"\xff\xd8\xff", "not JPEG"            # SOI marker
+        ts, ts_unix = float(r.headers["X-Frame-Ts"]), float(r.headers["X-Frame-Ts-Unix"])
+        assert int(r.headers["X-Frame-Seq"]) >= 1
+        # ts is monotonic (small, ~uptime), ts_unix is wall clock (~1.7e9) — not the same scale
+        assert ts_unix > 1_600_000_000, ts_unix
+        assert ts < ts_unix
+        # the pairing guarantee: frame.ts and state.ts are directly comparable
+        st = client.get("/state", headers=_auth()).json()
+        assert abs(st["ts"] - ts) < 30.0, (st["ts"], ts)
+        # ?token= works too — an <img src> can't set an Authorization header
+        assert client.get("/camera/frame?token=" + TOKEN).status_code == 200
+        j = client.get("/camera/frame.json", headers=_auth()).json()
+        assert set(j) == {"robot", "ts", "ts_unix", "seq", "jpeg_b64"}
+        assert base64.b64decode(j["jpeg_b64"])[:3] == b"\xff\xd8\xff"
+        # frames actually advance (a stuck feed would hold one seq forever)
+        seq0 = j["seq"]
+        for _ in range(100):
+            j2 = client.get("/camera/frame.json", headers=_auth()).json()
+            if j2["seq"] > seq0:
+                break
+            time.sleep(0.02)
+        assert j2["seq"] > seq0, "camera frames not advancing"
+        assert j2["ts"] > j["ts"] and j2["ts_unix"] > j["ts_unix"]
+    finally:
+        client.close(); cam.close(); c.close()
+
+    # a gripper-less/camera-less arm: endpoints 503 rather than erroring the server
+    c = make_controller("ur15"); c.connect()
+    client = TestClient(build_app(c, token=TOKEN, camera=None))
+    try:
+        assert client.get("/camera/info", headers=_auth()).json()["available"] is False
+        assert client.get("/camera/frame", headers=_auth()).status_code == 503
+        assert client.get("/camera/frame.json", headers=_auth()).status_code == 503
+    finally:
+        client.close(); c.close()
+    print("PASS test_camera")
 
 
 def test_state_stable_shape():
@@ -601,6 +657,7 @@ def test_e2e_subprocess():
 
 def main():
     test_state_and_auth()
+    test_camera()
     test_state_stable_shape()
     test_state_flat()
     test_lease()

@@ -35,6 +35,23 @@ DWELL_S = 0.2                    # pause at each intermediate waypoint
 GRIP_PREDELAY_S = 0.5            # settle the arm this long before actuating the gripper
 GRIP_EPS = 0.02                  # min change in gripper fraction (2%) before a waypoint re-actuates
 
+# ---- USB cameras (one per arm, served by the remote API) ----
+# Device indices are machine-specific — which /dev/videoN or AVFoundation slot a given
+# USB camera lands on depends on enumeration order, so override per host via env rather
+# than editing this file. -1 disables that arm's camera.
+UR_CAMERA_INDEX = int(os.environ.get("UR_CAMERA_INDEX", "0"))
+GOFA_CAMERA_INDEX = int(os.environ.get("GOFA_CAMERA_INDEX", "1"))
+CAMERA_WIDTH = int(os.environ.get("CAMERA_WIDTH", "640"))
+CAMERA_HEIGHT = int(os.environ.get("CAMERA_HEIGHT", "480"))
+CAMERA_FPS = int(os.environ.get("CAMERA_FPS", "15"))       # grab rate; also caps the MJPEG stream
+CAMERA_JPEG_QUALITY = int(os.environ.get("CAMERA_JPEG_QUALITY", "80"))   # cv2 IMWRITE_JPEG_QUALITY
+
+
+def camera_index(robot: str) -> int:
+    """Configured camera device index for an arm ('ur15' | 'gofa'); -1 = disabled."""
+    return {"ur15": UR_CAMERA_INDEX, "gofa": GOFA_CAMERA_INDEX}.get(robot, -1)
+
+
 # ---- UR15 (RTDE / servoJ + Hand-E gripper) ----
 UR_ROBOT_IP = "192.168.125.2"
 UR_ROBOT_DESCRIPTION = "ur15_description"   # robot_descriptions loader key
