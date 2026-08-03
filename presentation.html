@@ -1,0 +1,2400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>robot_control — Project Review &amp; Handbook</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --ink:#1b1e2b; --muted:#5b6071; --line:#e4e7ef;
+    --oracle-red:#b3261e;
+    --accent:#b3261e; --accent-soft:#fbeceb; --code-bg:#1b1d2a; --code-ink:#e7e9f5;
+    --get:#15803d; --get-bg:#dcfce7; --post:#1d4ed8; --post-bg:#dbeafe;
+    --ws:#b3261e; --ws-bg:#f7e0dd; --warn:#b45309; --warn-bg:#fef3c7;
+    --ok:#15803d; --ok-bg:#dcfce7;
+    --radius:12px;
+  }
+  body.dark{
+    --bg:#12141d; --panel:#1b1e2b; --ink:#e8eaf3; --muted:#9aa0b4; --line:#2a2e3e;
+    --oracle-red:#e0584f;
+    --accent:#e0584f; --accent-soft:#2c1614; --code-bg:#0e0f17; --code-ink:#e7e9f5;
+    --get-bg:#10331f; --post-bg:#11244a; --ws:#e0584f; --ws-bg:#371613;
+    --warn:#e0a33a; --warn-bg:#3a2c0a; --ok:#37d98a; --ok-bg:#10331f;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  code,kbd,pre{font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ---------- chrome ---------- */
+  .topbar{
+    position:fixed; top:0; left:0; right:0; height:46px; z-index:60;
+    background:var(--panel); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:12px; padding:0 14px;
+  }
+  .topbar .brand{font-weight:700; font-size:14.5px; letter-spacing:.2px; white-space:nowrap}
+  .topbar .brand span{color:var(--accent)}
+  .topbar .spacer{flex:1}
+  .btn{
+    border:1px solid var(--line); background:var(--panel); color:var(--muted); cursor:pointer;
+    border-radius:8px; padding:6px 11px; font-size:12.5px; white-space:nowrap; font-weight:600;
+  }
+  .btn:hover{color:var(--ink)}
+  .btn.on{color:var(--accent); background:var(--accent-soft); border-color:var(--accent)}
+  .counter{font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap}
+  .gapchip{
+    font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:99px;
+    background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn); cursor:pointer;
+  }
+
+  /* ---------- sidebar (doc mode only) ---------- */
+  nav{
+    position:fixed; top:46px; bottom:0; left:0; width:250px; overflow-y:auto; z-index:50;
+    background:var(--panel); border-right:1px solid var(--line); padding:18px 14px 40px;
+  }
+  nav a{
+    display:block; color:var(--muted); padding:6px 10px; border-radius:8px;
+    font-size:13px; margin:1px 0; border-left:2px solid transparent; line-height:1.4;
+  }
+  nav a:hover{background:var(--accent-soft); text-decoration:none; color:var(--ink)}
+  nav a.active{color:var(--accent); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600}
+  nav .grp{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted);
+    margin:16px 10px 4px; opacity:.75; font-weight:700;
+  }
+  nav .logo{margin:22px 10px 0; padding-top:16px; border-top:1px solid var(--line)}
+  nav .logo img{height:26px; width:auto; display:block; opacity:.85}
+
+  /* ---------- slide container ---------- */
+  main{padding-top:46px}
+  .slide{
+    max-width:960px; margin:0 auto; padding:34px 40px 46px; scroll-margin-top:60px;
+    border-bottom:1px solid var(--line);
+  }
+  .slide:last-child{border-bottom:none}
+  .kicker{
+    font-size:11px; text-transform:uppercase; letter-spacing:.11em; color:var(--accent);
+    font-weight:700; margin:0 0 8px;
+  }
+  .slide h2{font-size:27px; margin:0 0 6px; letter-spacing:-.4px; line-height:1.2}
+  .slide .lede{color:var(--muted); font-size:16px; margin:0 0 18px; max-width:68ch}
+  .slide h3{font-size:15.5px; margin:22px 0 8px; letter-spacing:-.1px}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0; padding-left:22px}
+  li{margin:5px 0}
+  li>strong:first-child{color:var(--ink)}
+  hr{border:none; border-top:1px solid var(--line); margin:20px 0}
+
+  /* big bullets = the part you actually say out loud */
+  ul.key{list-style:none; padding-left:0; margin:16px 0}
+  ul.key>li{
+    position:relative; padding-left:26px; margin:12px 0; font-size:16.5px; line-height:1.55;
+  }
+  ul.key>li::before{
+    content:""; position:absolute; left:2px; top:.62em; width:9px; height:9px;
+    border-radius:2px; background:var(--accent);
+  }
+  ul.key>li small{display:block; font-size:13.5px; color:var(--muted); margin-top:3px; line-height:1.5}
+
+  /* ---------- components ---------- */
+  .pill{display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:99px;
+        background:var(--accent-soft); color:var(--accent); vertical-align:middle}
+  .pill.ok{background:var(--ok-bg); color:var(--ok)}
+  .pill.warn{background:var(--warn-bg); color:var(--warn)}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px 20px; margin:14px 0}
+  .note{border-left:3px solid var(--accent); background:var(--accent-soft); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
+  .warn{border-left:3px solid var(--warn); background:var(--warn-bg); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
+  .warn b, .note b{font-weight:700}
+
+  /* the loud "someone has to fill this in" marker */
+  .needs{
+    border:1px dashed var(--warn); background:var(--warn-bg); color:var(--ink);
+    border-radius:8px; padding:12px 15px; margin:14px 0; font-size:13.8px;
+  }
+  .needs::before{
+    content:"NEEDS INPUT"; display:inline-block; font-size:10px; font-weight:800; letter-spacing:.1em;
+    background:var(--warn); color:#fff; padding:2px 8px; border-radius:4px; margin-right:9px;
+    vertical-align:2px;
+  }
+  .needs .q{display:block; margin-top:8px; color:var(--muted); font-size:13px}
+  .needs ul{margin:8px 0 0}
+  .guess{
+    display:inline-block; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+    background:var(--panel); color:var(--warn); border:1px solid var(--warn);
+    padding:1px 6px; border-radius:4px; margin-right:6px; vertical-align:1px;
+  }
+
+  /* code */
+  .code{position:relative; margin:12px 0}
+  .code pre{
+    background:var(--code-bg); color:var(--code-ink); padding:14px 16px; border-radius:10px;
+    overflow-x:auto; margin:0; font-size:12.8px; line-height:1.6;
+  }
+  .code .copy{
+    position:absolute; top:8px; right:8px; border:none; background:rgba(255,255,255,.09); color:#c9cce0;
+    border-radius:7px; padding:5px 10px; font-size:11px; cursor:pointer; opacity:0; transition:opacity .12s;
+  }
+  .code:hover .copy{opacity:1}
+  .code .copy:hover{background:rgba(255,255,255,.18)}
+  .code .copy.ok{background:#1f7a44; color:#fff}
+  pre .c{color:#7f87b3}
+  pre .k{color:#c792ea}
+  pre .s{color:#a3e58f}
+  code.inline,td code,li code,p code{background:var(--accent-soft); color:var(--accent); padding:1px 6px; border-radius:5px; font-size:.88em}
+
+  /* tables */
+  table{border-collapse:collapse; width:100%; margin:14px 0; font-size:13.3px}
+  th,td{border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top}
+  th{background:var(--accent-soft); font-weight:700}
+  tbody tr:hover{background:var(--accent-soft)}
+
+  /* two-column compare */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:14px 0}
+  .cols>.card{margin:0}
+  .cols h4{margin:0 0 8px; font-size:14px; letter-spacing:.02em}
+  .cols h4 .tag{font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:99px; background:var(--accent-soft); color:var(--accent); margin-left:6px}
+  @media (max-width:860px){ .cols{grid-template-columns:1fr} }
+
+  /* expandable deep-dive */
+  details.deep{
+    border:1px solid var(--line); border-radius:10px; margin:12px 0; background:var(--panel); overflow:hidden;
+  }
+  details.deep>summary{
+    cursor:pointer; padding:11px 16px; font-size:13.5px; font-weight:600; color:var(--muted);
+    list-style:none; display:flex; align-items:center; gap:8px; user-select:none;
+  }
+  details.deep>summary::-webkit-details-marker{display:none}
+  details.deep>summary::before{content:"▸"; color:var(--accent); font-size:12px; transition:transform .12s}
+  details.deep[open]>summary::before{transform:rotate(90deg)}
+  details.deep>summary:hover{color:var(--ink); background:var(--accent-soft)}
+  details.deep .body{padding:2px 20px 16px; border-top:1px solid var(--line)}
+  details.deep .body>:first-child{margin-top:12px}
+
+  /* architecture stack diagram */
+  .stack{margin:16px 0; font-size:13.2px}
+  .stack .layer{
+    border:1px solid var(--line); border-radius:9px; padding:10px 14px; margin:6px 0; background:var(--panel);
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  }
+  .stack .layer b{min-width:132px; color:var(--accent); font-size:12.5px; letter-spacing:.02em}
+  .stack .layer span{color:var(--muted)}
+  .stack .arrow{text-align:center; color:var(--muted); font-size:14px; line-height:1; margin:-1px 0}
+  .stack .layer.core{border-color:var(--accent); background:var(--accent-soft)}
+
+  /* ascii/mono diagram */
+  .diagram{
+    background:var(--code-bg); color:var(--code-ink); border-radius:10px; padding:16px 18px;
+    overflow-x:auto; font-size:12.4px; line-height:1.5; margin:14px 0; white-space:pre;
+  }
+
+  /* timeline */
+  .tl{margin:16px 0; border-left:2px solid var(--line); padding-left:0}
+  .tl .ev{position:relative; padding:0 0 16px 22px; margin-left:0}
+  .tl .ev::before{
+    content:""; position:absolute; left:-6px; top:6px; width:10px; height:10px; border-radius:50%;
+    background:var(--accent); border:2px solid var(--bg);
+  }
+  .tl .when{font-size:11.5px; font-weight:700; color:var(--accent); letter-spacing:.04em; text-transform:uppercase}
+  .tl .what{font-size:14.5px; font-weight:600; margin:1px 0 2px}
+  .tl .detail{font-size:13.2px; color:var(--muted); line-height:1.55}
+
+  /* keyboard hint footer */
+  .hint{
+    position:fixed; bottom:12px; right:14px; z-index:55; font-size:11.5px; color:var(--muted);
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:5px 10px; opacity:.85;
+  }
+  kbd{
+    border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 5px;
+    font-size:11px; background:var(--bg); color:var(--ink);
+  }
+
+  /* ---------- DECK MODE ---------- */
+  body.deck nav{display:none}
+  body.deck .slide{display:none; border-bottom:none}
+  body.deck .slide.active{
+    display:block; max-width:1060px; min-height:calc(100vh - 46px);
+    padding:44px 56px 70px;
+  }
+  body.deck .slide h2{font-size:36px}
+  body.deck .slide .lede{font-size:18px}
+  body.deck ul.key>li{font-size:18px; margin:14px 0}
+  body.deck ul.key>li small{font-size:14.5px}
+  body.deck .hint{display:block}
+  body.doc .hint{display:none}
+  body.doc main{margin-left:250px}
+  body.doc .slide.title-slide{padding-top:44px}
+
+  /* title slide */
+  .title-slide{text-align:left; border-bottom:none !important}
+  .title-slide .big{font-size:44px; font-weight:800; letter-spacing:-1px; margin:0 0 10px; line-height:1.1}
+  .title-slide .big span{color:var(--accent)}
+  .title-slide .sub{font-size:18px; color:var(--muted); max-width:64ch; margin:0 0 24px}
+  .title-slide .meta{display:flex; gap:26px; flex-wrap:wrap; margin-top:26px; font-size:13.5px; color:var(--muted)}
+  .title-slide .meta b{display:block; color:var(--ink); font-size:19px; font-weight:700; letter-spacing:-.2px}
+  body.deck .title-slide .big{font-size:56px}
+
+  /* stat strip */
+  .stats{display:flex; gap:30px; flex-wrap:wrap; margin:18px 0}
+  .stats .s b{display:block; font-size:26px; font-weight:800; letter-spacing:-.5px; color:var(--accent); line-height:1.1}
+  .stats .s span{font-size:12.5px; color:var(--muted)}
+
+  @media print{
+    .topbar,nav,.hint{display:none}
+    body.deck .slide{display:block !important; page-break-after:always}
+    main{padding-top:0; margin-left:0 !important}
+    details.deep{page-break-inside:avoid}
+    details.deep>summary{display:none}
+    details.deep .body{border-top:none; padding-top:0}
+  }
+</style>
+</head>
+<body class="deck">
+
+<div class="topbar">
+  <div class="brand">robot_control <span>·</span> project review &amp; handbook</div>
+  <div class="spacer"></div>
+  <span class="gapchip" id="gapchip" title="Jump to the list of unfilled facts">0 gaps</span>
+  <span class="counter" id="counter">1 / 1</span>
+  <button class="btn" id="modeBtn" title="Switch between slide deck and scrolling handbook">Doc mode</button>
+  <button class="btn" id="expandBtn" title="Open/close every deep-dive block">Expand all</button>
+  <button class="btn" id="themeBtn" title="Light / dark">Dark</button>
+</div>
+
+<nav id="toc"></nav>
+
+<div class="hint"><kbd>←</kbd> <kbd>→</kbd> slides · <kbd>d</kbd> doc mode · <kbd>e</kbd> expand · <kbd>t</kbd> theme</div>
+
+<main id="deck">
+
+<!-- ============================ PART I — ORIENTATION ============================ -->
+
+<section class="slide title-slide" data-part="Orientation" data-title="Title">
+  <p class="kicker">Internship project review &amp; engineering handbook</p>
+  <h1 class="big"><span>robot_control</span><br>Teleoperation for two robot arms</h1>
+  <p class="sub">One control core driving a Universal Robots UR15 and an ABB GoFa CRB 15000 —
+     through a browser UI, a CLI, and a remote HTTP/WebSocket API.</p>
+
+  <div class="stats">
+    <div class="s"><b>2</b><span>robot arms, one core</span></div>
+    <div class="s"><b>4</b><span>control surfaces</span></div>
+    <div class="s"><b>130</b><span>commits</span></div>
+    <div class="s"><b>~9 wk</b><span>May – Jul 2026</span></div>
+  </div>
+
+  <div class="meta">
+    <div><b>Samarth Mahapatra</b>Author</div>
+    <div><b>May 19 – Jul 31, 2026</b>Project window</div>
+    <div><b>Deep dive</b>Audience: engineers inheriting the system</div>
+  </div>
+
+  <div class="needs">
+    Cover-slide details I can't know.
+    <span class="q">Team / org name for the subtitle, presentation date, and whether to credit a manager or mentor on this slide.</span>
+  </div>
+
+  <div class="note" style="margin-top:22px">
+    <b>How to use this document.</b> It is both the talk and the handover manual.
+    <b>Deck mode</b> shows one slide at a time — that's the presentation.
+    <b>Doc mode</b> (top-right, or press <kbd>d</kbd>) turns it into a scrolling handbook with a
+    sidebar. Every <span style="color:var(--accent)">▸ triangle</span> expands into the full
+    reference detail that's too dense to say out loud. Nothing is hidden from the written version.
+  </div>
+</section>
+
+
+<section class="slide" data-part="Orientation" data-title="What this is">
+  <p class="kicker">Orientation · 01</p>
+  <h2>What the system does</h2>
+  <p class="lede">Point a browser at the robot, drag a 3D handle, press play. The arm goes there —
+     in a straight line, under a speed cap, with a stop button that always works.</p>
+
+  <ul class="key">
+    <li><b>Two arms that share nothing at the transport layer</b>
+      <small>UR15 speaks RTDE — Python commands joints directly. The GoFa has no motion API at all:
+      you write a RAPID program, load it onto the controller, and stream to it over UDP.</small></li>
+    <li><b>…converged onto one motion implementation</b>
+      <small><code>lib/control/</code> — <code>move_to_joints</code>, <code>move_to_pose</code>,
+      <code>play</code>, <code>set_gripper</code>, <code>stop</code>, <code>estop</code>. Written once, not twice.</small></li>
+    <li><b>Four surfaces on top of that one core</b>
+      <small>A viser 3D browser UI · a headless CLI recorder and player · a REST + WebSocket API ·
+      a web console with live 3D and camera feeds.</small></li>
+    <li><b>Teach by hand, replay by name</b>
+      <small>Hand-guide the arm in free-drive, capture waypoints, save to JSON, replay from any surface.</small></li>
+    <li><b>The whole thing runs with no robot attached</b>
+      <small>An offline simulator shims the transports, so the <em>real, unmodified</em> scripts run on a laptop.</small></li>
+  </ul>
+</section>
+
+
+<section class="slide" data-part="Orientation" data-title="Architecture at a glance">
+  <p class="kicker">Orientation · 02</p>
+  <h2>Architecture at a glance</h2>
+  <p class="lede">Every surface reduces to the same controller. The network carries goals and
+     telemetry — never the servo loop.</p>
+
+  <div class="stack">
+    <div class="layer"><b>Surfaces</b><span>viser teleop UI &nbsp;·&nbsp; <code>teleop.py</code> recorder &nbsp;·&nbsp; <code>play_trajectory.py</code> &nbsp;·&nbsp; web console</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer"><b>Remote API</b><span><code>lib/robot_api.py</code> — FastAPI: auth, single-writer lease, async commands, telemetry WS, deadman</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer core"><b>RobotController</b><span><code>lib/control/</code> — one motion implementation: command executor, state loop, segment builder, IK</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer"><b>Hardware clients</b><span><code>ur_rtde</code> &nbsp;·&nbsp; <code>abb_rws.py</code> (HTTPS) &nbsp;·&nbsp; <code>abb_egm.py</code> (UDP/protobuf) &nbsp;·&nbsp; <code>hande_gripper.py</code> (TCP) &nbsp;·&nbsp; <code>camera.py</code></span></div>
+    <div class="arrow">↓</div>
+    <div class="layer"><b>Robots</b><span>UR15 controller (PolyScope X) &nbsp;·&nbsp; ABB OmniCore C30 running <code>PyEgm.mod</code></span></div>
+  </div>
+
+  <div class="note">
+    <b>The load-bearing idea.</b> <code>lib/robot_sim.py</code> substitutes fakes at the
+    <em>hardware-client</em> layer — the row second from the bottom. Everything above it is
+    the real code path, which is why the simulator never drifts from reality.
+  </div>
+
+  <details class="deep"><summary>Why the API sits above the controller, not inside it</summary>
+    <div class="body">
+      <p>The controller is a plain Python object with a thread-safe command queue. It has no idea
+      HTTP exists. That separation is what lets the viser teleop, the CLI player, and the API server
+      each own a controller instance without any of them depending on the others.</p>
+      <p>It also draws the safety boundary in the right place: the servo loop
+      (<code>servoJ</code> at 125 Hz, EGM at 100 Hz) runs <em>in-process next to the hardware</em>.
+      A dropped WiFi packet delays the next <em>goal</em>; it can never stall a control cycle
+      mid-motion. The network carries "go to this pose", not "here is your next joint target".</p>
+    </div>
+  </details>
+
+  <details class="deep"><summary>Module map — what each file owns</summary>
+    <div class="body">
+      <table>
+        <tr><th>Module</th><th>Responsibility</th></tr>
+        <tr><td><code>lib/robot_common.py</code></td><td>All shared config constants + pure helpers. Stdlib-only on purpose, so importing it never drags in jax.</td></tr>
+        <tr><td><code>lib/control/state.py</code></td><td><code>RobotState</code> — the one snapshot shape every surface consumes.</td></tr>
+        <tr><td><code>lib/control/base.py</code></td><td>Command executor, state-poll thread, segment building, Cartesian interpolation.</td></tr>
+        <tr><td><code>lib/control/ur.py</code> / <code>gofa.py</code></td><td>Hardware primitives per arm: <code>_read_q</code>, <code>_ik</code>, <code>_run_play</code>, <code>_graceful_stop</code>, <code>_hard_stop</code>.</td></tr>
+        <tr><td><code>lib/robot_api.py</code></td><td>FastAPI app factory — <code>build_app</code> (one arm) and <code>build_multi_app</code> (both).</td></tr>
+        <tr><td><code>lib/abb_rws.py</code></td><td>OmniCore Robot Web Services client — mastership, RAPID variables, program control.</td></tr>
+        <tr><td><code>lib/abb_egm.py</code></td><td>EGM UDP client, protobuf wire format.</td></tr>
+        <tr><td><code>lib/hande_gripper.py</code></td><td>Robotiq Hand-E over the Grippers URCap socket.</td></tr>
+        <tr><td><code>lib/camera.py</code></td><td>One USB grab thread per arm, dual-clock JPEG frames.</td></tr>
+        <tr><td><code>lib/robot_sim.py</code></td><td>Offline fakes + <code>sys.modules</code> injection.</td></tr>
+        <tr><td><code>lib/dispatch.py</code></td><td>Target → script map shared by <code>real.py</code> and <code>sim.py</code>.</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Orientation" data-title="The two arms">
+  <p class="kicker">Orientation · 03</p>
+  <h2>The two arms are not alike</h2>
+  <p class="lede">This is the single most important thing to understand before touching the code.
+     Almost every design decision downstream falls out of this table.</p>
+
+  <table>
+    <tr><th style="width:20%"></th><th>UR15 <span class="pill">Universal Robots</span></th><th>GoFa CRB 15000 <span class="pill">ABB OmniCore C30</span></th></tr>
+    <tr><td><b>Motion transport</b></td><td>RTDE — <code>servoJ()</code> straight from Python</td><td>EGM over UDP + protobuf, into a RAPID program you must write</td></tr>
+    <tr><td><b>Does it need onboard code?</b></td><td>No. <code>ur_rtde</code> uploads its own control script.</td><td><b>Yes.</b> <code>PyEgm.mod</code> must be loaded and <em>running</em> or nothing moves.</td></tr>
+    <tr><td><b>Licensing</b></td><td>None</td><td>EGM is a <b>paid controller option</b></td></tr>
+    <tr><td><b>Side channel</b></td><td>Dashboard (29999), Primary (30001)</td><td>RWS over HTTPS — mastership, variables, program start/stop</td></tr>
+    <tr><td><b>Stream rate</b></td><td>125 Hz live / 50 Hz play</td><td>100 Hz</td></tr>
+    <tr><td><b>Speed limiting</b></td><td>Per-joint rad/s + accel profile, in Python</td><td>Python TCP cap (0.25 m/s) <em>and</em> RAPID <code>\MaxSpeedDeviation</code></td></tr>
+    <tr><td><b>Gripper</b></td><td>Robotiq Hand-E on the wrist</td><td>None</td></tr>
+    <tr><td><b>Free-drive</b></td><td><code>teachMode()</code> — software, reliable</td><td><code>SetLeadThrough</code> via a RAPID flag — works in Auto</td></tr>
+    <tr><td><b>Stop path</b></td><td><code>servoStop(decel=2.0)</code>, then <code>triggerProtectiveStop()</code></td><td>Clear <code>egm_go</code>, then <code>stop_program()</code></td></tr>
+    <tr><td><b>Failure mode to expect</b></td><td>Firewalled port, or Local-mode lockout</td><td>Orphaned mastership, or the RAPID program not at Main</td></tr>
+  </table>
+
+  <div class="note">
+    <b>The mental model.</b> With the UR, Python <em>is</em> the controller.
+    With the GoFa, Python is a <em>peripheral</em> that a RAPID program chooses to listen to —
+    and that program has to be parked in the right place, in the right mode, with motors on,
+    before a single packet matters.
+  </div>
+</section>
+
+
+<section class="slide" data-part="Orientation" data-title="Repo map">
+  <p class="kicker">Orientation · 04</p>
+  <h2>Where everything lives</h2>
+  <p class="lede">Runnable things in <code>scripts/</code>, importable things in <code>lib/</code>,
+     vendored trees in their own folders. Nothing is an installable package — every script
+     bootstraps its own <code>sys.path</code>.</p>
+
+  <div class="diagram">robot_control/
+├── scripts/                    <span class="c"># entry points — uv run scripts/&lt;script&gt;</span>
+│   ├── real.py  /  sim.py      <span class="c">#   dispatchers: &lt;ur15|gofa|play|teleop|api&gt;</span>
+│   ├── teleop_ur15.py          <span class="c">#   viser UI + RTDE/servoJ + Hand-E</span>
+│   ├── teleop_gofa_egm.py      <span class="c">#   viser UI + EGM joint streaming</span>
+│   ├── teleop.py               <span class="c">#   headless recorder (free-drive + keypress)</span>
+│   ├── play_trajectory.py      <span class="c">#   headless replay</span>
+│   ├── api_server.py           <span class="c">#   remote API + web console at /</span>
+│   ├── install_gofa_egm.py     <span class="c">#   ONE-TIME GoFa bring-up</span>
+│   ├── verify_hande.py         <span class="c">#   probe: is the gripper reachable?</span>
+│   ├── verify_cameras.py       <span class="c">#   probe: which camera is which arm?</span>
+│   └── *_smoketest.py          <span class="c">#   offline test suites (sim / control / api)</span>
+│
+├── lib/                        <span class="c"># importable modules</span>
+│   ├── robot_common.py         <span class="c">#   ALL shared config lives here</span>
+│   ├── control/                <span class="c">#   the RobotController core</span>
+│   ├── robot_api.py            <span class="c">#   FastAPI app</span>
+│   ├── abb_rws.py / abb_egm.py <span class="c">#   ABB transports</span>
+│   ├── hande_gripper.py        <span class="c">#   Robotiq transport</span>
+│   ├── camera.py               <span class="c">#   USB capture</span>
+│   └── robot_sim.py            <span class="c">#   offline fakes</span>
+│
+├── web/                        <span class="c"># static console: dashboard.html + vendor/ + models/</span>
+├── urdf/  egm/  trajectories/  <span class="c"># assets, controller config, saved teach paths</span>
+├── docs/                       <span class="c"># design specs + implementation plans</span>
+└── CLAUDE.md  README.md  API.md  usage.html</div>
+
+  <details class="deep"><summary>The <code>sys.path</code> bootstrap, and why there's no package</summary>
+    <div class="body">
+      <p>Each script in <code>scripts/</code> starts by putting the repo root and <code>lib/</code>
+      on <code>sys.path</code>. That's why you see <code>import robot_common</code> rather than
+      <code>from lib import robot_common</code>, and why scripts work from any working directory.</p>
+      <p>Asset paths resolve from <code>robot_common._ROOT</code> (the parent of <code>lib/</code>),
+      derived from <code>__file__</code> — never from the CWD. <code>pyproject.toml</code> sets
+      <code>package = false</code>: there is deliberately no build step and nothing to install.</p>
+      <p>The repo root is on the path because <code>pyroki_snippets/</code> — which holds the custom
+      seeded-IK solver — is imported by bare name and is <em>not</em> part of the installed pyroki package.</p>
+    </div>
+  </details>
+
+  <details class="deep"><summary>Vendored third-party trees (and why each one is vendored)</summary>
+    <div class="body">
+      <table>
+        <tr><th>Directory</th><th>Upstream</th><th>Why vendored</th></tr>
+        <tr><td><code>pyroki_src/</code></td><td>chungmin99/pyroki @ <code>388e43e</code></td><td>No PyPI package exists. Installed editable via <code>[tool.uv.sources]</code> — <b>don't move this directory.</b></td></tr>
+        <tr><td><code>pyroki_snippets/</code></td><td>copy of <code>pyroki_src/examples/</code></td><td>The IK snippet isn't shipped in the installed package. Plus our <code>_solve_ik_seeded.py</code>.</td></tr>
+        <tr><td><code>abb_desc/</code></td><td>ros-industrial/abb @ <code>45f4769</code></td><td>GoFa meshes for the URDF.</td></tr>
+        <tr><td><code>robotiq_hande_description/</code></td><td>macmacal/… @ <code>5ae8b97</code></td><td>Hand-E meshes.</td></tr>
+        <tr><td><code>web/vendor/three*</code>, <code>urdf-loader</code></td><td>three.js 0.160.1, urdf-loaders 0.12.3</td><td>Console 3D viewer, no build step, no CDN.</td></tr>
+        <tr><td><code>web/vendor/swagger-ui/</code></td><td>swagger-ui-dist 5.32.11</td><td><b>A machine cabled to a robot has no DNS.</b> FastAPI's stock docs page loads from a CDN and comes up blank.</td></tr>
+      </table>
+      <p>Meshes and images are stored via Git LFS — after cloning, run
+      <code>git lfs install &amp;&amp; git lfs pull</code> or every <code>.stl</code>/<code>.dae</code>
+      will be a text pointer file and the URDFs won't render.</p>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Orientation" data-title="How it was built">
+  <p class="kicker">Orientation · 05</p>
+  <h2>How it got built</h2>
+  <p class="lede">Roughly one capability per few days, each one layered on the last —
+     and each one specified in <code>docs/</code> before it was written.</p>
+
+  <div class="tl">
+    <div class="ev">
+      <div class="when">May 19 – Jun 1 · pre-git</div>
+      <div class="what">Controller bring-up</div>
+      <div class="detail">Safety jumpers, networking, and the discovery that the popular ABB Python client is
+        IRC5-only — so <code>abb_rws.py</code> and the EGM protobuf bindings were written from scratch.
+        The first commit is already a working dual-arm scaffold.</div>
+    </div>
+    <div class="ev">
+      <div class="when">Jun 1 – 3</div>
+      <div class="what">Teleop core</div>
+      <div class="detail">viser + pyroki + a 6-DoF gizmo, seeded IK, the collaborative TCP-speed cap,
+        the Hand-E gripper (and the pivot from RS-485 to the URCap socket), live gizmo-follow,
+        safety-state polling, clean Ctrl-C shutdown — plus a nine-commit run tightening
+        end-of-play convergence down to the <code>servoJ</code> hardware floor.</div>
+    </div>
+    <div class="ev">
+      <div class="when">Jun 3 – 4</div>
+      <div class="what">Teach &amp; replay, headless</div>
+      <div class="detail">Free-drive capture, the trajectory JSON format, <code>play_trajectory.py</code>,
+        the <code>teleop.py</code> keypress recorder, GoFa <code>SetLeadThrough</code>. The repo was split
+        into <code>lib/</code> + <code>scripts/</code> and all duplicated constants collapsed into
+        <code>robot_common.py</code>.</div>
+    </div>
+    <div class="ev">
+      <div class="when">Jun 8 – 10</div>
+      <div class="what">Offline simulator, then the controller core</div>
+      <div class="detail">Transport shims made every script runnable with no robot. That safety net is what
+        made the next refactor possible: two large teleop scripts' motion logic was lifted into one
+        <code>RobotController</code>, and the headless players migrated onto it.</div>
+    </div>
+    <div class="ev">
+      <div class="when">Jun 12</div>
+      <div class="what">Remote API</div>
+      <div class="detail">Bearer auth → single-writer lease → async commands → telemetry WebSocket with a
+        deadman watchdog → end-to-end tests against a real subprocess server.</div>
+    </div>
+    <div class="ev">
+      <div class="when">Jun 17 – 18</div>
+      <div class="what">Web console</div>
+      <div class="detail">A dependency-free dashboard, both arms from one server, remote trajectory authoring,
+        server-side chaining, and a live three.js arm viewer driven off telemetry.
+        Straight-line Cartesian motion landed in this window too.</div>
+    </div>
+    <div class="ev">
+      <div class="when">Jul 15 – 31</div>
+      <div class="what">Hardening for handover</div>
+      <div class="detail">uv migration (reproducible builds), offline Swagger UI, the drag-a-target gizmo,
+        a flattened <code>RobotState</code> with a full field reference, and dual-clock USB cameras
+        whose frames pair exactly with telemetry.</div>
+    </div>
+  </div>
+
+  <details class="deep"><summary>The working method — spec, then plan, then code, then docs</summary>
+    <div class="body">
+      <p>Every non-trivial feature in <code>docs/superpowers/</code> has a design spec committed
+      <em>before</em> its implementation, and the larger ones have an implementation plan too. In git
+      you can see the pattern repeat: <code>docs: design spec for X</code> → <code>docs: plan for X</code>
+      → several <code>feat(X)</code> commits → <code>docs: document X</code>.</p>
+      <p>Ten specs and five plans are committed. Two useful consequences for whoever inherits this:
+      the reasoning behind each decision is written down at the time it was made, and one spec
+      (<code>2026-06-18-simulate-preview-design.md</code>) is approved but never implemented — a
+      fully-specified starting point for the next person.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ============================ PART II — THE LAB ============================ -->
+
+<section class="slide" data-part="The lab" data-title="Lab overview">
+  <p class="kicker">The lab · 06</p>
+  <h2>The physical setup</h2>
+  <p class="lede">None of this is in the repository. The code documents itself; the room does not.
+     This part is the day-one survival guide.</p>
+
+  <div class="cols">
+    <div class="card">
+      <h4>Robots</h4>
+      <ul>
+        <li><b>UR15</b> — Universal Robots, PolyScope X controller. Robotiq <b>Hand-E</b> parallel
+            gripper on the wrist (RS-485 + 24 V through the tool flange).</li>
+        <li><b>GoFa CRB 15000</b> — ABB collaborative arm, variant <code>crb15000_5_95</code>
+            (5 kg payload / 0.95 m reach), <b>OmniCore C30</b> cabinet with a FlexPendant.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Control PC</h4>
+      <ul>
+        <li>A <b>Windows</b> machine. All robot code runs inside <b>WSL</b>.</li>
+        <li>Logins for the PC, WSL and the UR pendant are in <code>important_notes.txt</code>
+            on the lab machine — deliberately not in this repository.</li>
+        <li>Two Ethernet connections: one to the robot network, one to the regular network.
+            One of them is a <b>USB-Ethernet dongle</b>.</li>
+        <li>Two <b>USB cameras</b>, one per arm, forwarded from Windows into WSL.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="warn">
+    <b>Credentials live outside this repository.</b> <code>github.com/smahapatra2718/robot_control</code>
+    is <b>public</b>, so the Windows / WSL / UR-pendant logins are kept in
+    <code>important_notes.txt</code> on the lab machine, which is gitignored. Ask the lab owner, or
+    read it there. The UR pendant password should never be needed in normal operation.
+    <br><br>
+    The one credential that <em>is</em> committed is the GoFa RWS login
+    (<code>Default User</code> / <code>robotics</code> in <code>robot_common.py</code>) — that's ABB's
+    published OmniCore factory default, not a secret. <b>Change it if this cell ever leaves a private
+    network.</b>
+  </div>
+
+  <div class="needs">
+    Physical facts a newcomer will ask about on day one.
+    <span class="q">
+      · How are the two arms mounted and how far apart — do their workspaces overlap?<br>
+      · Where does each arm's USB camera physically sit (wrist-mounted? on a tripod looking at the cell)?<br>
+      · Is there anything else in the cell — fixtures, a table, parts to pick?<br>
+      · Where is the physical E-stop for each arm, and is there a shared one?<br>
+      · Anything about powering the Hand-E (tool-flange wiring) that has to be checked before use?
+    </span>
+  </div>
+</section>
+
+
+<section class="slide" data-part="The lab" data-title="Network">
+  <p class="kicker">The lab · 07</p>
+  <h2>Network topology</h2>
+  <p class="lede">Both robots live on one private subnet. The control PC is a third host on it.
+     Nothing about this is discoverable from the code except the addresses.</p>
+
+  <div class="diagram">                  ┌──────────────────────────┐
+                  │   Windows control PC     │
+                  │   (WSL runs the code)    │
+                  └─────┬──────────────┬─────┘
+        robot network   │              │   regular network
+        192.168.125.50  │              │   (internet / corporate)
+                        │              └──────────► <span class="c">uv sync, git, browsing</span>
+              ┌─────────┴─────────┐
+              │                   │
+   ┌──────────▼─────────┐  ┌──────▼──────────────┐
+   │  GoFa OmniCore C30 │  │  UR15 controller    │
+   │  192.168.125.1     │  │  192.168.125.2      │
+   │  MGMT port · HTTPS │  │  RTDE 30004 etc.    │
+   └────────────────────┘  └─────────────────────┘</div>
+
+  <table>
+    <tr><th>Host</th><th>Address</th><th>Ports that matter</th></tr>
+    <tr><td>GoFa (OmniCore MGMT)</td><td><code>192.168.125.1</code></td><td><b>443</b> RWS (HTTPS only — port 80 is disabled)</td></tr>
+    <tr><td>UR15 controller</td><td><code>192.168.125.2</code></td><td><b>30004</b> RTDE · 29999 Dashboard · 30001 Primary · <b>63352</b> Hand-E URCap</td></tr>
+    <tr><td>Control PC</td><td><code>192.168.125.50</code></td><td><b>6510/udp</b> inbound EGM feedback · 8000 API · 8080 viser</td></tr>
+  </table>
+
+  <div class="warn">
+    <b>The PC's robot-network IP is not free to change.</b> <code>192.168.125.50</code> is written into
+    <code>egm/EGM_COMM.cfg</code> on the <em>ABB controller</em> as the EGM peer address. Change the PC's
+    IP and the GoFa will stream feedback into the void — the arm simply never responds, with no error.
+    If you must change it, update <code>EGM_COMM.cfg</code> <code>RemoteAddress</code> and
+    <code>PC_IP_EXPECTED</code> in <code>install_gofa_egm.py</code>, then re-run the installer.
+  </div>
+
+  <div class="needs">
+    The host networking configuration. It <b>works</b> — but it was set up once and the settings
+    were never written down, so today it survives only as long as nobody reinstalls WSL or
+    reimages the PC. The block below recovers it from the running machine.
+    <span class="q">
+      · Which adapter carries the robot network — the USB dongle or the built-in port — and its
+        static IP / netmask / gateway.<br>
+      · Whether there's a switch between the PC and the two robots, or a cable each.<br>
+      · Which WSL networking mode makes <code>192.168.125.x</code> reachable from inside WSL.<br>
+      · Anything on the Windows firewall allowing inbound UDP 6510.
+    </span>
+  </div>
+
+  <details class="deep" open><summary>Recovering the configuration from the running machine</summary>
+    <div class="body">
+      <p>Run this in WSL on the lab PC. It answers every question above — <code>powershell.exe</code>
+      is callable straight from WSL, so it covers the Windows side too without switching shells.</p>
+      <div class="code"><button class="copy">copy</button><pre><span class="c"># --- WSL side ---------------------------------------------------------</span>
+wsl.exe --version | head -3
+cat /mnt/c/Users/*/.wslconfig 2&gt;/dev/null || echo "(no .wslconfig =&gt; default NAT mode)"
+ip -4 addr show | grep -E '^[0-9]+:|inet '
+ip route get 192.168.125.1
+uname -r; lsmod | grep -i uvc
+
+<span class="c"># --- Windows side, from the same WSL prompt -----------------------------</span>
+powershell.exe -NoProfile -c "Get-NetAdapter | ft Name,InterfaceDescription,Status,LinkSpeed"
+powershell.exe -NoProfile -c "Get-NetIPAddress -AddressFamily IPv4 | ft InterfaceAlias,IPAddress,PrefixLength"
+powershell.exe -NoProfile -c "Get-NetRoute -DestinationPrefix '192.168.125.0/24' | ft"</pre></div>
+
+      <h3>Reading the output</h3>
+      <table>
+        <tr><th style="width:34%">What you see in WSL</th><th>What it means</th></tr>
+        <tr><td><code>ip -4 addr</code> shows <b><code>192.168.125.50</code></b> on an interface</td>
+            <td><b>Mirrored networking.</b> WSL shares the Windows interfaces directly. Confirm
+            <code>.wslconfig</code> contains <code>networkingMode=mirrored</code> — that one line
+            <em>is</em> the configuration, and it's the thing to write down.</td></tr>
+        <tr><td><code>ip -4 addr</code> shows only a <b><code>172.x</code></b> address</td>
+            <td>Default NAT mode — and then something else must be forwarding, because plain NAT
+            cannot deliver the inbound EGM stream (see below).</td></tr>
+        <tr><td><code>lsmod | grep uvc</code> lists <code>uvcvideo</code></td>
+            <td>The kernel has UVC support — which is why the cameras work, and why the warning
+            in <code>CLAUDE.md</code> is wrong for this machine. Note the <code>uname -r</code>
+            version: a stock WSL kernel and a custom one are very different things to hand over.</td></tr>
+      </table>
+
+      <div class="note">
+        <b>A shortcut you can reason out without running anything.</b> Outbound connections to the
+        robots work under <em>either</em> mode — NAT happily carries TCP out through the Windows
+        routing table, which covers RWS and RTDE. But EGM is different: the GoFa sends UDP feedback
+        <em>to</em> <code>192.168.125.50:6510</code>, and inbound UDP does not reach a NAT'd WSL
+        (<code>netsh portproxy</code> is TCP-only, so it can't be that either). <b>So if the GoFa
+        actually moves under EGM — and it does — the setup is almost certainly mirrored networking.</b>
+        The commands above just confirm it and give you the exact line to record.
+      </div>
+
+      <p><b>Once you have the answers</b>, the durable fix is to commit them: the
+      <code>.wslconfig</code> contents, the adapter name and static IP for the robot network, and any
+      firewall rule. Two or three lines of documentation that make the machine reproducible instead
+      of irreplaceable.</p>
+    </div>
+  </details>
+
+  <details class="deep"><summary>Diagnostics — prove the network before you blame the code</summary>
+    <div class="body">
+      <div class="code"><button class="copy">copy</button><pre><span class="c"># GoFa — should reply in well under a millisecond</span>
+ping -c 2 192.168.125.1
+nc -zv -w 2 192.168.125.1 443          <span class="c"># RWS; OmniCore is HTTPS-only</span>
+
+<span class="c"># UR15 — all four should succeed. Any timeout = PolyScope X firewall.</span>
+for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></div>
+      <p><b>If a port times out but ping works</b>, it is almost always the PolyScope X firewall
+      (UR) — see the UR bring-up slide — not a cable.</p>
+      <p><b>The routing trap.</b> If the PC is on a VPN that claims <code>192.168.125.0/24</code>,
+      packets to the robots go into the tunnel instead of out the Ethernet port, and every port
+      appears dead. On Linux/WSL, confirm which interface is chosen:</p>
+      <div class="code"><button class="copy">copy</button><pre>ip route get 192.168.125.1        <span class="c"># must egress the Ethernet interface, not a tunnel</span></pre></div>
+    </div>
+  </details>
+
+  <details class="deep"><summary>Flaky link: the USB-Ethernet dongle</summary>
+    <div class="body">
+      <p><b>Symptom:</b> a script hangs at the UR15 connect stage and never times out cleanly.</p>
+      <p><b>Check:</b> look at the link lights on the USB Ethernet dongle.</p>
+      <p><b>Fix:</b> unplug and replug the dongle. The link usually comes back immediately.
+      Re-run the script afterwards — a connection that was never established won't recover on its own.</p>
+      <p>This is a known-flaky adapter, not a code path. If it happens often enough to be
+      disruptive, replacing the dongle with a different chipset is the real fix.</p>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="The lab" data-title="Windows + WSL host">
+  <p class="kicker">The lab · 08</p>
+  <h2>The control PC: Windows hosting WSL</h2>
+  <p class="lede">The code is developed on macOS and deployed into WSL. Those two environments
+     differ in ways that have already bitten — know which one you're in.</p>
+
+  <ul class="key">
+    <li><b>Everything runs in WSL</b>
+      <small>Log into Windows, open WSL, and work from the repo checkout there.
+      Logins are in <code>important_notes.txt</code> on the machine itself, not in this repo.</small></li>
+    <li><b>Windows owns the hardware; WSL borrows it</b>
+      <small>The NICs and the USB cameras are Windows devices. Networking has to reach the robot subnet
+      from inside WSL, and the cameras have to be explicitly forwarded with <code>usbipd</code>.</small></li>
+    <li><b>Platform-dependent defaults exist in the code</b>
+      <small><code>robot_common.py</code> picks a different default second-camera index on Linux than on
+      macOS/Windows, because Linux UVC devices claim two <code>/dev/video*</code> nodes each.</small></li>
+  </ul>
+
+  <div class="note">
+    <b>macOS-only setup steps do not apply here.</b> The <code>boost@1.85</code> dance in the README
+    exists because <code>ur_rtde</code> compiles from source and Homebrew's Boost 1.87+ breaks that
+    build on macOS. On Linux/WSL you need the ordinary build toolchain instead
+    (<code>build-essential</code>, <code>cmake</code>, Boost dev headers) — see the install slide.
+  </div>
+
+  <div class="needs">
+    Host-specific facts to lock down.
+    <span class="q">
+      · Where is the repo checked out inside WSL, and which WSL distro/version?<br>
+      · Is it on the WSL filesystem (<code>~/…</code>) or a Windows mount (<code>/mnt/c/…</code>)? This
+        matters — <code>uv sync</code> and JAX are dramatically slower on <code>/mnt/c</code>.<br>
+      · Which build packages did you actually have to <code>apt install</code> to get
+        <code>ur_rtde</code> to compile in WSL?<br>
+      · Is <code>ROBOT_API_TOKEN</code> set persistently (in <code>~/.bashrc</code>?) and to what,
+        or typed each session?<br>
+      · Does anything start automatically on boot, or is every run manual?
+    </span>
+  </div>
+</section>
+
+
+<section class="slide" data-part="The lab" data-title="USB cameras into WSL">
+  <p class="kicker">The lab · 09</p>
+  <h2>Getting the USB cameras into WSL</h2>
+  <p class="lede">Two USB cameras, one per arm, forwarded from native Windows into WSL with
+     <a href="https://github.com/dorssel/usbipd-win">usbipd-win</a>.</p>
+
+  <div class="code"><button class="copy">copy</button><pre><span class="c"># --- ONE TIME, in an Administrator PowerShell ---</span>
+usbipd list                                        <span class="c"># find the two cameras, note their BUSIDs</span>
+.\scripts\setup_cameras_windows.ps1 -BusId 1-4,1-8  <span class="c"># binds them + registers logon tasks</span>
+
+<span class="c"># --- from then on, nothing. In WSL, just confirm: ---</span>
+ls -l /dev/video*
+uv run scripts/verify_cameras.py --save   <span class="c"># writes JPEGs so you can tell which arm is which</span></pre></div>
+
+  <div class="note">
+    <b>This used to be a manual step on every boot — it isn't any more.</b>
+    <code>usbipd bind</code> persists across reboots but <code>attach</code> does not, so the cameras
+    had to be handed to WSL by hand each morning.
+    <code>scripts/setup_cameras_windows.ps1</code> now does the bind once and registers a per-camera
+    logon task running <code>usbipd attach --wsl … --auto-attach</code>, which also survives a replug
+    or a WSL restart. <b>Power on → log in → open WSL → the cameras are already there.</b>
+  </div>
+
+  <div class="warn">
+    <b>Correction to <code>CLAUDE.md</code>.</b> It currently states that WSL2 ships no
+    <code>uvcvideo</code> driver and that USB cameras therefore cannot work there. <b>That is wrong for
+    this machine</b> — both cameras work through <code>usbipd</code>. The claim should be replaced with
+    what actually happens here, or the next person will read it and stop trying.
+  </div>
+
+  <div class="needs">
+    <span class="q" style="margin-top:0">
+      · The two BUSIDs (or the camera model names) so a newcomer can spot them in
+        <code>usbipd list</code> — needed to run the setup script.<br>
+      · Which camera is aimed at which arm, and the <code>UR_CAMERA_INDEX</code> /
+        <code>GOFA_CAMERA_INDEX</code> values you use (or are they left at the defaults?).
+    </span>
+  </div>
+
+  <details class="deep"><summary>How camera device selection works in the code</summary>
+    <div class="body">
+      <p><code>UR_CAMERA_INDEX</code> / <code>GOFA_CAMERA_INDEX</code> accept either an integer index
+      or a device path. <code>-1</code> disables that arm's camera.</p>
+      <div class="code"><button class="copy">copy</button><pre>UR_CAMERA_INDEX=/dev/video0 GOFA_CAMERA_INDEX=/dev/video2 \
+  uv run scripts/real.py api</pre></div>
+      <p><b>Prefer a path over an index on Linux</b>, and prefer a stable
+      <code>/dev/v4l/by-id/...</code> symlink over both — indices shift when devices re-enumerate,
+      and one physical UVC camera exposes <em>two</em> <code>/dev/video*</code> nodes (capture +
+      metadata) of which only the first yields frames. That's exactly why the default for the
+      <em>second</em> camera is <code>2</code> on Linux but <code>1</code> on macOS/Windows.</p>
+      <p>Cameras are strictly best-effort: a missing camera degrades <code>/camera/*</code> to a
+      <code>503</code> carrying the reason, and is printed at server startup. It never blocks serving.
+      <code>camera.py</code> also names the capture backend explicitly (V4L2 on Linux, AVFoundation on
+      macOS) because when no device is present, OpenCV silently falls through to FFMPEG and reports
+      "configure with libavdevice" — which sends you chasing a build flag instead of a missing camera.</p>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="The lab" data-title="Software install">
+  <p class="kicker">The lab · 10</p>
+  <h2>Installing the software</h2>
+  <p class="lede">Dependencies are managed with <a href="https://docs.astral.sh/uv/">uv</a>.
+     <code>pyproject.toml</code> declares them, <code>uv.lock</code> pins them exactly —
+     including the Python interpreter itself.</p>
+
+  <div class="code"><button class="copy">copy</button><pre>git clone &lt;repo&gt; &amp;&amp; cd robot_control
+git lfs install &amp;&amp; git lfs pull     <span class="c"># meshes are LFS — without this the URDFs won't render</span>
+uv sync                             <span class="c"># builds .venv/ (~655 MB) from uv.lock</span>
+
+uv run scripts/sim.py ur15          <span class="c"># nothing needs activating; uv re-syncs if the lock changed</span></pre></div>
+
+  <div class="cols">
+    <div class="card">
+      <h4>Linux / WSL <span class="tag">the lab</span></h4>
+      <p><code>ur_rtde</code> publishes no wheels, so it compiles from source on every machine.
+      You need a C++ toolchain, CMake and Boost development headers present before <code>uv sync</code>.</p>
+      <div class="needs" style="margin-bottom:0">
+        <span class="q" style="margin-top:0">Confirm the exact <code>apt install</code> line that worked in your WSL —
+        this is the one command a newcomer will get stuck on.</span>
+      </div>
+    </div>
+    <div class="card">
+      <h4>macOS <span class="tag">dev</span></h4>
+      <p>Boost 1.87+ made Boost.System header-only, which breaks <code>ur_rtde</code>'s
+      <code>find_package</code>. Use the keg-only 1.85:</p>
+      <div class="code"><button class="copy">copy</button><pre>brew install boost@1.85
+export BOOST_ROOT=/opt/homebrew/opt/boost@1.85
+export CMAKE_PREFIX_PATH=$BOOST_ROOT
+uv sync</pre></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>uv owns the interpreter.</b> <code>python-preference = "only-managed"</code> means builds never
+    touch a system or conda Python. This is deliberate: the original hand-built venv was linked against
+    miniconda and broke the moment the repo directory moved. Do not <code>pip install</code> into
+    <code>.venv/</code> — change <code>pyproject.toml</code> and re-run <code>uv sync</code>, then commit
+    the regenerated <code>uv.lock</code>.
+  </div>
+
+  <details class="deep"><summary>Non-obvious entries in the dependency manifest</summary>
+    <div class="body">
+      <ul>
+        <li><b><code>protobuf</code> is a direct dependency.</b> <code>lib/egm_pb2.py</code> imports
+          <code>google.protobuf</code> at runtime and nothing else pulls it in. Drop it and the GoFa
+          EGM path breaks silently.</li>
+        <li><b><code>opencv-python-headless</code>, not <code>opencv-python</code>.</b> The server only
+          grabs and JPEG-encodes; it never opens a window, so the GUI build's system libraries are
+          dead weight. <code>camera.py</code> imports it defensively — the repo still runs without it,
+          cameras just report unavailable.</li>
+        <li><b><code>xacrodoc</code> is imported nowhere.</b> It regenerates <code>urdf/*.urdf</code> from
+          xacro. The generated URDFs are committed, so it's only needed to rebuild them.</li>
+        <li><b>jaxls comes from git, not PyPI.</b> pyroki depends on it by URL;
+          <code>uv.lock</code> pins an exact commit, so a cold-cache <code>uv sync</code> needs git and
+          network access.</li>
+        <li><b>pyroki is installed editable from <code>pyroki_src/</code>.</b> There is no
+          <code>pip install pyroki</code>. Don't move that directory.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="The lab" data-title="UR15 bring-up">
+  <p class="kicker">The lab · 11</p>
+  <h2>UR15 controller bring-up</h2>
+  <p class="lede">One-time pendant configuration. PolyScope X ships locked down, and every symptom
+     of that looks like a network fault.</p>
+
+  <ol>
+    <li><b>Settings → Security → Services</b> — enable <b>Dashboard (29999)</b>,
+        <b>Primary (30001)</b>, <b>RTDE (30004)</b>, and <b>63352</b> for the Hand-E URCap socket.
+        <br><small style="color:var(--muted)">Without this, ping succeeds and every TCP port times out —
+        the most misleading failure in the whole system.</small></li>
+    <li><b>Switch to Remote Control mode</b> (top-right toggle).
+        <code>RTDEControlInterface</code> refuses to attach in Local mode.</li>
+    <li><b>Confirm Normal state</b> — the base ring is <b>green</b>.</li>
+    <li><b>Verify the gripper before trusting it:</b> <code>uv run scripts/verify_hande.py</code>.</li>
+  </ol>
+
+  <div class="code"><button class="copy">copy</button><pre><span class="c"># from the control PC — all four should succeed</span>
+for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></div>
+
+  <div class="warn">
+    <b>Remote Control mode is the one people forget.</b> If a script reports it cannot attach a control
+    interface while every port is open and the ring is green, check that toggle first.
+  </div>
+
+  <div class="needs">
+    <span class="q" style="margin-top:0">
+      · Is the pendant already configured this way permanently, or does something reset it (a
+        PolyScope update, a power cycle)?<br>
+      · Any UR installation/safety settings a newcomer must not change — payload, TCP offset,
+        safety planes, reduced-mode limits?<br>
+      · Is the Hand-E declared as a payload on the pendant as well as in code
+        (<code>setPayload</code> is sent at startup from Python)?
+    </span>
+  </div>
+</section>
+
+
+<section class="slide" data-part="The lab" data-title="GoFa bring-up">
+  <p class="kicker">The lab · 12</p>
+  <h2>GoFa controller bring-up</h2>
+  <p class="lede">Considerably more involved — roughly twenty minutes the first time.
+     ABB controllers always run a RAPID program to move, so there is onboard code to install.</p>
+
+  <h3>1 · Safety jumpers on X14</h3>
+  <p>The OmniCore C30 expects an external safety device. For a standalone benchtop cell, four
+     pairs on the <b>X14</b> terminal block must be jumpered:</p>
+  <table>
+    <tr><th>Pair</th><th>Pins</th><th>Function</th></tr>
+    <tr><td>ES1 / ES2</td><td>1–2, 3–4</td><td>Emergency stop channels</td></tr>
+    <tr><td><b>AS1 / AS2</b></td><td>5–6, 7–8</td><td><b>Auto stop / safeguard</b> — the ones that catch people out</td></tr>
+  </table>
+  <p><b>Symptom of missing AS jumpers:</b> Manual mode works fine (the enabling grip switch bypasses AS)
+     but Auto mode immediately throws a guard stop. Read the <em>specific</em> event-log entry — if it
+     names AS1/AS2 or "protective stop circuit", that's the cause.</p>
+  <div class="warn">
+    Jumpering AS bypasses external safeguarding inputs. The arm's built-in collision detection still
+    protects, but <b>do not run high-speed Auto motion with people in the workspace.</b>
+  </div>
+
+  <h3>2 · Network — use the MGMT port</h3>
+  <p>The C30 has three logical networks. RWS lives on <b>MGMT</b> (rightmost of the three at the
+     bottom-right) at <code>192.168.125.1</code>, and on WAN if configured. The <b>LAN</b> port and the
+     X1–X5 switch are the I/O network — fieldbus only, <b>no RWS</b>.</p>
+
+  <h3>3 · Enter Auto mode</h3>
+  <p>The C30 has <b>no physical Auto/Manual key switch</b> — mode is a touchscreen control in the
+     FlexPendant's top status bar. Tap it → Automatic → confirm. The white motors-on button on the
+     cabinet front may need one press.</p>
+
+  <div class="warn">
+    <b>From your notes — the boot-order trap.</b> When restarting the ABB controller, make sure the
+    <b>MGMT port is disconnected before it boots</b>, or you'll hit a startup error. Reconnect after
+    it has come up.
+    <div class="needs" style="margin:10px 0 0; background:transparent; border-style:solid">
+      <span class="q" style="margin-top:0">What exactly does it show — an event-log code, a pendant
+      dialog, a failure to reach Auto? And is this a known ABB behaviour (e.g. a DHCP/address conflict
+      with the PC on that subnet) or something specific to this cell? Knowing the mechanism tells the
+      next person whether it's still true after any network change.</span>
+    </div>
+  </div>
+
+  <div class="needs">
+    <span class="q" style="margin-top:0">
+      · Is the <b>EGM option licensed</b> on this controller? (Pendant → Settings → System →
+        installed options.) Without it, none of the GoFa motion path works, and that's the first thing
+        a newcomer with a fresh controller would hit.<br>
+      · Were <code>egm/EGM_COMM.cfg</code> and <code>EGM_MOC.cfg</code> applied with a controller
+        restart, and is that state persistent?<br>
+      · Any TCP / tool / work-object definition configured on the pendant that the code assumes?
+    </span>
+  </div>
+</section>
+
+
+<section class="slide" data-part="The lab" data-title="EGM supervisor">
+  <p class="kicker">The lab · 13</p>
+  <h2>Push the EGM supervisor</h2>
+  <p class="lede">The GoFa only listens to Python because a RAPID program called
+     <code>PyEgm</code> is running and parked, waiting for a flag. Installing that program is a
+     one-time step — but you will re-run it whenever the supervisor changes.</p>
+
+  <div class="code"><button class="copy">copy</button><pre>uv run scripts/install_gofa_egm.py</pre></div>
+
+  <ol>
+    <li>Connects to RWS over HTTPS, probes controller state / opmode / exec state.</li>
+    <li>Grabs RAPID mastership and stops any running program.</li>
+    <li><b>Unloads <code>MainModule</code></b> — it ships with its own <code>PROC main()</code> that
+        collides with ours; RAPID won't compile two.</li>
+    <li>Uploads the two <code>.cfg</code> files and <code>PyEgm.mod</code> to <code>$HOME/</code>
+        on the controller.</li>
+    <li>Loads <code>PyEgm.mod</code> into task <code>T_ROB1</code>, turns motors on if needed.</li>
+    <li>Tries <code>resetpp</code> + start over RWS, and when that fails, <b>prompts you to press
+        PP-to-Main and the green Play button on the pendant</b>.</li>
+  </ol>
+
+  <div class="note">
+    <b>Re-run the installer after any change to the supervisor</b> — including the lead-through
+    feature. Stop any running teleop first (Ctrl-C) so RAPID mastership is free, or the installer
+    will be refused.
+  </div>
+
+  <details class="deep"><summary>What <code>PyEgm.mod</code> actually does</summary>
+    <div class="body">
+      <div class="code"><button class="copy">copy</button><pre>MODULE PyEgm
+  PERS bool egm_go  := FALSE;   <span class="c">! TRUE -> enter EGM joint streaming</span>
+  PERS bool lead_go := FALSE;   <span class="c">! TRUE -> software lead-through (hand-guide)</span>
+  VAR egmident egm_id;
+
+  PROC main()
+    AccSet 50, 50;
+    WHILE TRUE DO
+      WaitUntil egm_go = TRUE OR lead_go = TRUE;      <span class="c">! parked here when idle</span>
+      IF lead_go = TRUE THEN
+        SetLeadThrough \On;
+        WaitUntil lead_go = FALSE;
+        SetLeadThrough \Off;
+      ELSE
+        EGMReset egm_id;  EGMGetId egm_id;
+        EGMSetupUC ROB_1, egm_id, "default", "UCdevice" \Joint;
+        EGMActJoint egm_id \LpFilter := 20 \MaxSpeedDeviation := 20;
+        EGMRunJoint egm_id, EGM_STOP_HOLD \J1 \J2 \J3 \J4 \J5 \J6
+          \CondTime := 1 \RampInTime := 0.1 \RampOutTime := 0.2;
+        EGMReset egm_id;
+        egm_go := FALSE;
+      ENDIF
+    ENDWHILE
+  ENDPROC
+ENDMODULE</pre></div>
+      <p>Python sets <code>egm_go = TRUE</code> over RWS, waits for the first EGM feedback packet, then
+      streams joint targets over UDP. <code>\CondTime := 1</code> means the instruction returns after
+      one second of convergence — which is why a play holds its final target for
+      <code>HOLD_AFTER_PLAY_S</code> (1.5 s) before letting the session close.</p>
+      <table>
+        <tr><th>Knob</th><th>Default</th><th>Effect</th></tr>
+        <tr><td><code>\MaxSpeedDeviation</code></td><td>20 deg/s</td><td>Controller-side per-joint speed cap — a backstop below the Python TCP cap. Raise both together or not at all.</td></tr>
+        <tr><td><code>\LpFilter</code></td><td>20 Hz</td><td>Low-pass cutoff. Lower = smoother but laggier. This is why the GoFa needs no software jitter filter and the UR does.</td></tr>
+        <tr><td><code>\CondTime</code></td><td>1 s</td><td>Convergence time before the session ends. A pause longer than this drops the EGM session — Live mode detects the stale feed and re-arms.</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <div class="note">
+    <b><code>SetLeadThrough</code> is confirmed working on this GoFa, in Auto mode.</b> Worth stating
+    plainly because the RobotWare 6 documentation describes it as YuMi-only, and a reasonable person
+    reading ABB's docs would conclude it can't work here. RW7/OmniCore does support it on the GoFa.
+    (If a future controller ever rejects it, the build error surfaces at
+    <code>/rw/rapid/tasks/T_ROB1/program/builderror</code>, and the fallback is teaching in Manual
+    then switching to Auto to replay.)
+  </div>
+
+  <div class="needs">
+    <span class="q" style="margin-top:0">Did you ever find a working <code>resetpp</code> /
+    program-start over RWS, or is the pendant press still required on every install?</span>
+  </div>
+</section>
+
+
+<section class="slide" data-part="The lab" data-title="Cold start">
+  <p class="kicker">The lab · 14</p>
+  <h2>Cold start — powering up the cell</h2>
+  <p class="lede">The order matters. This is the checklist to run before demoing anything.</p>
+
+  <div class="cols">
+    <div class="card">
+      <h4>Per boot</h4>
+      <ol style="padding-left:20px">
+        <li>ABB controller: <b>MGMT unplugged</b>, power on, wait for boot, then reconnect MGMT.</li>
+        <li>FlexPendant → <b>Auto mode</b> → motors on.</li>
+        <li>Pendant: <b>PP to Main</b>, then green <b>Play</b> — <code>PyEgm</code> must be running
+            and parked.</li>
+        <li>UR15: power on, confirm <b>green ring</b> and <b>Remote Control</b> mode.</li>
+        <li>Windows: nothing — the cameras attach themselves at logon.</li>
+        <li>WSL: confirm connectivity (ping both, port checks).</li>
+        <li>Launch: <code>ROBOT_API_TOKEN=… uv run scripts/real.py api</code>.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h4>Pre-flight verification</h4>
+      <div class="code"><button class="copy">copy</button><pre><span class="c"># is anything obviously wrong?</span>
+ping -c2 192.168.125.1
+ping -c2 192.168.125.2
+uv run scripts/verify_cameras.py
+uv run scripts/verify_hande.py
+
+<span class="c"># does the software still pass its own tests?</span>
+uv run scripts/sim_smoketest.py
+uv run scripts/control_smoketest.py
+uv run scripts/api_smoketest.py</pre></div>
+      <p style="font-size:13.3px; color:var(--muted)">The three smoke tests need no robot at all.
+      Run them first — if they fail, the problem is the install, not the cell.</p>
+    </div>
+  </div>
+
+  <div class="needs">
+    <span class="q" style="margin-top:0">
+      · Is this the order you actually use? Anything missing — air, e-stop reset, a specific
+        power sequence between the two cabinets?<br>
+      · Any pendant state that has to be re-established after a power cycle beyond PP-to-Main + Play?<br>
+      · What's the shutdown procedure at the end of a session?
+    </span>
+  </div>
+</section>
+
+<!-- ============================ PART III — OPERATING IT ============================ -->
+
+<section class="slide" data-part="Operating it" data-title="Running things">
+  <p class="kicker">Operating it · 15</p>
+  <h2>Two dispatchers, five targets</h2>
+  <p class="lede"><code>real.py</code> and <code>sim.py</code> are the same dispatcher.
+     The only difference is that <code>sim.py</code> installs the fake-transport shim first.</p>
+
+  <div class="code"><button class="copy">copy</button><pre><span class="c"># offline — no robot, no network. Start here, always.</span>
+uv run scripts/sim.py  ur15
+uv run scripts/sim.py  gofa
+uv run scripts/sim.py  play ur15/_sample_ur15 --no-confirm
+uv run scripts/sim.py  api                      <span class="c"># both arms + web console on :8000</span>
+
+<span class="c"># real hardware — identical targets</span>
+uv run scripts/real.py ur15                     <span class="c"># viser teleop UI on :8080</span>
+uv run scripts/real.py gofa
+uv run scripts/real.py teleop  &lt;name&gt; --robot ur    <span class="c"># headless recorder</span>
+uv run scripts/real.py play    ur15/&lt;name&gt;          <span class="c"># headless replay</span>
+uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the arm to serve BOTH</span></pre></div>
+
+  <table>
+    <tr><th>Target</th><th>What you get</th><th>Where</th></tr>
+    <tr><td><code>ur15</code> / <code>gofa</code></td><td>viser 3D teleop UI — gizmo, waypoints, plan/play</td><td><code>http://localhost:8080</code></td></tr>
+    <tr><td><code>api</code></td><td>REST + WebSocket API, Swagger docs, and the web console</td><td><code>http://localhost:8000</code></td></tr>
+    <tr><td><code>teleop</code></td><td>Terminal recorder — hand-guide and capture with keypresses</td><td>terminal</td></tr>
+    <tr><td><code>play</code></td><td>Headless replay of saved trajectories</td><td>terminal</td></tr>
+  </table>
+
+  <div class="note">
+    <b>Every script connects at startup and aborts if it can't reach its controller.</b> That's
+    intentional — a teleop UI that renders but silently isn't attached to a robot is worse than
+    one that refuses to start.
+  </div>
+</section>
+
+
+<section class="slide" data-part="Operating it" data-title="Teleop UI">
+  <p class="kicker">Operating it · 16</p>
+  <h2>The viser teleop UI</h2>
+  <p class="lede">Both arms share one UI. Drag a 3D handle, add waypoints, plan, play —
+     with the browser preview and the real arm driven by the same joint values, every tick.</p>
+
+  <div class="diagram">  Idle          drag the gizmo; the browser mirrors the live arm
+    │
+    ├─ Add waypoint ──►  snapshot (position, orientation, gripper) + a scene frame
+    │
+    ├─ Plan ──────────►  seeded IK at each waypoint; each solution seeds the next
+    │                    result: plan_segments = [(q_start, q_goal, grip), …]
+    │
+    └─ Play ──────────►  per segment: advance alpha 0→1, shape it through the
+                         trapezoidal profile, lerp position + slerp orientation,
+                         re-solve IK each tick, write q to BOTH the browser and
+                         the robot (only if "Execute" is ticked)</div>
+
+  <ul class="key">
+    <li><b>The preview and the arm never disagree</b>
+      <small>The same <code>q</code> drives the URDF render and the robot on every tick — not two
+      separate code paths that happen to look similar.</small></li>
+    <li><b>Execute is a deliberate two-step</b>
+      <small>Nothing reaches hardware unless "Execute" is ticked, and it <b>auto-unticks the instant a
+      play begins</b> — so you can never accidentally run the same motion twice.</small></li>
+    <li><b>Successful executed plays clean up after themselves</b>
+      <small>Waypoints and frames clear, the gizmo resets to the new end-effector pose, the plan drops.
+      Stopped or preview-only plays leave everything untouched so you can retry.</small></li>
+  </ul>
+
+  <details class="deep"><summary>Threads, and what each one owns</summary>
+    <div class="body">
+      <table>
+        <tr><th>Thread</th><th>Rate</th><th>Owns</th></tr>
+        <tr><td><code>poll_loop</code></td><td>30 Hz (UR) / 10 Hz (GoFa)</td><td>Reads joint state into <code>current_q</code> under a lock</td></tr>
+        <tr><td><code>viz_loop</code></td><td>—</td><td>Writes <code>current_q</code> into the browser URDF when not playing</td></tr>
+        <tr><td><code>_play</code></td><td>50 Hz (UR) / 100 Hz (GoFa)</td><td>Spawned per Play click; owns the URDF and, if executing, the servo stream</td></tr>
+        <tr><td><code>_live_loop</code></td><td>125 Hz (UR) / 30 Hz (GoFa)</td><td>Live gizmo-follow (mutually exclusive with play)</td></tr>
+      </table>
+      <p><b>Segment timing:</b>
+      <code>seg_duration = max(MIN_SEG_DURATION_S, max|Δq| / MAX_JOINT_SPEED)</code>, then for the
+      GoFa stretched further so real tool speed never exceeds <code>MAX_TCP_SPEED</code>.
+      The speed slider can only scale <em>below</em> that cap, never above it.</p>
+    </div>
+  </details>
+
+  <details class="deep"><summary>Safety behaviour in the UI</summary>
+    <div class="body">
+      <ul>
+        <li><b>Stop</b> sets a flag; the play loop breaks and a <code>finally</code> block always runs the
+          graceful stop — <code>servoStop(decel=2.0)</code> on the UR (the default of 10 felt jerky),
+          clearing <code>egm_go</code> on the GoFa.</li>
+        <li>A <b>Safety</b> text box shows the controller-reported safety state, polled continuously.</li>
+        <li>Ctrl-C is handled: both scripts shut their transport down cleanly rather than leaving a
+          servo stream or an EGM session dangling.</li>
+        <li>Free-drive, Live, and Plan/Play are <b>mutually exclusive</b> — and on the UR,
+          <code>teachMode</code> must be ended before any <code>servoJ</code> or the control modes
+          conflict. Every exit path does this.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Operating it" data-title="Live &amp; free-drive">
+  <p class="kicker">Operating it · 17</p>
+  <h2>Live follow and free-drive teaching</h2>
+
+  <div class="cols">
+    <div class="card">
+      <h4>Live <span class="tag">drive robot</span></h4>
+      <p>The arm chases the gizmo in real time — no plan, no play. The loop reads the gizmo pose,
+      steps the commanded pose a bounded amount <em>straight toward</em> it, solves seeded IK, clamps
+      the joint step, and commands the arm.</p>
+      <ul>
+        <li><b>Snap-on-enable</b> — the gizmo jumps to the current end-effector first, so the arm never
+          lurches toward a stale target.</li>
+        <li><b>Seeded from the last commanded <code>q</code></b>, not the measured one — feeding measured
+          joints back into IK produces jitter.</li>
+        <li>Bounded per tick: ≤ <code>LIVE_MAX_LIN</code> linear, ≤ <code>LIVE_MAX_ANG</code> angular,
+          so the tip tracks a line rather than a joint arc.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Free-drive <span class="tag">hand-guiding</span></h4>
+      <p>Hand-guide the arm, capture poses, save them.</p>
+      <ul>
+        <li><b>UR15:</b> <code>teachMode()</code> — zero-gravity hand-guiding. Reliable.</li>
+        <li><b>GoFa:</b> ticking the box sets <code>lead_go</code> over RWS; the RAPID supervisor calls
+          <code>SetLeadThrough \On</code> and holds the arm compliant. The <b>physical lead-through
+          button</b> still works independently.</li>
+        <li><b>Capture</b> snapshots live joints + forward-kinematics pose + the current gripper
+          fraction. <b>Add</b> captures the gizmo pose instead.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="warn">
+    <b>In simulation, free-drive cannot be hand-guided</b> — there's no physical arm to move, so
+    <code>teachMode</code> is a no-op and "Capture" just re-grabs the current pose. Offline authoring
+    is via the gizmo + <b>Add waypoint</b>, or Live, or Plan. The headless recorder runs fine in sim
+    but every captured point sits at the home pose — a plumbing test, not realistic authoring.
+  </div>
+
+  <details class="deep"><summary>Why the two arms need different follower designs</summary>
+    <div class="body">
+      <p><b>UR — acceleration-limited follower.</b> The UR has no controller-side smoothing, so the
+      software has to provide it. The follower tracks the IK target through a per-joint profile
+      bounding both speed and acceleration, with desired speed tapered to
+      <code>√(2·a·|err|)</code> so it decelerates to rest without overshoot, plus a one-tick
+      <code>|err|/dt</code> cap that kills dither at rest. This bounds jerk and low-passes IK jitter.
+      It runs at 125 Hz on an exact <code>initPeriod</code>/<code>waitPeriod</code> cadence, because
+      <code>servoJ</code> is jitter-sensitive.</p>
+      <p><b>GoFa — simpler, because EGM filters for you.</b> <code>\LpFilter := 20</code> smooths
+      controller-side, so the Python side only needs a per-tick pose bound and a joint clamp at 30 Hz.</p>
+      <p><b>The GoFa re-arm quirk:</b> because <code>\CondTime := 1</code>, a pause longer than a second
+      lets the robot converge and RAPID closes the EGM session. <code>_live_loop</code> detects the
+      stale feed via <code>egm.is_fresh</code> and re-arms on the next motion — expect a brief hitch
+      after a long pause. On exit it holds the last pose so the session closes cleanly.</p>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Operating it" data-title="Trajectories">
+  <p class="kicker">Operating it · 18</p>
+  <h2>Trajectories — teach once, replay anywhere</h2>
+  <p class="lede">One JSON format, written by three different tools and replayed by four.</p>
+
+  <div class="code"><button class="copy">copy</button><pre><span class="c">// trajectories/&lt;robot&gt;/&lt;name&gt;.json</span>
+{
+  "robot": "ur15",
+  "created": "2026-06-17T13:33:04",
+  "waypoints": [
+    { "q": [0.1, -1.4, 1.2, -1.3, -1.5, 0.0],   <span class="c">// taught joints — replayed EXACTLY</span>
+      "pos": [0.42, -0.11, 0.31],               <span class="c">// grasp-point position (m)</span>
+      "wxyz": [0.0, 1.0, 0.0, 0.0],             <span class="c">// orientation quaternion</span>
+      "grip": 0.0 }                             <span class="c">// 0.0 open .. 1.0 closed</span>
+  ]
+}</pre></div>
+
+  <ul class="key">
+    <li><b><code>q</code> present means replay those joints exactly</b>
+      <small>Captured from a hand-guided pose. No IK at replay time, so the arm reproduces the taught
+      configuration — not a different elbow branch that happens to reach the same point.</small></li>
+    <li><b><code>q</code> absent means solve from the Cartesian pose</b>
+      <small>That's what gizmo-added waypoints look like; Plan backfills them with sequentially
+      seeded IK.</small></li>
+    <li><b>Gripper is recorded automatically at every waypoint</b>
+      <small>and on replay it only actuates when the fraction changes by more than 2%, after the arm
+      settles for 0.5 s.</small></li>
+    <li><b>Foldered by arm, and tracked in git</b>
+      <small><code>trajectories/ur15/</code>, <code>trajectories/gofa/</code> — they sync across machines
+      with the repo rather than living only on the lab PC.</small></li>
+  </ul>
+
+  <details class="deep"><summary>The headless recorder — <code>teleop.py</code></summary>
+    <div class="body">
+      <div class="code"><button class="copy">copy</button><pre>uv run scripts/teleop.py [name] [--robot ur|gofa]</pre></div>
+      <p>The arm enters free-drive and a raw-keypress loop runs, with a live terminal dashboard
+      redrawing in place at 10 Hz (grasp pose in mm/deg, six joint angles, gripper %, waypoint count).</p>
+      <table>
+        <tr><th>Key</th><th>Action</th></tr>
+        <tr><td><kbd>c</kbd></td><td>Capture a waypoint — joints, pose, gripper fraction</td></tr>
+        <tr><td><kbd>o</kbd> / <kbd>p</kbd></td><td>UR only — open / close the gripper one 10% step, live</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>End free-drive, save, prompt for the next trajectory</td></tr>
+        <tr><td><kbd>w</kbd></td><td><b>Soft stop</b> — end free-drive cleanly and exit</td></tr>
+        <tr><td><kbd>q</kbd></td><td><b>Hard stop</b> — UR: protective stop + <code>stopScript</code>. GoFa: clear both flags + halt RAPID</td></tr>
+      </table>
+      <p>Stop is <kbd>w</kbd>, not <kbd>Esc</kbd>, because arrow keys and Escape share an escape-sequence
+      prefix and the loop reads raw bytes. The terminal uses <code>tty.setcbreak</code> during the key
+      loop only, restored on every exit path.</p>
+    </div>
+  </details>
+
+  <details class="deep"><summary>The headless player — <code>play_trajectory.py</code></summary>
+    <div class="body">
+      <div class="code"><button class="copy">copy</button><pre>uv run scripts/play_trajectory.py &lt;robot&gt;/&lt;name&gt; [more…] [--speed S] [--dry-run] [--no-confirm]</pre></div>
+      <p>The <code>&lt;robot&gt;/</code> prefix is <b>required</b> — this entry point has no arm context,
+      so the prefix picks both the folder and the controller.</p>
+      <ul>
+        <li><b>IK-solver-free.</b> Every waypoint must already carry <code>q</code>. A <code>q</code>-less
+          waypoint aborts with a "Plan and re-save" message rather than silently solving something
+          different from what you taught.</li>
+        <li><b>Chaining:</b> pass several names and they concatenate into <em>one continuous motion</em> —
+          each seam is just another segment, gripper state carries across, one confirmation prompt, one
+          gripper calibration at the start (the slow part), one final settle. All names must target the
+          same arm.</li>
+        <li><code>--dry-run</code> prints the segment list and estimated duration, then exits.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Operating it" data-title="Remote API">
+  <p class="kicker">Operating it · 19</p>
+  <h2>The remote API</h2>
+  <p class="lede">HTTP + WebSocket over the controller. High-level goals only — the network carries
+     commands and telemetry, never the servo loop.</p>
+
+  <div class="code"><button class="copy">copy</button><pre>ROBOT_API_TOKEN=secret uv run scripts/real.py api        <span class="c"># both arms, console at /</span>
+ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one arm, offline</span></pre></div>
+
+  <ul class="key">
+    <li><b>Bearer token on every endpoint</b>
+      <small><code>ROBOT_API_TOKEN</code>, defaulting to <code>changeme</code> with a startup warning.
+      Set it for anything beyond a direct cable.</small></li>
+    <li><b>A single-writer lease</b>
+      <small><code>POST /control/acquire</code> returns a <code>lease_token</code> that every write
+      must carry in an <code>X-Lease</code> header. A second client gets <code>409</code> —
+      or can <code>{"force": true}</code> to steal it, which stops the current motion first.</small></li>
+    <li><b>Commands are asynchronous</b>
+      <small>Writes validate, submit, and return <code>202 {command_id}</code>. Poll
+      <code>GET /command/{id}</code> or watch the telemetry stream for completion.</small></li>
+    <li><b>Stop and E-stop need no lease</b>
+      <small>Any authenticated client can always stop the arm. That path is deliberately never
+      gated on holding the lease.</small></li>
+    <li><b>An open telemetry WebSocket is the deadman</b>
+      <small>If the lease holder goes silent while the arm is live, a watchdog stops it and
+      releases the lease.</small></li>
+  </ul>
+
+  <details class="deep"><summary>Endpoint reference</summary>
+    <div class="body">
+      <table>
+        <tr><th>Endpoint</th><th>Auth</th><th>What it does</th></tr>
+        <tr><td><code>GET /state</code> · <code>/health</code></td><td>token</td><td><code>RobotState</code> snapshot; liveness. <code>?flat=1</code> for a scalar-only shape.</td></tr>
+        <tr><td><code>POST /control/acquire</code> · <code>/release</code></td><td>token</td><td>Take / return the write lease.</td></tr>
+        <tr><td><code>POST /move/joints</code></td><td>+ lease</td><td>Joint-space interpolation to a target <code>q</code>.</td></tr>
+        <tr><td><code>POST /move/pose</code></td><td>+ lease</td><td>Straight Cartesian line to a target pose.</td></tr>
+        <tr><td><code>POST /play</code></td><td>+ lease</td><td>A saved <code>name</code>, a list of <code>names</code> chained server-side, or inline <code>waypoints</code>.</td></tr>
+        <tr><td><code>POST /gripper</code></td><td>+ lease</td><td>Hand-E fraction. <code>400</code> on a gripper-less arm.</td></tr>
+        <tr><td><code>POST /freedrive</code></td><td>+ lease</td><td><b>Synchronous</b> mode toggle, not a command. Mutually exclusive with motion.</td></tr>
+        <tr><td><code>GET/POST/DELETE /trajectories</code></td><td>read: token<br>write: + lease</td><td>List, load, save, delete saved trajectories. Names validated against path traversal.</td></tr>
+        <tr><td><code>GET /command/{id}</code></td><td>token</td><td>Status of an async command.</td></tr>
+        <tr><td><code>POST /stop</code> · <code>/estop</code></td><td>token</td><td><b>No lease.</b> The always-open safety path.</td></tr>
+        <tr><td><code>WS /telemetry</code></td><td>query params</td><td>Streams <code>RobotState</code>; doubles as the heartbeat.</td></tr>
+        <tr><td><code>GET /camera/*</code></td><td>token or <code>?token=</code></td><td>JPEG frame, base64 JSON, MJPEG stream, info.</td></tr>
+      </table>
+      <p><b>Validation.</b> Joint and pose vectors are shape- and finiteness-checked, and
+      <code>speed</code> is capped to <code>(0, 1.0]</code> — <code>422</code> on a bad vector or speed.
+      A malformed <code>q</code> can never reach <code>servoJ</code>, and the API cannot exceed
+      <code>MAX_JOINT_SPEED</code>.</p>
+    </div>
+  </details>
+
+  <details class="deep"><summary>Both arms from one server, and per-arm Swagger docs</summary>
+    <div class="body">
+      <p>Run <code>api</code> with <b>no arm</b> and <code>build_multi_app</code> mounts a full app under
+      <code>/ur15</code> and <code>/gofa</code>, advertises the roster at <code>GET /robots</code>, and
+      serves the dashboard at <code>/</code>. Startup is <b>tolerant</b> — one unreachable arm is listed
+      as unavailable, not fatal. Each arm keeps its own lease, watchdog and telemetry stream.</p>
+      <p><b>Docs are per-arm.</b> In multi mode the root <code>/docs</code> only lists
+      <code>/health</code> and <code>/robots</code> — that genuinely is the parent app's whole schema.
+      The arm endpoints live in the mounted sub-apps, so browse <b><code>/ur15/docs</code></b> or
+      <b><code>/gofa/docs</code></b>. The root page links to both.</p>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Operating it" data-title="Web console">
+  <p class="kicker">Operating it · 20</p>
+  <h2>The web console</h2>
+  <p class="lede">A single static page served at <code>/</code> — same origin, so there's no CORS and
+     the token never leaves the tab. Vanilla HTML and JS, no build step.</p>
+
+  <ul class="key">
+    <li><b>It drives the arm purely through the public API</b>
+      <small>Every button is an endpoint call. If it works in the console it works from
+      <code>curl</code>, and vice versa — the console has no privileged path.</small></li>
+    <li><b>Live telemetry off the WebSocket</b>
+      <small>Joints as bipolar bars, TCP pose and quaternion, gripper, safety and activity,
+      active-command progress. The open socket is also the deadman heartbeat.</small></li>
+    <li><b>A View card that toggles 3D ↔ Camera</b>
+      <small>3D renders the live arm in three.js from a baked glTF bundle, driven entirely off
+      telemetry. Camera swaps in that arm's MJPEG feed.</small></li>
+    <li><b>A drag-a-target gizmo that does not move the robot</b>
+      <small>Dragging it only writes the pose fields. The arm goes nowhere until you press
+      <b>Send</b> — one lease-gated Cartesian move.</small></li>
+    <li><b>Record and Play panels</b>
+      <small>Capture snapshots live state into a waypoint list you can save; the Play builder chains
+      several saved trajectories and lets the <em>server</em> concatenate them.</small></li>
+  </ul>
+
+  <div class="warn">
+    <b>Two consequences of the browser having no IK.</b> The rendered arm does <em>not</em> preview the
+    target pose — only real telemetry moves it. And an unreachable target is <em>not</em> rejected
+    client-side: seeded IK always returns something, so the arm moves to the closest solution it finds
+    rather than erroring. Watch the real arm, not the render.
+  </div>
+
+  <details class="deep"><summary>The 3D viewer, and the MJPEG teardown detail</summary>
+    <div class="body">
+      <p>A vendored <code>urdf-loader</code> loads a baked glTF bundle from <code>web/models/&lt;arm&gt;/</code>.
+      Each telemetry frame sets the six joint values from <code>RobotState.q</code>, plus the Hand-E
+      finger from <code>gripper_frac</code>. It's display-only: OrbitControls move the camera, telemetry
+      moves the joints. Missing WebGL or a missing bundle degrades to a quiet "3D model unavailable"
+      note. Regenerate bundles with <code>scripts/export_web_models.py</code>.</p>
+      <p><b>Leaving the Camera tab removes the <code>src</code> attribute</b> rather than hiding the
+      element — an MJPEG connection stays open for as long as <code>src</code> is set. The feed is also
+      torn down and re-established on disconnect and on arm switch, so one arm's video can't linger on
+      the other's panel.</p>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Operating it" data-title="Cameras">
+  <p class="kicker">Operating it · 21</p>
+  <h2>Cameras — and the two-clock trick</h2>
+  <p class="lede">One USB camera per arm. The interesting part isn't the video, it's the timestamps.</p>
+
+  <div class="code"><button class="copy">copy</button><pre>GET /ur15/camera/frame
+X-Frame-Ts:      1215836.808263416     <span class="c">← time.monotonic() — the SAME clock as RobotState.ts</span>
+X-Frame-Ts-Unix: 1785538137.972138     <span class="c">← wall clock</span>
+X-Frame-Seq:     11</pre></div>
+
+  <ul class="key">
+    <li><b><code>ts</code> is the same monotonic clock as <code>RobotState.ts</code></b>
+      <small>That's what makes a frame pairable with telemetry — you can say with confidence which
+      joint configuration a given image corresponds to.</small></li>
+    <li><b><code>ts_unix</code> anchors that clock to absolute time</b>
+      <small>One frame gives you <code>ts_unix − ts</code>, which converts <em>any</em>
+      <code>RobotState.ts</code> to wall time. So <code>RobotState</code> needs no extra field.</small></li>
+    <li><b>This is why capture runs in-process</b>
+      <small>A separate capture process would have its own monotonic origin and the pairing would
+      break. It's also why the WSL camera question matters so much.</small></li>
+  </ul>
+
+  <div class="note">
+    <b>Best-effort by design</b>, like the gripper. No camera means <code>503</code> plus
+    <code>{"available": false, "error": "&lt;why&gt;"}</code> — never a startup failure. The reason is
+    carried through rather than swallowed, and printed at startup.
+  </div>
+</section>
+
+<!-- ============================ PART IV — HOW IT WORKS ============================ -->
+
+<section class="slide" data-part="How it works" data-title="RobotController">
+  <p class="kicker">How it works · 22</p>
+  <h2>The controller core</h2>
+  <p class="lede">One thread-safe motion implementation behind every surface. This refactor is the
+     spine of the project — everything after it was cheap because of it.</p>
+
+  <div class="cols">
+    <div class="card">
+      <h4>The base owns <span class="tag">shared</span></h4>
+      <ul>
+        <li>The <b>command executor</b> — one motion at a time; submitting while busy raises
+          <code>Busy</code>; <code>stop</code>/<code>estop</code> preempt.</li>
+        <li>The <b>state-poll thread</b> producing <code>RobotState</code>.</li>
+        <li><b>Segment building</b> and interpolation — Cartesian and joint-space.</li>
+        <li>A bounded <b>command history</b>, so <code>/command/{id}</code> still answers after
+          completion.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Subclasses own <span class="tag">per arm</span></h4>
+      <ul>
+        <li><code>_read_q</code> — read joints from the hardware.</li>
+        <li><code>_ik</code> — seeded inverse kinematics.</li>
+        <li><code>_run_play</code> — the servo stream (servoJ vs EGM).</li>
+        <li><code>_graceful_stop</code> / <code>_hard_stop</code>.</li>
+      </ul>
+      <p style="font-size:13.2px;color:var(--muted)">The motion loops were <em>lifted from the tuned
+      teleop scripts</em>, not rewritten — so behaviour is identical on every surface.</p>
+    </div>
+  </div>
+
+  <div class="code"><button class="copy">copy</button><pre>from control import make_controller
+
+c = make_controller("ur15")           <span class="c"># owns the hardware client</span>
+cid = c.move_to_pose(pos, wxyz, speed=0.5)   <span class="c"># returns a command id immediately</span>
+result = c.wait(cid)                  <span class="c"># block for the outcome, if you want to</span>
+state = c.get_state()                 <span class="c"># RobotState, from the poll thread</span></pre></div>
+
+  <div class="note">
+    <b>Because it uses the same hardware clients the simulator shadows, the entire core runs offline.</b>
+    <code>uv run scripts/control_smoketest.py</code> exercises move, play, stop, gripper, state and
+    free-drive with no robot present.
+  </div>
+</section>
+
+
+<section class="slide" data-part="How it works" data-title="Motion model">
+  <p class="kicker">How it works · 23</p>
+  <h2>The motion model</h2>
+  <p class="lede">Two interpolation modes, one velocity profile, and a hard speed ceiling that the
+     user interface cannot raise.</p>
+
+  <div class="cols">
+    <div class="card">
+      <h4>Cartesian <span class="tag">move_to_pose · play</span></h4>
+      <p>The <b>tip travels a straight line</b>. Each tick lerps position and slerps orientation
+      between the segment's two poses, then re-solves seeded IK. Endpoints are anchored to the exact
+      joint goals so the ends are never approximate.</p>
+    </div>
+    <div class="card">
+      <h4>Joint-space <span class="tag">move_to_joints</span></h4>
+      <p>A joint command should move in joint space. A straight Cartesian line between two arbitrary
+      joint configurations can be <b>unreachable or cross a singularity</b> — so this one deliberately
+      does not try.</p>
+    </div>
+  </div>
+
+  <h3>The trapezoidal profile</h3>
+  <p>Every segment advances <code>alpha ∈ [0,1]</code> linearly in time, then maps it through
+     <code>alpha_to_s()</code> — parabolic acceleration, linear cruise, parabolic deceleration, with
+     zero velocity at both ends. <code>RAMP_FRAC = 0.25</code> by default; <code>0.5</code> gives a
+     pure triangle, <code>0.1</code> a sharper ramp.</p>
+
+  <div class="diagram">speed
+  │        ┌─────────────────┐
+  │       ╱                   ╲          RAMP_FRAC = 0.25
+  │      ╱                     ╲
+  │     ╱                       ╲
+  └────┴───────────────────────┴────► alpha
+   0   .25                   .75    1</div>
+
+  <div class="warn">
+    <b>The GoFa speed cap is computed analytically, not by simulation.</b> For a straight tool line the
+    peak speed is exactly <code>‖p₁−p₀‖ · v_peak / seg_duration</code>, so
+    <code>_cap_seg_duration_cartesian()</code> stretches each segment until real TCP speed is under
+    <code>MAX_TCP_SPEED</code> (0.25 m/s, the ISO/TS 15066 collaborative limit). <b>The slider can only
+    scale below that cap</b> — no combination of slider and pose can exceed it.
+  </div>
+
+  <details class="deep"><summary>Key tunables, and where they live</summary>
+    <div class="body">
+      <p>Shared values live in <code>lib/robot_common.py</code>; script-specific ones stay local.
+      Retune a shared number once and all four entry points pick it up.</p>
+      <table>
+        <tr><th>Constant</th><th>Default</th><th>Effect</th></tr>
+        <tr><td><code>RAMP_FRAC</code></td><td>0.25</td><td>Trapezoid ramp fraction</td></tr>
+        <tr><td><code>MIN_SEG_DURATION_S</code></td><td>0.5 s</td><td>Floor on segment time — keeps tiny moves smooth</td></tr>
+        <tr><td><code>DWELL_S</code></td><td>0.2 s</td><td>Pause at each intermediate waypoint</td></tr>
+        <tr><td><code>GRIP_PREDELAY_S</code></td><td>0.5 s</td><td>Arm settles this long before the gripper actuates</td></tr>
+        <tr><td><code>GRIP_EPS</code></td><td>0.02</td><td>Minimum gripper change (2%) before re-actuating</td></tr>
+        <tr><td><code>UR_MAX_JOINT_SPEED</code></td><td>1.0 rad/s</td><td>Peak per-joint speed at slider 1.0</td></tr>
+        <tr><td><code>UR_SERVO_STOP_DECEL</code></td><td>2.0 rad/s²</td><td>Final settle deceleration (the default 10 felt jerky)</td></tr>
+        <tr><td><code>GOFA_MAX_TCP_SPEED</code></td><td>0.25 m/s</td><td><b>Hard cap on real tool speed</b></td></tr>
+        <tr><td><code>GOFA_HOLD_AFTER_PLAY_S</code></td><td>1.5 s</td><td>Hold the final target so RAPID's <code>\CondTime</code> fires</td></tr>
+        <tr><td><code>rest_weight</code></td><td>2.0</td><td>IK pull toward the current joints</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="How it works" data-title="Seeded IK">
+  <p class="kicker">How it works · 24</p>
+  <h2>Why the stock IK solver wasn't enough</h2>
+  <p class="lede">PyRoki's example <code>solve_ik</code> has no seed and no posture cost. It returns
+     <em>a</em> valid solution — frequently in a distant null-space branch.</p>
+
+  <ul class="key">
+    <li><b>The failure looks like a bug but isn't</b>
+      <small>You ask for a pose 5 cm away and the wrist flips 180° or the elbow swings to the other
+      side. The solution is <em>correct</em>; it's just not the one a human meant.</small></li>
+    <li><b>Two additions fix it</b>
+      <small><code>pk.costs.rest_cost(joint_var, q_seed, weight=rest_weight)</code> pulls the solution
+      toward the seed, and <code>initial_vals</code> starts the optimizer <em>at</em> the seed rather
+      than at zeros.</small></li>
+    <li><b>The trade-off is ~0.5 mm of pose error at <code>rest_weight = 2.0</code></b>
+      <small>Raise it to 5–10 if branches still flip; the target drifts more but stays in the same
+      kinematic family. That's almost always the better deal for teleoperation.</small></li>
+  </ul>
+
+  <div class="note">
+    <b>First call costs ~800 ms</b> — JAX JIT compilation. Subsequent calls are milliseconds.
+    Both teleop scripts call <code>_warmup_ik()</code> at launch (a no-op solve at the current pose)
+    so that cost lands during startup instead of on your first Plan click. The headless scripts import
+    jax <em>lazily</em> for the same reason, which is also why forward kinematics is deliberately
+    <b>not</b> shared in <code>robot_common.py</code>.
+  </div>
+</section>
+
+
+<section class="slide" data-part="How it works" data-title="Offline simulator">
+  <p class="kicker">How it works · 25</p>
+  <h2>The offline simulator</h2>
+  <p class="lede">It doesn't reimplement the robot. It runs the real scripts and lies to them about
+     what's on the other end of the socket.</p>
+
+  <div class="diagram">sim.py ur15
+   │
+   ├─ robot_sim.install()      inject fakes into sys.modules:
+   │                             rtde_control, rtde_receive,
+   │                             hande_gripper, abb_rws, abb_egm
+   │
+   └─ runpy → scripts/teleop_ur15.py     <span class="c">← the REAL script, unmodified</span>
+                    │
+                    └─ import rtde_control   <span class="c">← gets the fake, transparently</span></div>
+
+  <ul class="key">
+    <li><b>Every feature works in simulation automatically</b>
+      <small>Because it literally executes <code>teleop_ur15.py</code>. There is no second
+      implementation to drift out of sync.</small></li>
+    <li><b>The fakes sit at the transport layer</b>
+      <small>Perfect-tracking kinematics, plus a fake RAPID supervisor that mimics the
+      <code>egm_go</code> handshake. The IK, the profiles, the UI and the URDFs are all real.</small></li>
+    <li><b>"Offline" means no robot, not no dependencies</b>
+      <small>It still needs the <code>.venv</code> — it runs the genuine jax/pyroki/viser stack.</small></li>
+    <li><b>This is what made the big refactors safe</b>
+      <small>Lifting motion logic out of two large teleop scripts into a shared controller is
+      terrifying without a way to test it. The simulator arrived two days before that refactor —
+      not a coincidence.</small></li>
+  </ul>
+
+  <div class="warn">
+    <b>The one honest limitation:</b> free-drive can't be hand-guided in simulation. There's no arm to
+    move, so <code>teachMode</code> is a no-op and captured points sit at the home pose. Offline
+    authoring goes through the gizmo, Live, or Plan. Home poses are tunable constants in
+    <code>lib/robot_sim.py</code>.
+  </div>
+</section>
+
+
+<section class="slide" data-part="How it works" data-title="Safety architecture">
+  <p class="kicker">How it works · 26</p>
+  <h2>Safety, layer by layer</h2>
+  <p class="lede">No single mechanism is trusted. Each layer below assumes the one above it failed.</p>
+
+  <table>
+    <tr><th style="width:16%">Layer</th><th>Mechanism</th><th>Stops what</th></tr>
+    <tr><td><b>Physical</b></td><td>E-stop buttons; X14 ES1/ES2 jumpers; both arms are collaborative-rated with built-in collision detection</td><td>Everything, unconditionally</td></tr>
+    <tr><td><b>Controller</b></td><td>UR safety limits &amp; protective stop · RAPID <code>\MaxSpeedDeviation := 20 deg/s</code> · <code>AccSet 50,50</code></td><td>A software bug commanding something violent</td></tr>
+    <tr><td><b>Motion</b></td><td><code>MAX_TCP_SPEED</code> 0.25 m/s analytic cap · per-joint speed and acceleration bounds · <code>MIN_SEG_DURATION_S</code> floor</td><td>Fast motion from a legitimate-looking command</td></tr>
+    <tr><td><b>API</b></td><td>Shape + finiteness validation · <code>speed</code> clamped to <code>(0,1.0]</code> · single-writer lease · trajectory-name validation</td><td>Malformed input, and two clients fighting over one arm</td></tr>
+    <tr><td><b>Liveness</b></td><td>Deadman watchdog on the telemetry WebSocket</td><td>An operator whose laptop died mid-motion</td></tr>
+    <tr><td><b>Interaction</b></td><td>"Execute" auto-unticks at play start · free-drive/Live/Play mutually exclusive · always-available Stop and E-stop</td><td>Operator error</td></tr>
+  </table>
+
+  <ul class="key">
+    <li><b>Stop is never lease-gated</b>
+      <small>Any authenticated client can stop the arm at any time, including one that never held
+      the lease. Requiring a lease to stop a robot is exactly backwards.</small></li>
+    <li><b>A compliant arm never outlives its lease</b>
+      <small>Stop, E-stop, a forced steal, the deadman, and lease release all end free-drive.
+      The arm cannot be left hand-guidable by a client that has gone away.</small></li>
+  </ul>
+
+  <details class="deep"><summary>How the deadman actually works</summary>
+    <div class="body">
+      <p>An open, lease-matched telemetry WebSocket <em>is</em> the heartbeat — there's no separate
+      ping endpoint to forget. If the lease holder goes silent while the arm is <b>live</b> (a motion
+      running, or free-drive engaged), the watchdog stops the arm and releases the lease.</p>
+      <p><b>Two documented traps</b>, both in <code>docs/robot-state-reference.md</code>:</p>
+      <ul>
+        <li>Polling <code>GET /command/{id}</code> does <b>not</b> keep the deadman happy. Only the
+          WebSocket does.</li>
+        <li><code>active_command.progress</code> is <b>per segment</b>, and reports an interrupted
+          segment as finished. Don't treat it as overall completion.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="How it works" data-title="RobotState">
+  <p class="kicker">How it works · 27</p>
+  <h2><code>RobotState</code> — the one shape</h2>
+  <p class="lede">Produced by the controller's poll thread, consumed by every surface. If you learn
+     one data structure in this codebase, learn this one.</p>
+
+  <div class="code"><button class="copy">copy</button><pre>{
+  "ts": 1215836.808,          <span class="c">// monotonic — pairs with camera frame timestamps</span>
+  "robot": "ur15",
+  "q": [0.1, -1.4, 1.2, -1.3, -1.5, 0.0],       <span class="c">// six joints, radians</span>
+  "pose": {"pos": [x,y,z], "wxyz": [w,x,y,z]},  <span class="c">// grasp / end-effector pose</span>
+  "gripper_frac": 0.0,        <span class="c">// 0 open .. 1 closed; null if no gripper</span>
+  "safety_state": "NORMAL",
+  "controller_state": "RUNNING",
+  "activity": "idle",         <span class="c">// idle | moving | playing | stopped | freedrive</span>
+  "active_command": {"id": null, "kind": null, "status": null,
+                     "progress": null, "error": null},
+  "conn_ok": true,
+  "health": { … }             <span class="c">// transport-specific extras</span>
+}</pre></div>
+
+  <ul class="key">
+    <li><b><code>active_command</code> is never <code>null</code></b>
+      <small>Its sub-keys are always present, so a client can read <code>active_command.status</code>
+      without null-checking the parent, and the served shape never changes underneath it.</small></li>
+    <li><b><code>?flat=1</code> gives a scalar-only version</b>
+      <small><code>q_0…q_5</code>, <code>pose_pos_x</code>, <code>command_status</code> — for clients
+      that can't walk nested JSON. Identical key set on every frame and for both arms.</small></li>
+    <li><b>Absent values are <code>None</code>, never a missing key</b>
+      <small>A consumer never has to distinguish "not applicable" from "field disappeared".</small></li>
+  </ul>
+
+  <div class="note">
+    <code>docs/robot-state-reference.md</code> documents every field individually — meaning, units,
+    per-arm differences, and the two traps above. It's the reference to hand anyone writing a client.
+  </div>
+</section>
+
+<!-- ============================ PART V — WAR STORIES ============================ -->
+
+<section class="slide" data-part="War stories" data-title="Convergence">
+  <p class="kicker">War stories · 28</p>
+  <h2>Chasing the last millimetre</h2>
+  <p class="lede">Nine commits over two days, all on one problem: the arm stopped <em>near</em> the end
+     of a trajectory instead of <em>at</em> it.</p>
+
+  <div class="tl">
+    <div class="ev"><div class="what">Symptom</div>
+      <div class="detail">A play would finish and the arm would sit visibly short of the taught pose —
+        and then <em>snap back</em> slightly when the next command arrived.</div></div>
+    <div class="ev"><div class="what">Cause 1 — the stream ended before the arm arrived</div>
+      <div class="detail"><code>servoJ</code> is a <em>target</em>, not a guarantee. When the loop stopped
+        sending, the arm stopped wherever it had got to. Fix: hold the final target until it actually
+        converges.</div></div>
+    <div class="ev"><div class="what">Cause 2 — "good enough" was a moving target</div>
+      <div class="detail">A fixed tolerance was either too loose (visible error) or unreachable (hung
+        forever). Fix: <b>plateau detection</b> — keep holding while error still improves by at least
+        <code>UR_SETTLE_EPS_RAD</code>; after <code>UR_SETTLE_STALL_TICKS</code> non-improving checks
+        you are at the hardware floor, so stop. Capped at <code>UR_SETTLE_MAX_S</code> so it can
+        never hang.</div></div>
+    <div class="ev"><div class="what">Cause 3 — gravity droop from an undeclared payload</div>
+      <div class="detail">The ~1 kg gripper made <code>servoJ</code> hold the loaded joints slightly below
+        target. Fix: <code>setPayload(1.0, (0,0,0.06))</code> at startup so the controller compensates.</div></div>
+    <div class="ev"><div class="what">A red herring worth knowing</div>
+      <div class="detail">The error <em>looked</em> worse than it was. The gizmo targets the grasp point,
+        ~156 mm past <code>tool0</code>, so the same joint error shows up as a larger Cartesian shift.
+        Geometric, not a regression.</div></div>
+  </div>
+
+  <div class="note">
+    <b>Result:</b> a stiffer settle gain (600 vs 300 during motion) plus plateau detection drives joint
+    error to the <code>servoJ</code> floor — roughly 0.6 mm at the tip — on every play, regardless of
+    load. <b>The transferable lesson:</b> when you can't pick a tolerance, stop guessing and detect
+    when improvement stops.
+  </div>
+</section>
+
+
+<section class="slide" data-part="War stories" data-title="Gripper pivot">
+  <p class="kicker">War stories · 29</p>
+  <h2>The gripper that couldn't be talked to</h2>
+  <p class="lede">A design constraint that only appears once both halves are running at the same time.</p>
+
+  <ul class="key">
+    <li><b>The conflict</b>
+      <small><code>ur_rtde</code> keeps its control script resident for the whole session. A Robotiq
+      gripper <em>program</em> also needs to run on the controller. Both cannot hold the program slot,
+      so the obvious approach — run the vendor's gripper program — is structurally impossible.</small></li>
+    <li><b>The insight</b>
+      <small>The Grippers URCap doesn't only provide a program. It also runs a <b>background daemon</b>
+      that owns the wrist RS-485 bus and serves a socket on port <b>63352</b> — independent of whatever
+      program is running.</small></li>
+    <li><b>The result</b>
+      <small><code>hande_gripper.py</code> speaks that socket's newline-terminated ASCII protocol,
+      stdlib only. It coexists with <code>ur_rtde</code>, and the pendant's own gripper buttons keep
+      working because they talk to the same daemon.</small></li>
+  </ul>
+
+  <div class="code"><button class="copy">copy</button><pre><span class="c"># the whole protocol, essentially</span>
+SET POS 255 SPE 255 FOR 150 GTO 1   →  ack        <span class="c"># 0 open .. 255 closed</span>
+GET STA                             →  STA 3      <span class="c"># 3 = activated</span>
+GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stopped on an object</span></pre></div>
+
+  <div class="warn">
+    <b>Port 63352 is firewalled by default in PolyScope X</b>, exactly like RTDE. Open it under
+    Settings → Security → Services, and <b>run <code>scripts/verify_hande.py</code> before trusting
+    gripper control</b>. If it stays unreachable, the fallbacks are a USB-RS485 adapter speaking
+    Modbus directly, or the RS485 URCap socket bridge — both absorbed by swapping the transport inside
+    <code>HandEGripper</code>. The connection is best-effort: with no socket, the system logs it and
+    runs visualisation-only.
+  </div>
+
+  <div class="note">
+    <b>One tracked value.</b> <code>gripper_frac</code> (0.0 open … 1.0 closed) is the single source of
+    truth — the slider drives it, waypoints record it, the render always shows it, and the startup
+    "open" command means the value is known without polling. Legacy <code>"open"</code>/<code>"close"</code>
+    strings in old trajectory files normalise on load.
+  </div>
+</section>
+
+
+<section class="slide" data-part="War stories" data-title="OmniCore RWS">
+  <p class="kicker">War stories · 30</p>
+  <h2>Ten ways OmniCore RWS will waste your afternoon</h2>
+  <p class="lede">The most-starred ABB Python client doesn't work on this controller. Here is
+     everything learned the hard way, so nobody relearns it.</p>
+
+  <table>
+    <tr><th style="width:30%">Trap</th><th>What actually happens</th></tr>
+    <tr><td><b>The obvious library is wrong</b></td><td><code>abb-robot-client</code> supports IRC5 only. On OmniCore it silently 401s. Hence <code>abb_rws.py</code>.</td></tr>
+    <tr><td><b>Basic auth, not Digest</b></td><td>RWS 2.0 advertises <code>WWW-Authenticate: Basic</code>. The popular client uses Digest — that's the silent 401.</td></tr>
+    <tr><td><b>HTTPS only, port 443</b></td><td>Port 80 is disabled. Self-signed cert, so verification is off and the warning suppressed.</td></tr>
+    <tr><td><b>The <code>;v=2.0</code> suffix</b></td><td>Every POST/PUT needs <code>Content-Type: application/x-www-form-urlencoded;v=2.0</code>. Without the suffix: <code>406 Not Acceptable</code>.</td></tr>
+    <tr><td><b>No consistent URL convention</b></td><td>Mastership puts the action <em>in the path</em> (<code>/rw/mastership/edit/request</code>); many other endpoints keep it in the body. IRC5 did the opposite.</td></tr>
+    <tr><td><b>Symbol paths need the module</b></td><td><code>/rw/rapid/symbol/RAPID/{task}/{module}/{var}/data</code> — the module name is required on OmniCore, and wasn't on IRC5.</td></tr>
+    <tr><td><b>Mastership orphans easily</b></td><td>A crashed process leaves the controller believing mastership is held; later requests 403. Wait ~30 s or reboot from the pendant. <code>abb_rws.py</code> registers an <code>atexit</code> hook to release on clean exit.</td></tr>
+    <tr><td><b><code>MainModule</code> collides</b></td><td>It ships with its own <code>PROC main()</code>; RAPID won't compile two. The installer unloads it first.</td></tr>
+    <tr><td><b>Build errors hide in plain sight</b></td><td>The event log says "Errors in RAPID program". The <em>useful</em> detail — module, row, column, type — is at <code>/rw/rapid/tasks/T_ROB1/program/builderror</code>.</td></tr>
+    <tr><td><b>No Auto/Manual key switch</b></td><td>The C30 has none — mode is a touchscreen control. Larger ABB controllers do have one; don't assume.</td></tr>
+  </table>
+
+  <div class="warn">
+    <b>Still unsolved:</b> <code>resetpp</code> (PP-to-Main) and program start over RWS. Every URL shape
+    tried returned 400 "semantic error" or 403, so <code>install_gofa_egm.py</code> falls back to asking
+    you to press the buttons on the pendant. Cracking this would make the install fully automatic —
+    a good first task for whoever picks this up.
+  </div>
+</section>
+
+
+<section class="slide" data-part="War stories" data-title="Offline by design">
+  <p class="kicker">War stories · 31</p>
+  <h2>A machine cabled to a robot has no internet</h2>
+  <p class="lede">An obvious statement that quietly invalidates a lot of standard tooling.
+     Several decisions in this repo exist only because of it.</p>
+
+  <ul class="key">
+    <li><b>Swagger UI is vendored</b>
+      <small>FastAPI's stock docs page loads <code>swagger-ui-bundle.js</code> from a CDN. On the robot
+      network that's <code>ERR_NAME_NOT_RESOLVED</code> and a blank page. Both apps are built with
+      <code>docs_url=None</code> and re-add <code>/docs</code> pointed at
+      <code>web/vendor/swagger-ui/</code>. ReDoc was dropped — CDN-only, same failure.</small></li>
+    <li><b>The 3D viewer uses a native import map, no bundler and no CDN</b>
+      <small>three.js and urdf-loader are vendored as ESM. Model bundles are <em>baked and committed</em>
+      so the server doesn't need a <code>robot_descriptions</code> cache to serve them.</small></li>
+    <li><b>The console is a single static file</b>
+      <small>Served same-origin, so there's no CORS and the token never leaves the tab. No build step
+      means nothing to rebuild on a machine with no npm registry.</small></li>
+    <li><b><code>uv.lock</code> pins everything, including the interpreter</b>
+      <small>Reproducibility on a machine you can't casually reinstall.</small></li>
+  </ul>
+
+  <div class="note">
+    <b>The general principle:</b> assume the deployment machine has no DNS, no package registry, and no
+    second chance. Anything that fetches at runtime is a latent outage. Everything this system needs to
+    render or serve is in the repository.
+  </div>
+
+  <details class="deep"><summary>Other gotchas worth carrying forward</summary>
+    <div class="body">
+      <ul>
+        <li><b>Boost 1.90 breaks <code>ur_rtde</code> on macOS.</b> Boost made Boost.System header-only
+          in 1.87+, so no <code>boost_system-*-Config.cmake</code> ships and
+          <code>find_package(boost_system CONFIG)</code> dies. This bites on <em>every</em> machine
+          because ur_rtde publishes no wheels and always compiles. Fix: keg-only
+          <code>boost@1.85</code> plus <code>BOOST_ROOT</code>/<code>CMAKE_PREFIX_PATH</code>.</li>
+        <li><b>yourdfpy can't open <code>file://</code> URIs.</b> xacrodoc resolves
+          <code>package://</code> into absolute <code>file://</code> paths, but yourdfpy's
+          <code>filename_handler</code> only fires for <em>unresolved</em> URIs — so the path goes
+          straight to trimesh, which fails. Both local URDFs are generated with the
+          <code>file://</code> prefix stripped back to <code>package://</code>.</li>
+        <li><b>The GoFa variant matters.</b> An early commit fixes <code>crb15000_12_127</code> →
+          <code>crb15000_5_95</code>. Match the URDF to the hardware nameplate — wrong link lengths
+          mean wrong IK, silently.</li>
+        <li><b>The pre-uv venv broke when the repo directory moved</b> — it was linked against a
+          miniconda interpreter. That's the direct reason uv now manages the interpreter too.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<!-- ============================ PART VI — OPERATIONS ============================ -->
+
+<section class="slide" data-part="Operations" data-title="E-stop &amp; recovery">
+  <p class="kicker">Operations · 32</p>
+  <h2>E-stop and recovery</h2>
+  <p class="lede">The most important operational procedure in the system, and the one most likely to
+     be needed while someone is watching.</p>
+
+  <div class="warn">
+    <b>The rule, from your notes:</b> after any E-stop or safety stop, you must <b>restart the script
+    <em>and</em> restart the robot-side processes.</b> Recovering the robot alone is not enough —
+    the Python side is holding a transport session that no longer corresponds to reality.
+  </div>
+
+  <h3>Why a restart is genuinely required</h3>
+  <ul>
+    <li><b>UR15:</b> a protective stop tears down the control session. <code>ur_rtde</code>'s resident
+        control script is gone, so every subsequent <code>servoJ</code> goes nowhere.</li>
+    <li><b>GoFa:</b> the safety stop halts the RAPID program. <code>PyEgm</code> is no longer parked at
+        its <code>WaitUntil</code>, so setting <code>egm_go</code> has no effect and the arm silently
+        ignores a perfectly valid UDP stream. It must be brought back to Main and started.</li>
+  </ul>
+
+  <div class="cols">
+    <div class="card">
+      <h4>UR15 recovery <span class="tag">verified</span></h4>
+      <ol style="padding-left:20px">
+        <li>Clear the cause (release the E-stop, remove the obstruction).</li>
+        <li>On the pendant: acknowledge the fault and re-enable the robot; confirm the ring is
+            <b>green</b>.</li>
+        <li>Confirm <b>Remote Control</b> mode is still selected.</li>
+        <li>Ctrl-C the Python process and restart it.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h4>GoFa recovery <span class="tag">verified</span></h4>
+      <ol style="padding-left:20px">
+        <li>Clear the cause; release the E-stop.</li>
+        <li>Pendant: <b>motors on</b>.</li>
+        <li>Pendant: <b>PP to Main</b>, then green <b>Play</b> — <code>PyEgm</code> must be running and
+            parked again.</li>
+        <li>Ctrl-C the Python process and restart it.</li>
+        <li>If RWS now refuses mastership, wait ~30 s for the orphaned session to time out.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Confirmed procedure.</b> Both sequences above are verified against the real cell.
+    The two steps people skip are re-checking <b>Remote Control</b> mode on the UR after a
+    protective stop, and remembering that on the GoFa <b>PP&nbsp;to&nbsp;Main + Play is not optional</b> —
+    without it the arm accepts the EGM stream and silently ignores it.
+  </div>
+
+  <details class="deep"><summary>The software stop paths (distinct from a physical E-stop)</summary>
+    <div class="body">
+      <table>
+        <tr><th>Path</th><th>UR15</th><th>GoFa</th></tr>
+        <tr><td><b>Stop</b> — graceful</td><td><code>servoStop(decel=2.0)</code></td><td>Clear <code>egm_go</code>, let EGM ramp out</td></tr>
+        <tr><td><b>E-stop</b> — hard</td><td><code>triggerProtectiveStop()</code> + <code>stopScript()</code></td><td>Clear both flags + <code>stop_program()</code></td></tr>
+        <tr><td>Recovery after</td><td>Pendant acknowledge, restart script</td><td>PP to Main + Play, restart script</td></tr>
+      </table>
+      <p><code>POST /estop</code> is visible in <code>safety_state</code>, so a client can tell an
+      emergency-stopped arm from a merely idle one. Neither software path is a substitute for the
+      physical button — they're for "stop this motion now", not "someone is in danger".</p>
+      <p>The GoFa hard stop halts RAPID and drops lead-through, but does <b>not</b> do a software
+      motors-off over RWS. Recovery is PP-to-Main + Play, or re-running the installer.</p>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Operations" data-title="Troubleshooting">
+  <p class="kicker">Operations · 33</p>
+  <h2>Troubleshooting matrix</h2>
+  <p class="lede">Symptom → cause → fix. Everything learned in the lab and everything learned in the
+     code, in one table. Start here before reading any source.</p>
+
+  <h3>Connectivity</h3>
+  <table>
+    <tr><th style="width:31%">Symptom</th><th>Cause</th><th>Fix</th></tr>
+    <tr><td>Script hangs at the <b>UR15 connect</b> stage</td><td>USB-Ethernet dongle link dropped</td><td><b>Check the dongle's lights; unplug and replug it</b>, then re-run the script</td></tr>
+    <tr><td>Ping works, <b>every TCP port times out</b></td><td>PolyScope X firewall</td><td>Pendant → Settings → Security → Services: enable 29999, 30001, 30004, 63352</td></tr>
+    <tr><td>Cannot attach the RTDE control interface</td><td>UR is in <b>Local</b> mode</td><td>Toggle <b>Remote Control</b> (top-right on the pendant)</td></tr>
+    <tr><td>Every robot port refused, ping fails too</td><td>A VPN claiming <code>192.168.125.0/24</code> is capturing the route</td><td>Disconnect the VPN; verify with <code>ip route get 192.168.125.1</code></td></tr>
+    <tr><td>GoFa unreachable on 443</td><td>Cable in the <b>LAN</b> port (I/O network) instead of <b>MGMT</b></td><td>Move to MGMT — rightmost of the three at the bottom-right</td></tr>
+    <tr><td><b>Startup error after rebooting the ABB controller</b></td><td>MGMT was connected during boot</td><td><b>Disconnect MGMT before powering on</b>; reconnect once it's up</td></tr>
+  </table>
+
+  <h3>GoFa / RAPID</h3>
+  <table>
+    <tr><th style="width:31%">Symptom</th><th>Cause</th><th>Fix</th></tr>
+    <tr><td>Everything reports success, <b>the arm never moves</b></td><td><code>PyEgm</code> isn't running/parked, or the EGM peer IP is wrong</td><td>PP to Main + Play on the pendant; confirm <code>EGM_COMM.cfg</code> <code>RemoteAddress</code> = the PC's IP</td></tr>
+    <tr><td>RWS returns <b>403</b> on mastership</td><td>Orphaned mastership from a crashed process</td><td>Wait ~30 s, or reboot from the pendant</td></tr>
+    <tr><td><b>406 Not Acceptable</b> on a POST</td><td>Missing the <code>;v=2.0</code> content-type suffix</td><td>Use <code>abb_rws._post()</code>, which sets it</td></tr>
+    <tr><td>"Errors in RAPID program" (event 40160)</td><td>Usually the <code>MainModule</code> <code>main()</code> collision</td><td>Read <code>/rw/rapid/tasks/T_ROB1/program/builderror</code>; re-run the installer, which unloads it</td></tr>
+    <tr><td>Auto mode fires a guard stop instantly</td><td>Missing <b>AS1/AS2</b> jumpers on X14</td><td>Jumper pins 5–6 and 7–8; confirm the event log names AS1/AS2</td></tr>
+    <tr><td>Brief hitch after a long pause in Live</td><td><code>\CondTime := 1</code> closed the EGM session</td><td>Expected — the loop detects the stale feed and re-arms</td></tr>
+  </table>
+
+  <h3>Gripper, cameras, install</h3>
+  <table>
+    <tr><th style="width:31%">Symptom</th><th>Cause</th><th>Fix</th></tr>
+    <tr><td>Gripper renders but never moves</td><td>Port 63352 unreachable — best-effort connect fell back to viz-only</td><td>Open 63352 in the firewall; run <code>verify_hande.py</code></td></tr>
+    <tr><td><code>/camera/*</code> returns 503</td><td>Device not forwarded, or the wrong index</td><td><code>usbipd attach</code>; then <code>verify_cameras.py --save</code></td></tr>
+    <tr><td>OpenCV says "configure with libavdevice"</td><td>No device present; cv2 fell through to the FFMPEG backend</td><td>It's a <b>missing camera</b>, not a build flag — check <code>/dev/video*</code></td></tr>
+    <tr><td>Second camera opens but yields no frames</td><td>Grabbed the UVC <b>metadata</b> node, not the capture node</td><td>Use index 2 (Linux) or a <code>/dev/v4l/by-id/…</code> path</td></tr>
+    <tr><td>Robot renders as an empty scene</td><td>Git LFS pointers were never resolved</td><td><code>git lfs install &amp;&amp; git lfs pull</code></td></tr>
+    <tr><td><code>uv sync</code> fails building ur_rtde <span class="pill">macOS</span></td><td>Boost 1.87+ removed the CMake config ur_rtde looks for</td><td><code>brew install boost@1.85</code>, export <code>BOOST_ROOT</code></td></tr>
+    <tr><td><code>/docs</code> is blank</td><td>Serving the stock CDN-backed Swagger page with no DNS</td><td>Already fixed — vendored. In multi mode use <code>/ur15/docs</code>, not <code>/docs</code></td></tr>
+  </table>
+
+  <div class="needs">
+    <span class="q" style="margin-top:0">Any recurring failure you hit in the lab that isn't in this
+    table? The ones that cost you an hour are exactly the ones worth adding — especially anything
+    intermittent.</span>
+  </div>
+</section>
+
+
+<section class="slide" data-part="Operations" data-title="Testing">
+  <p class="kicker">Operations · 34</p>
+  <h2>Verifying the system</h2>
+  <p class="lede">Three offline test suites and two hardware probes. All five run without touching
+     a robot except the probes, which exist precisely to test hardware.</p>
+
+  <table>
+    <tr><th>Command</th><th>Needs a robot?</th><th>What it proves</th></tr>
+    <tr><td><code>uv run scripts/sim_smoketest.py</code></td><td>No</td><td>The fake transports and the EGM handshake behave</td></tr>
+    <tr><td><code>uv run scripts/control_smoketest.py</code></td><td>No</td><td>The controller core: move, play, stop, gripper, state, free-drive</td></tr>
+    <tr><td><code>uv run scripts/api_smoketest.py</code></td><td>No</td><td>Every endpoint in-process, <b>plus</b> a real <code>sim.py api</code> subprocess over HTTP</td></tr>
+    <tr><td><code>uv run scripts/verify_hande.py</code></td><td><b>Yes</b> — UR</td><td>The gripper socket is reachable and the gripper responds</td></tr>
+    <tr><td><code>uv run scripts/verify_cameras.py --save</code></td><td><b>Yes</b> — cameras</td><td>Which device index is which arm, with JPEGs written out to prove it</td></tr>
+  </table>
+
+  <div class="note">
+    <b>These are stdlib-assert scripts, not pytest.</b> One fewer dependency, and they run identically
+    on the lab machine and a laptop. Run all three offline suites after any change and before any demo —
+    if they fail, the problem is your install or your change, not the cell.
+  </div>
+
+  <div class="warn">
+    <b>The most useful debugging habit in this project:</b> reproduce it in <code>sim.py</code> first.
+    If it reproduces offline, it's a software bug and you can iterate in seconds. If it doesn't, it's
+    the network, the pendant, or the hardware — and the troubleshooting matrix is the faster path.
+  </div>
+</section>
+
+<!-- ============================ PART VII — HANDOFF ============================ -->
+
+<section class="slide" data-part="Handoff" data-title="What's not done">
+  <p class="kicker">Handoff · 35</p>
+  <h2>What isn't done</h2>
+  <p class="lede">Stated plainly, because the next person will find these anyway — better they find
+     them here first, with context.</p>
+
+  <table>
+    <tr><th style="width:26%">Item</th><th>Status</th><th>Where to start</th></tr>
+    <tr><td><b>Simulate / preview in the 3D view</b></td><td><b>Fully specified, never implemented.</b> A translucent ghost arm animating the exact planned path before you commit to it.</td><td><code>docs/superpowers/specs/2026-06-18-simulate-preview-design.md</code> — decisions already locked: server-side path computation reusing the real planner, auth-only, idle-only</td></tr>
+    <tr><td><b>RAPID program start over RWS</b></td><td>Never cracked — the installer asks you to press PP-to-Main + Play</td><td>Find the correct OmniCore URL shape; would make the install fully unattended</td></tr>
+    <tr><td><b><code>ROBOT_API_TOKEN</code> defaults to <code>changeme</code></b></td><td>Warns loudly at startup, but still starts</td><td>Make it required for any deployment past a direct cable</td></tr>
+    <tr><td><b>Stale claims in <code>CLAUDE.md</code></b></td><td>Two things it documents are no longer true: WSL cameras "cannot work", and GoFa lead-through "verify on hardware". Both work.</td><td>One-line fixes; worth doing before handover so the docs don't argue with reality</td></tr>
+    <tr><td><b>No CI</b></td><td>Three good offline suites, run by hand</td><td>They're stdlib-assert scripts — trivial to wire into any runner</td></tr>
+    <tr><td><b>Coordinated dual-arm motion</b></td><td>Never attempted. Both arms are served from one process, but each moves independently</td><td>Unspecified — would need collision awareness between the two workspaces</td></tr>
+    <tr><td><b>Legacy <code>robot_control/</code> directory</b></td><td>The dead pre-uv venv, gitignored, still on disk</td><td><code>rm -rf robot_control/</code> — noted in <code>.gitignore</code> as safe to delete</td></tr>
+  </table>
+
+  <div class="needs">
+    <span class="q" style="margin-top:0">Anything you know is broken, half-finished, or fragile that
+    isn't listed here? And is there work on the <code>albany</code> branch that should be mentioned,
+    merged, or explicitly abandoned?</span>
+  </div>
+</section>
+
+
+<section class="slide" data-part="Handoff" data-title="Day one">
+  <p class="kicker">Handoff · 36</p>
+  <h2>If you're inheriting this — start here</h2>
+  <p class="lede">A path from zero to commanding a real arm, ordered so that each step's failures are
+     diagnosable before the next step can confuse them.</p>
+
+  <div class="cols">
+    <div class="card">
+      <h4>Day 1 — no robot needed</h4>
+      <ol style="padding-left:20px">
+        <li><code>uv sync</code>, then <code>uv run scripts/sim_smoketest.py</code>. If that passes,
+            your install is sound.</li>
+        <li><code>uv run scripts/sim.py ur15</code> → open <code>:8080</code>. Drag the gizmo, add a
+            waypoint, Plan, Play. That's the whole teleop model in five minutes.</li>
+        <li><code>uv run scripts/sim.py api</code> → open <code>:8000</code>. Acquire the lease, send a
+            move, watch telemetry.</li>
+        <li>Read <code>CLAUDE.md</code> top to bottom — it is the real architecture document.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h4>Day 2 — the cell</h4>
+      <ol style="padding-left:20px">
+        <li>Work through the cold-start checklist with someone who has done it before.</li>
+        <li>Run the connectivity diagnostics <em>before</em> running any Python.</li>
+        <li><code>real.py ur15</code> first — the UR path is far more forgiving than the GoFa's.</li>
+        <li>Only then the GoFa, and confirm <code>PyEgm</code> is parked before blaming anything else.</li>
+        <li>Teach a short trajectory by hand, save it, replay it headless.</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3>Reading order</h3>
+  <table>
+    <tr><th style="width:28%">Document</th><th>Read it when</th></tr>
+    <tr><td>This page</td><td>Now — setup, operation, recovery, and why things are the way they are</td></tr>
+    <tr><td><code>CLAUDE.md</code></td><td>Before changing code. Full architecture, every tunable, every gotcha</td></tr>
+    <tr><td><code>API.md</code> + <code>usage.html</code></td><td>Writing a client against the remote API</td></tr>
+    <tr><td><code>docs/robot-state-reference.md</code></td><td>Consuming telemetry — every field, with the traps called out</td></tr>
+    <tr><td><code>docs/superpowers/specs/</code></td><td>Wondering <em>why</em> a feature is shaped the way it is</td></tr>
+    <tr><td><code>lib/robot_common.py</code></td><td>Changing any constant. It's the single source of truth</td></tr>
+  </table>
+
+  <div class="note">
+    <b>The one habit to adopt:</b> reproduce in <code>sim.py</code> before touching hardware. It runs the
+    real code, it costs seconds instead of minutes, and it cannot damage anything.
+  </div>
+</section>
+
+
+<section class="slide" data-part="Handoff" data-title="Summary">
+  <p class="kicker">Handoff · 37</p>
+  <h2>What was built</h2>
+
+  <div class="stats" style="margin:22px 0 26px">
+    <div class="s"><b>2</b><span>arms, one control core</span></div>
+    <div class="s"><b>4</b><span>control surfaces</span></div>
+    <div class="s"><b>130</b><span>commits in 9 weeks</span></div>
+    <div class="s"><b>10</b><span>design specs written first</span></div>
+    <div class="s"><b>3</b><span>offline test suites</span></div>
+    <div class="s"><b>0</b><span>runtime network dependencies</span></div>
+  </div>
+
+  <ul class="key">
+    <li><b>A protocol client nobody else had</b>
+      <small>The standard ABB Python client doesn't support OmniCore. <code>abb_rws.py</code> and
+      <code>abb_egm.py</code> were written from the specifications, and every trap found along the way
+      is documented rather than lost.</small></li>
+    <li><b>Two incompatible robots behind one interface</b>
+      <small>Same commands, same state shape, same safety semantics, same trajectory files —
+      whether the arm speaks RTDE or needs a RAPID program babysat on the controller.</small></li>
+    <li><b>Four surfaces, one motion implementation</b>
+      <small>Browser teleop, terminal recorder, headless player, remote API and web console —
+      all calling the same <code>RobotController</code>. Tuning it once tunes everything.</small></li>
+    <li><b>A system that develops without hardware</b>
+      <small>Transport shims mean the real scripts run on a laptop, which is what made the large
+      refactors safe and what lets the next person learn the system before booking lab time.</small></li>
+    <li><b>Documentation written as it was built, not afterwards</b>
+      <small>Specs before implementations, gotchas captured the day they cost an afternoon, and
+      this handbook so the lab knowledge doesn't leave with me.</small></li>
+  </ul>
+</section>
+
+
+<section class="slide" data-part="Handoff" data-title="Open items">
+  <p class="kicker">Handoff · 38</p>
+  <h2>Open items in this document</h2>
+  <p class="lede">Every <b>NEEDS INPUT</b> block, collected. These are facts that live in your head or
+     in the lab — not in the repository — and each one is a thing the next person will otherwise
+     have to rediscover.</p>
+
+  <div id="gaplist"></div>
+
+  <div class="note">
+    <b>Priority order, if time is short:</b>
+    <b>(1)</b> the WSL/adapter networking configuration — the one thing that can't be rediscovered
+    once the machine is reimaged; the recovery block on the Network slide gets you the answers in
+    about a minute —
+    <b>(2)</b> the camera BUSIDs, so the auto-attach setup can be run on a fresh machine —
+    <b>(3)</b> cell layout and E-stop locations —
+    <b>(4)</b> the WSL build packages for <code>ur_rtde</code>.
+    Everything else is colour.
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var body    = document.body;
+  var slides  = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var toc     = document.getElementById('toc');
+  var counter = document.getElementById('counter');
+  var modeBtn = document.getElementById('modeBtn');
+  var themeBtn= document.getElementById('themeBtn');
+  var expandBtn=document.getElementById('expandBtn');
+  var gapchip = document.getElementById('gapchip');
+  var idx = 0;
+
+  function slug(s){
+    return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  }
+
+  /* ---------- ids + sidebar ---------- */
+  var parts = [], seen = {};
+  slides.forEach(function(s, i){
+    var t = s.getAttribute('data-title') || ('slide-' + (i+1));
+    var id = slug(t);
+    if (seen[id]) { id = id + '-' + i; }
+    seen[id] = true;
+    s.id = id;
+    var p = s.getAttribute('data-part') || 'Contents';
+    if (!parts.length || parts[parts.length-1].name !== p) parts.push({name:p, items:[]});
+    parts[parts.length-1].items.push({id:id, title:t, i:i});
+  });
+
+  parts.forEach(function(p){
+    var h = document.createElement('div');
+    h.className = 'grp'; h.textContent = p.name;
+    toc.appendChild(h);
+    p.items.forEach(function(it){
+      var a = document.createElement('a');
+      a.href = '#' + it.id;
+      a.textContent = it.title;
+      a.setAttribute('data-i', it.i);
+      toc.appendChild(a);
+    });
+  });
+  var logo = document.createElement('div');
+  logo.className = 'logo';
+  logo.innerHTML = '<img alt="Oracle" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABeUAAAPCCAMAAADBAUN1AAAAAXNSR0IB2cksfwAAAAlwSFlzAAALEwAACxMBAJqcGAAAAwBQTFRFAAAAx0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0x0Y0uDjEcgAAAQB0Uk5TABctQlNkdISVpbbF1+f/8+LSwbGgkIBvX048JxEeOVFnfZOpvtXr5c+5o413YUcyByRAXK/K5v353sOnjHBUHQMEIUOFyOnhwJ46GQF4nb/gEkFumsfy6LuPYjYJCGO83YNXKgKBrtv4dkkcovCSKx9IPXX+n2YuWsv7vUs+2qFoLw/N9Ab1uHO3YBoYpurYkUoLTNb2tDfC+tOIFO+oXWssziU4idQxiuM0hiN+fMwMRaQm5BBpyapEeRZGq3vfbQ0ilPxPBYv3rVjQmzCHDuxxFdko7TMgf6zxKZyXanJNCrM1VbWwlty6WztlWdGOmLI/xsR67lAbUoJeE1ZsmTXGlWAAAEUMSURBVHic7d2Jo9dT/sfxyh7d7NUIFRXZUnST6N6kLFcUUhTRbaFpKJeSJdI2SigXUZYYZOxE1EhJZUmJLFlG9iXLYBrbb/ymTdvtfj7f7/ecz+tzznk+/oL3eb/PeXX7fj/f86lQAS6pWGmTTTfbfIstt6q89TZV8gCLqm673fY77LjTztWq1/jTLjXVWx/w2a677V6rdp099qxbT33uEbD6e+3dYJ9999v/gIrqAwF4ouGBjRrvW+egg5vkq483sI6mhzQ7tPlhh+/WokB9SAAnFbY8YrNWhx7ZWn2UgSj5bY46unbjY44tUh8awBEtaxzX9vgT1CcXyNg2lbestkk79QECUqxm+xNPOrmD+qgCOTmlY6dTT+usPkxAynQ57fR9zuDTGfij6w5nntVNfa6ANCje5fDuPXry1Sp81GuvBmef01t9xgCd3Q77817qcwjY1qfZX04/V33YgKSdd1anI5uqTx+QmD57d+/Lb6oQiC79zu/RRH3mgOSVbHPBhf2L1QcQsKrlgDoXDVSfNUCo6sVbXMLTlvBS50v3PegU9QkDUuGyQZdfwR/18Mngw+tcqT5XQLoMOf7MTdQnEzBhaPtWB/OgJFCWYcNH9FefUCAn/Uf8dZj6IAGp1nqrq0aqDyqQlVGbXT1afYAAJ1xz7XXq8wpkZszYa69XHxzAJaU3XN5CfW6BeIpvrH3TOPWRARx08y39CtTnF4gw/vQefdRHBXDXhFtv4yeySK9dD7uJp2mAHA0843a+jkUa3VF7ovp0AJ4oOXLfO9UnGlhb0V1/u0x9LgC/3H3mPeqDDaxy2r2T1AcC8NEJze9Tn26gQv+/d1UfBcBfPc/kanoo3f8AT8UDlt394IHqk45AtTiOG8iARDx0Pr+YQtLGXLVniXrnA+EoOWq/h9WnHgEpfqQBd5ABCRv26CPcSY9EPHYLj9QAEo/f8pj6/MN7k594Ur3RgZA99AQ3IMCiRlv1Uu9xIHRNpzxVpI4C+Gn8+fy+FUiFrk9PVecBvFM07R/cJgykxsAeffkqFgaNema6elMDWFeb2qPUyQBfNPqHejsDKMtB09TpAA90rnWzeicD2Jhrnp2hzgi4bWanCepdDKA8HZ7jKnpkq+i6ytxiAKRfxxp8E4ssPHziIeq9CyCeSecPVicGXDPyb3xUAzhkyLXnqVMDLun2Zx6OBxwzawpvlkJMfTuqtyuAbDR7nrsPEGn2fjw5CTjrsss7qzME6Tb4mSrqXQogF/W6T1bnCNKr905V1TsUQK6qzqmozhKkU6VDB6p3JwAT5m7ZW50nSJ9zLlZvTADGjDv6QHWmIFVmV+crV8Av+bd2UwcL0qNWffWGBGDeC/eoswWpULAfNxkAnjqIv+dR3JjX/AH+KtljF3XIQKroxW3UmxCAVfkNWqqDBjJFm/KdK+C/gW13VYcNNKa9pN58AJLx8kh13iB5845S7zsAiSl9Zb46c5Cs+/fgLVBAUBa8OlSdO0jOwue4Ph4IzvTG3EsciDE7cycZEKS9pqnjB0m4fbR6pwFQOWOeOoFgW43X1LsMgNKfj1WnEGx6/Qz1DgMgNqx2F3USwZZ2f+ECeQB5bc5ShxGsKDxxkXpvAUiHI99QBxLMO4cbawCsVnLBVHUmwaz7h6s3FYBUGfa0OpZgUJdWTdU7CkDaTN9fHU0w5fkT1LsJQBr14BIzL7zJhzUAyjZk30J1QiFXDd+aq95HANLrmkvVIYXc7D9dvYcApNtWo9Q5hewd+7Z6/wBIvSGHqaMKWSq6fbF69wBwwV6V1HGFbLxzsnrnAHDEwFsaqhMLmRranUfkAcTWtZ86tJCZuy5T7xkAbnl3sDq3EN+M93irK4AMVdlUHV2Iq0YT9W4B4KIb+C2sEyY3UO8UAI5a/L46wBDtnFPU+wSAu26aqc4wlG/Gjuo9AsBppSOK1TmGcjxVX71DALhur3fUSYaNGfOyencA8MC4t2ar0wxlarStem8A8MP189R5hjI8p94XAPwxR51oWN8716s3BQCfvLSLOtWwjn/2Um8JAH4pvVyda1hj1Bnq/QDAPzeMV2cbVvlggnozAPDRKdPU6Ybllpyk3gkAPFWyD89U6t3TVb0PAPiLL2HlRqj3AAC/1VKnXNgG36DeAAB8t9UYddIF7A1+7QrAusu42EZlxDj18AGEoPRUddqFqebe6skDCMVWndWJF6A3eO0fgMRcz6c2STt7oHroAEJSOkCdemEZ/KF64gBC01YdfCG5p4163ADC81BvdfYF49mm6mEDCNGCfur0C8OYf6gnDSBQA6upAzAE71ymnjOAcN3KI5W2nV6qHjKAkN19njoF/dZ5K/WEAQRuwibqIPTZyInq+QLAvuoo9NdHrdXDBYC8vBf4cN6Oj3mAEkAq8OG8DUWvqOcKAKtM4Ml545Z8op4qAPxhFk/OG9biZvVMAWBttzZU56JXPlqgHigArOulY9XJ6JHb1NMEgA3UO0adjd54RT1LAChDr+fV6eiHLp+qJwkAZSp5VR2QPpjK710BpNZnReqMdN4d9dVDBICN+7SLOiUdd90w9QgBoDwXtVPnpNPOz1cPEADK9znXHWSt8FH19AAg0uj71GHpqs5fqGcHAHGMVcelmyY/qR4cAMSS/6U6MF107DbquQFAXA+oI9M9B26rHhoAxNe2WJ2ajrmH68kAOKUyD85n4qsh6oEBQGYuGqxOToeM7aUeFwBk6pre6ux0RnV+CwXAQVXOVaenI6qpJwUAWelzlzo/nbC5ek4AkKWqvFgk2s7qKQFA1kobqTM09eaoZwQAOej1iDpFU66OekIAkJNxxHw5ik5SzwcAcjTuEnWUplfRIPV0ACBnA3dXh2laFRyqng0AGDDrRXWcptQU9WQAwIzb1HmaRoU91GMBAENKTlVHavoU3qCeCgAYQ8yvj5AH4BVifl2zCXkAfiHm1zab93gD8A0xvwYhD8BDxPxqDQl5AD4i5lfpqJ4EANixVJ2vaVDwoXoMAGDLVeqITYGr1UMAAGvyv1ZnrNxO6hkAgEWzxqpTVuwZ9QQAwKqm09Q5K3WVuv8AYNnckN8Fu2m+uv0AYFuHK9RZKzNtoLr5AGDfgnPVaStyzFx16wEgCa1nqvNWon9VdeMBIBltRqoTV2Bma3XbASAp18xQZ27iRm6rbjoAJKfZUHXqJmzya+qWA0CSdihW526ilhysbjgAJOtddfAmaejx6nYDQNIeVEdvcoq5hhJAgBqrwzcxF6hbDQACs/qq0zchXEMJIExzT1PnbyIOU/cZAEQW3alO4ASM5YYyAMGaPl6dwdb1L1U3GQB0LuqsTmHLRlVRtxgAlD4sUuewVZ2/UTcYALQ6qYPYJh6UB4An1FFs0bfq5gKAXL6/L/zeT91b5E3Ytu6RxwMbuPigP3/2t7dWOPOV5js9913bQVvt0eNflb+4qe5o9a71T+l96jS25PtZ6taGaMHET+vUPnG/w/f/qn/LhV3UewBuWtjt+4/f777llONJfEPqvameqRXvdFA3NiTjPj9+0JlL939njHrs8Ezhef2+fPq9yncPU29xx13/sHqSFtQ8RN3WMJRedOjOX99VUT1ueG9wpUueeOXqH3ixZ5Yq+/c8ZcGP6qb6ruSQv+70/hG9/ds6SLddzzl/x4f4sWPmblFPzrgt1S312fR/PLj7ueoJI2gtP/j3o3upD4JjzlIPzbDN1A31VetPH9i/pnq6wEqPnfUXXgMXW6971PMy6iserzFv0V/PrDFSPVlgPZ37nf3paPXhcEOTY9XDMqjFMnU7ffPQnE3PU08V2KiWA+o8pD4kDpjYUD0oYx6uq26mV+rW+Q+f0SD9Ol/6zMXqw5J2t6qHZErRcHUr/dGm7Zc+/ScPvhsz9rme6kOTauerJ2TI39WN9ETrqzebqZ4lkLGZT3w6RH140usI9XiMuETdRi8cf34l9SCBrF36Ch/Tl23BT+rZGHA/v43LVZ8dX5ysHiOQo3b7HUoWlOGh2erJ5GzJNuomOu76e/sVqIcIGNHwkraL1AcqfZ5TjyVnL6hb6LJxHavxSTy8UvD9tZPU5yptDlcPJUe3qxvortIGP/t4ax1wQCuerV7bsHfUE8nJAePUDXTUrL82JuLhr12e5iaENXq6fNjb1Ve3z01PnsjNwfDdzF+2VR+01PiXehjZK95e3TwXHbLzY+rBAUkoOuJRbixe6Z/qWWSNn0NlrN5fblRPDUjO/KU/qM9cOuymnkSWzlE3zjl79FXPDEja/a88rj54KXDCDPUcsjJqgrpxbmm9M9cII0jFffdoqj5+cm+rp5CNombqtjll+xfVAwN0Blc7QX0E1ZaqZ5CFZ9RNc0jpe1xSg8AV/Bz434Vz3Xvq4rR8ddOccdmJg9XTAlLgjUeD/n3NzUPVA8jQDH7FHE/+QU8VqYcFpMTIVgvUJ1LItQtteqgb5oa5nXZVTwpIlaXXqE+lziXq5mfkcnW7nNDhlanqQQGpM+2v6pOpsmyUuvcZ6DZX3S4HTKjN21uBsrx+tPp0imyv7nx8XS5TNyv9Rp/t8gVFgF0zXw7zi9in1Y2P7TN1q1KvybOd1UMCUq3Fc73Ux1Rg4AHqvsf0lLpTaXfIZq49MgUkb9Q+Ad5l1rWLuu2xjK+nblS6XTNAPSHADePndFAf18R9pm56LB3VbUq1Q74sVg8IcMbkt4K7Dmuauucx8BBlOU64Sj0ewC1LRgT2Q6nRC9Utj9SShyg3qskTs9XjAZwz+N6wbqzcW93wKIUT1S1KrdbV3PheBUibNw8tUR/fJNVS9ztCK3WD0mrR2UvUswGcNe9I9QlO0NyZ6naX6yt1f1JqcW033wQDpMXun6tPcXIuUje7PDN4KXuZbuFqYSBXzy5TH+TEPKPudTleVjcnlS6+Xz0XwAeTg/kaduAV6l5v1Cbq3qRR/Y/VYwF88eah6vOckOsL1a3eiDH11a1Jn4H3cikZYM4xddVnOhmt1I3eiPfUjUmf7XdRDwXwS+Hmw9THOgn5H6kbXSaer1nf6C/VMwH80/tt9clOwudp/HlNlxPUbUmZ/Gvnq2cCeGmT6erTnYBO6i6X4Tl1U1Lmyf7qiQC+6tLd/8vnS75Sd3kDl6p7ki4dlqoHAvhs5nD1Gbduetp+Ls/nNevoOFI9EMBzH3v/TN9O6havp5O6IWnSh/uFAes6N1efdNvS9ZzNG0FdGRehMn/IA0n4qKv6sNt1c5p+G1Vws7od6THhV/U0gFCM+U593u16Wt3gtRymbkZ6VK6oHgYQkCOqqI+8Tb1aqvv7h1EBvmq9bIv4HRSQqMkvqE+9Tcer2/uHHupWpMUO6X9jI+Cbr31+Afip6u6usr+6ESnR52v1JIAQVfT42fkJv6m7u0LnSepGpMPJLdSTAAL1vr83mB2q7u0K96rbkAr5OxeoBwEEa+bB6gSwpq+6t/9zxyx1F9Jg237qOQBBq63OAFu6zla3tkKFh9RNSIODeLEroPX9aHUMWPKgurMVNlO3IAXmXqieAoBRR6mTwI5e6m/8Jvv8EFNMd/NCKCAFirvnq8PAihfEfd1S3QC9vzQUzwDASp5+anOEtKmVgr+lbNkl0gEAWIufn9pov4C9SL18tSe5fxJIk1/UmWDDccKGVlcvXu3WocLuA9jQU6PVsWDesGNl7ZxRT714rVnVZK0HsBGjtlYng3l7yLq5k3rpWhO034kAKNu36mwwr5GolbuE/avXa84T9R1A+ZZ6l011izSd9PD/RRn4cIym6wAite+jDgjTakn6+H/qZUt1F/3TCiCGx3x7JWzr+YIuzj5BvWyh0rGCjgOIrWYzdUoY1lzQxM3VixY64VxBwwFkYPYgdU6YNS75LwJrLlYvWqdZOl7fAqA8+6qTwqwdEm/gteol60xJwX3PACKN9esVUt8n3L7zvHtSKbY5fO8KuKH/4+q4MCnppyl7qBesUvJEso0GkL2K36gTw6TLE+3dMerlqvR6PtE+A8jJmL3VmWFQvUR/pDNRvVyRPrsl2WUAuSo8VJ0aBp2ZYOO+Vi9WZBJvhQIcU1RHnRvmDKmYXN+2VS9W4+5RybUYgCH/VieHOXUSa9qr6qVqHDUjsQ4DMKe6N++DndUyoZaNWaReqgSPyQOOGttLHR+mbJVQx7qrFyqxU0LdBWDcn7z5rX6lRPrVboh6nQqdEuktACsqtVZHiCGVE2lXkHcbEPKA096crg4RQ/6UQLN6j1OvUoCQBxw3dTt1jJhxUQK92lG9SIFrE+grAKtm/KAOEjPs//5+F2+eSYrvM+tdBWDdww+po8QI+5eW7aBeYvIIecALg/2I+f+z3Kb71AtMXlvLLQWQkMHfqOPEhLrFdrt0sXqBiWvLdfKAL9pdrw4UEwZY7dFd6uUljpAHPLLQh5jvafWP+TPUy0saIQ94ZeFl6lAx4CqLDQruT/kGFpsJQGBUT3Ws5K5Nob3++PTalTg+LLDXSwASxx6iDpbcbWatO/eol5aw44daayUAlRbuvyCjjbVsqqxeWrIOXmKrkQCEWrof809Yak1gf8rfPNhSHwFo3X+KOl5yVd/SJ/MfqheWqK5T7XQRgFwl5+9Pt/OYTVh/yrduYaWJANLgqVnqiMnRa1Ye8v5UvawkTTjXRgsBpER1dcbk6mcLTbmzRL2qBA37yEIHAaTHA+qUyZGNe+YfVS8qQU0bWWgggDRx/VUZTxnvyHkB3Ss/a6zx9gFImYJP1EmTmz2Nd+Q59ZISdJvx7gFInS4XqaMmN/cZ7sf4puoVJedew70DkErjT1CHTU4+NdyOLdQLSs5wy1f0A0iJA+up4yYXJY8ZbcbDE9QLSsxrDxvtHID0OqBUHTi5GGS0F+erl5OYxS2NNg5Aml3n8mMlAysa7MRQp/9fk5H2BtsGIO2qqSMnF7cYbMRS9WIS81+DXQOQflupQycHHQzem+vDO7Ri4d1QQGAaXqmOnRw8a6wNz6uXkpQfZxvrGQA3jFykDp7sTTL2ROCe6qUkZNuapjoGwBmXOnw/5eGGevCOeiEJKe1mqGEAXPKqOnuyd6ShFrRVLyQZJTUM9QuAWxz+BvYrIw1o10u9jmT8YqRbAJzT+Rt1/GSth5EGPKNeRjKOt/LqFQAO2NXZb2DzZxpYfqHz78GN5ZTfDPQKgJsudfY3sNcaWP0A9SISkb+bgVYBcJWzt7gsNvDLqL3Ui0jE07k3CoDDXlCHULbez3npd6mXkIi9DWwSAA7rXFcdQ1n6POelX61eQhIen2xgkwBwWSVXX5WU6wtg2w1UryABA98wskkAuMzV6yl3yHHd/1YvIAkjjGwRAG7bWx1F2SlpkdOqi7dVLyABfCgP4H8WjlaHUXbm5LTqseryE3ACH8oDWG6aOo2ys7hhLov+RF2+feP6m9ohABxXR51H2Vmaw5J3VRefgH8a2yAAHNfFzccp785hyX9XF2/fUVxfA2A1Rx+nPC3rBRc6e4NPbIuPNbhBALjOzccpT8p6vS+qS7fvNoPbA4D7nHyccsiYbJd7lLp06/5lcncAcJ+bj1OemuVqd1EXbt1oXvQKYF1OPk75Q5aLnaMu3LrrjG4OAD74XR1M2Xgsq6UW11PXbdvvhjcHAA88/Lg6mrLQKaulev+7122z/sICgMceUWdTFvrMzmalzl6qH1P+Xab3BgAvPKpOpyyclcU6B49TV23ZK8a3BgAv/LZAHU+Z65jFOv+rLtqy7QqNbw0AfjhLnU9Z2DXzZU5U12zZueZ3BgBP3KAOqMxl/vLqx9QlW8bnNQA2qmIfdURlrG7Gi/xWXbJdkzpb2BgAfHG6OqMyd0+GS/T9Yfn9rWwMAL7YXh1SGdsnwxU+ry7YroOsbAsA3nizVB1TmWqd4TXqb6sLtqq0t519AcAbh6lzKmOPZLS+h/1+WH5zS9sCgDeKjlQHVaYGZbS+q9TlWrWdpV0BwCN3qJMqU1W7ZLK8L9TlWvWGrV0BwCPPqaMqU19nsLips9TV2vSytU0BwCM1l6nDKkOfZLC4Z9XF2rRgsrVNAcAnziVhu/hrc+5bh0xcZW9PAPBJQU91XGVoaeyl9VaXalO2b84CEBzX3g4Y/2LKB9Wl2nSHxS0BwC+O3Vo2K/ZHNl3VpVrEV68AYjvQsZ8O1Yq5rnnqQi0attDmjgDgmTnqzMrMxTGX9Yq6UIvesrohAHhm/mh1aGUm5t+xbdR12jN6id0dAcAzm6lTKzOXx1rUFeoyLTrV7n4A4Jsit16bt2esRZ2pLtOeuhnezAkgeHepcysjJbGesrlMXaY9mV3MCQCu3cP+fowVva4u0p7h1rcDAO/MzFdHVybiPGVTW12kNSXdrG8HAP45Wp1dmZg1P3pB36iLtOZd+7sBgH9aNFWHVyZ+jVzPruoSreEHUQCysqU6vTLRI3I5x6lLtIYfRAHIyqi56vjKQOnQqOU8pC7Rlnr8IApAdr5V51cmakQsxt9Lh59OZDMA8NBvQ9QBloGjIxZzu7pAWyY8nMhmAOCjVuoEy8CCiF9/VlYXaAufygPI2uA+6gjLwKXlLmWoU08MZaAqL3sFkD2Xfkj0bbkr+UBdni1/T2grAPDSmAXqEItverkreU9dniWl/CkPIBfnq1MsA+eWt5D66uosaZ7UTgDgpy5V1DEW39nlrMPbdwGOSmwrAPDTYeoYi++ocpbxjLo4S+okthEAeKrzMnWQxTZrzMaX8YO6ODsGHpvcTgDgKYdesHT4RhcxvkRdmx2/J7gRAHhqqjsPmm/856+3qUuzY+CuCW4EAL76XZ1lsY3e6BquVpdmx6AEtwEAb+2izrL47tnYGlz6DW8GdklyHwDw1qfqMIvtmY2swNPnKM9IdBsA8NZX6jSLbeuNrMCl33ZlYGyi2wCAvw5Wx1lcJYPLXsAX6sKsOCTiFk4AiGl3dZ7F9nGZ9Tfspa7LituT3QUA/FV0iDrQ4ir7+fFH1GVZ0aFzwtsAgL9qqRMtrp5lln+vuiwr5iS8CQB4bKgz1xyUeXnXXuqqbMj/KeldAMBjD6gzLa7qZRQ/WF2UFf9IfBMA8Nhv6kyLq6xfgw5QF2XFMYlvAgA+e1QdajFVKaP2o9VF2fBN4lsAgNcaqVMtrjs3rL2ruiYbvk5+DwDw2gnqWIvp8g0qH6UuyYbWhclvAQBe21edazFN2aDyF9Ul2fCAYAsA8FpFda7FtGiDyrdUl2RBCe+IAmBaD3WyxXTH+oXfrK7IAm6jBGDcdepki+n99epupy7IhsaSLQDAa8VN1NEWz1br1V1DXZAFQxpKtgAAv3VXZ1s8bdYru7m6IAtelmwAAJ47tkQdbvGsd7+LM5fjZ+ArzQ4A4Lnh6nCLZ73fC+Wr6zHvBM38AfjucHW6xfPculWry7Hg35r5A/Dd7HrqeIvlpXWrVpdjHg/LA7Bkjjrf4pmxTtHqasz7QjR+AN7rr863ePquU7S6GvO4qAyALZepAy6WM9epWV2NcTwsD8AaNx6Z33OdmtXVGFf2G8wBwIBz1QkXS2nx2jWrqzGun2r6AAKwjTriYum2dsnqYkxbVKQaPoAAvKXOuFh+XbtkdTGmvaeaPYAQ3KnOuFjqrF2yuhjTnlLNHkAQtlOHXBwnr12xuhjDOhSIJg8gDA+qUy6OcWt//aouxrALZKMHEAQ3PrKZt1bF6loM+0A1eQCB2Esdc3FstlbB6lrMKh0qmzyAMDytzrk41v7hkLoWs26VDR5AIHZV51wcE9cqWF2LWR/LBg8gFFeqgy6G/Nlr6lXXYlZn3eABBOI4ddDF8dGaetWlGPWpbu4AQuHEXTZL19SrLsWoXzc+FwAwZJI66mLYck256lJMmjVj42MBAENOUmddDFuvKVddikm8JQpAAjZVZ10MQ9aUqy7FpH/qpg4gHGNmqcMuhgP/KFddiUl3CMcOIBzbq8MuhsP/qFZdiUGjhUMHEBAXfv665t2v6koM4qYyAIm4R512Mfzrj2rVlRj0onDoAEIyWh130Sb9Uay6EnNKBgtnDiAkO6rzLoZ2q4tVF2LOQ8qZAwjJi+q8i6H96mLVhZjTSjlzACEZXKIOvGjvry5WXYg53ytnDiAoJ6sDL9ofb/hWF2LMkALhxAGE5S114kXruLpWdSHGfKicOICw3KVOvGh/PGSjLsSY24UDBxCY4lJ15EV7eFWt6jqMuVM6cgBhuVgdedHuW1Wqug5T2kgHDiAwv6gzL1rjVaWq6zClgXTgAAIzTZ150VY/Xa6uw5TblfMGEJr5+erQi/T2qlLVdZjyhnTgAEKzlzr0ItVdVam6DkNKi6XzBhCaOurUizSrYGWl6joMaSYdN4DgOHCVzf0rK1WXYUhz7bwBhOYndepFe2RlpeoyDDm8/HkAgGFt1LEX6fKVharLMKS3dNoAwnO1OvYi3buyUHUZZtTTThtAeN5X516kF1YWqi7DjLfLnwYAmHaFOvci7bWyUHUZZmyunTaA8BQvVgdflNKVharLMKOfdtoAArS3OvgijV9Rp7oKI/I7i6cNIDyvqJMv0o0r6lRXYcSV4mEDCNAAdfJF+npFneoqjHhPPGwAAaqkTr5Iz6yoU12FEU+Ihw0gQMWpv5by3RV1qqswgi9fASRvO3X0Rdl7RZnqKowYI541gBBtpY6+KCvvHlZXYUJ98agBBOk4dfZFWbyiTHUVJuwtHjWAIF2izr5IKz7nUBdhwj7qWQMI0a7q7Iv0+vIy1UWYsJ961gCCNEQdflGOWF6luggTPlKPGkCQmqnDL0r15VWqizBhqHrUAIL0mTr8ovx7eZXqIgzoKh40gEA9oU6/KJ8tr1JdhAH/Uk8aQJj+pE6/KDssr1JdhAF/V08aQJjGqNMvyoqbHNVFGDBAPWkAgWqijr8ITZYXqS7CgP7qQQMI1I/q+ItQUlTBi5RXzxlAqK5Wx1+U3yr4kPLcYgNA5Ex1/kV5p4IPKf+Des4AQnW6Ov+ifF/Bh5Q/VD1nAKHaRJ1/UT6u4EPKv6KeM4BQzVTnX5TbK/iQ8peLxwwgWIUl6gCM0L2CDynfVz1nAMFqow7ACO9V8CHl31GPGUCwjlIHYIS3K/iQ8p3VYwYQrB3VARjhpgoepPxo9ZQBhOstdQJGuKaCByl/sHrKAMJVXZ2AEVpX8CDl/6GeMoBwXapOwAj5FTxI+TnqKQMIV+pf8N3Fg5Q/UT1lAAFTJ2CUiukvMdIH6iEDCFjab5jfxYOUf0M9ZAABu1kdgRFO8yDlW6qHDCBgx6sjMMIjHqT8fPWQAQTsH+oIjHC4+ylfop4xgJB9p87ACJu5n/Kt1TMGELIt1BkYYYT7KX+9esYAQvaqOgMj/OJ+yv+onjGAkN2mzsAI17qf8juoZwwgZOeoMzDCy+6n/NHqGQMI2WnqDIzwqPsp31w9YwAhS/ubX19wP+WfVs8YQMgGqzMwQmX3U76WesYAgpavDsHyHeV+yh+uHjGAoFVRh2D5nnQ/5durRwwgaHerQ7B827mf8vPUIwYQtB/VIVi+nu6nPFdSAlA6Qx2C5Xvc/ZTvrR4xgKDdoA7B8i1zP+VHqUcMIGhvq0OwfKXup/xC9YgBBO1RdQhGcD/la6pHDCBo76pDMEJn51N+hnrEAIK2pToEI7RzPuU7q0cMIGj7qEMwwk/Op/xQ9YgBBK2VOgQjHOh8yherRwwgaLXVIRihkvMpr54wgLCdrQ7BCKe5nvID1RMGELYT1SkY4XvXU36uesIAwnahOgUj9HU95auqJwwgbL+qUzDC7q6n/AT1hAGE7Sx1CkYY4HrKL1BPGEDYnlenYITTXU/5ReoJAwjbdeoUjHCh6ynfQT1hAGHjb3nLeqknDCBsH6tTMEJ111OeX0UBkGqsDsEIjZ1P+UL1iAEE7XR1CEZ40fmUX6IeMYCgPaEOwQgfO5/yk9UjBhC0w9QhGOFn51N+qnrEAIKW9tvKajif8r3VIwYQtLTfPHyJ8yk/Uz1iAEHbQh2CEfZ3PuVfV48YQNDuVYdghKecT/n+6hEDCNq16hCM4Pz98nn3qUcMIGjvqUMwwo3Op/wx6hEDCNrR6hCM4P57XxupRwwgaFupQzDCgc6nfF/1iAEE7W11CEYY6XzKf60eMYCgDVeHYISazqf8f9UjBhC0h9QhGKGh8yn/gHrEAII2XR2CESo4n/LXqkcMIGhV1SFYviHup/yj6hEDCNlQdQZGqOd+yldWzxhAyEaqMzBCG/dT/kn1jAGErL86AyNc437Kf66eMYCQtVdnYISL3E/5ZeoZAwjZx+oMjHCx+ymfV6weMoCAXa6OwAgveJDy49VDBhCwB9URGOFoD1L+MfWQAQSskzoCI3zrQcrvph4ygIA1UEdghAc8SPmx6iEDCFhldQRGqOZByu+nHjKAgB2sjsAI1T1I+bfUQwYQsLRfVva8BynfVj1kAAGbpY7ACI08SPkz1EMGEK7e6gSMMs+DlO+pnjKAcPVTJ2CUNz1I+YFF6jEDCNZt6gSMMsODlM8bqR4zgGA9oA7ACOMq+JDy/CwKgMoF6gCM0KaCDyn/onrMAIJ1lDoAI1xUwYeU31c9ZgDBOkEdgBFuqOBDyn+mHjOAUBWo8y/K0RV8SPlP1HMGEKqZ6vyLcksFH1K+rnrOAEJ1hDr/ovyzgg8pP0w9ZwCh2kydf1G+rOBDyuf9ph40gEBtoY6/KI9U8CLlb1QPGkCgrlbHX5QrKniR8twwD0DjB3X8RalYwYuU/1Y9aACBWqaOvwgr7vlSF2HAcPWgAYRplDr9ohyyvEp1EQY8rp40gDBNU6dflGbLq1QXYcLD6lEDCNLm6vCLcujyKtVFmPCVetQAgtRAHX5R7l1epboIE2qJJw0gTN+owy/Ks8urVBdhQh3xpAEEqThfHX5Rdl9eproIE/ZUzxpAiCqpsy/SfcvLVBdhwgL1rAGE6Et19kUatbxMdRFGTFUPG0CA/qaOvigrfhTlR8q3Vw8bQICGq6MvyvQVZaqrMOJZ7agBBKmJOvqiHLWiTHUVRvwunjWAAE1WJ1+ko1fUqa7CiIPFwwYQoE3UyRfpwRV1qqswYtxs8bQBhOcwdfJF+npFneoqzNhNPG0A4dlRHXyRVr5iSV2FGa+Kpw0gPK+pgy/SwhV1qqswYw/xtAEE5zd17kXqtbJQdRlmnKCdNoDwPK/OvUjfrCxUXYYh/PoVQLJS/8vXvINWFqouw5DnteMGEJwf1bEXaZ+VharLMOQV7bgBhKZwoDr2It2+slJ1GYZw+TCARB2jTr1ofVdWqi7DkNJi7cABBCb173zNy5u5slJ1Gab01w4cQGAOUodepKarKlXXYcpS6bwBhGaBOvQirXqQ0puUbyudN4DA3KnOvGi3ripVXYcp10sHDiAwV6kzL9pbq0pV12EMv4sCkJyT1JEX7axVparrMOY26cQBhKWuOvKirX4mRV2HMY9KJw4gKO3UiRfD0FW1quswprV05ACC8rE68aJ1XV2ruhBz5gknDiAsbdWBF+2G1bWqCzHnbOXIAQSlnjrwos1ZXau6EHPOUI4cQEj6q/Muhuqri1UXYk6vhsqhAwjIvuq8i+Ge1cWqCzGor3LoAAJyvDruYvijWHUhBn0rnDmAgCyZpY67aN/8Ua26EoPqCocOICC7q9MuhkF/VKuuxCQuOQCQhN/VYRfDq39Uq67EpP2EUwcQjvrqsIuh/R/Vqisx6VDh1AEEo5s66+KY/Ee56kpMWlygGzuAYIxQZ10MbdaUqy7FqGm6sQMIRkd11MWww5py1aUY9Z1u7ABCsaSpOupi6L6mXnUpRp2imzuAUNRQJ10cz6+pV12KWX/SDR5AIC5QB10cvdfUqy7FrE66wQMIw+wO6qCLod5aBatrMauJbPAAAjFWnXNxrPXlq2cpn/eGbPIAwtBAHXNx1F6rYHUthrWSTR5AEJz4wGadK3rVtRh2jWz0AILwH3XKxTJ/rYrVtZjWTTZ7ACG4Wh1ycUxfu2J1MaY9qBo9gBB0LlWHXBxT1i5ZXYxpE1WzBxCCTdUZF8v5a5esLsa4N1XDBxCAKeqIi6XR2iWrizHuONXwAfhvzFx1xMXSee2a1cUYt41q+gD8d5Y64WK5eZ2a1dWYd5po+gD894I64GJ5b52a1dWY95lo+gC813mcOuBiGbBO0epqzJsgGj8A792mzrd4WqxTtLoaC/5PNH8AvtteHW+xVFm36OvV9ZhXWTN+AL47UJ1u8Vy9btW/q+sxL3+hZgMA8Ny36nSL5/11q/5SXY8FZ2s2AAC/FS5Wh1s8/dcte6S6Hgt4ZB6ABY78UVy1eL2626grsoBH5gGY58Z3rxt+NenEe08yxCPzAIxz5LvXvH+vX/hSdUUWTJit2AIAvObId695X61f+DvqimzgkXkAhjV05LvXXoUblL5AXZMFZwi2AACvNVbnWkx/3bD0HuqabHgn+S0AwGuOfPe67htEVnpWXZMNJyW/BQD4zJXvXvMO2LD219U12dCrXfKbAIDHXPnudUJRGcW3VldlA2/5BmDSBHWoxfRCWcVfoK7KhlM2/JoZALLlzDPnt5dV/QB1VVYMKGupAJCNomvUkRbX62WVP1ldlRV7Jb0LAPjrEnWixdW67PpfUtdlxTHJbgIAHttTHWhxNSi7/jnquqyYkuwmAOCv/uo8i6162QuYpq7LivzeyW4DAN56VJ1nsY0vewENe6kLs+LeZLcBAF/9NFAdZ3E9tLElXKyuzIoOS5LcBgC8da86zWL7ZWNLOFtdmR3/TXIbAPDVwx3UYRbbjRtbQyV1ZXacwC+jAOTuMHWWxdanrOsNVpqkrs2OqxLcBwA8Vfy4Ospie3Tjq/hMXZsdl63/klsAyNRZ6iSL7+uNr8KZ33VlqJwlA0As36iDLLaSwRtfhafPUubdvfEPqQAgjn7qHItv6/LW8Ym6Okt+TmojAPDU3uoYi++Z8tbxhLo6S+5OaiMA8NN96hTLwBXlLaS3ujpbLklqKwDwUjN1iMVXpfyV3K2uz5Irk9kIAPzk0jVfO5W/lFvU9dnyVDJbAYCXtlNHWAYalb8Uh75GzsxRyWwFAD6qoU6wDCyKeKawYIG6Qlt4mwiAbDnzIsD/uSBqMUerK7Rl7yS2AgAfOfSz17y856NWM1ZdoTX8MQ8gO5ep4ysDpUOjVjO0VF2jLTxmAyArV6nTKxM9otczRV2jNR/b3wwA/FPg1G29t0Uv6EV1jdZMn21/OwDwjlN3AsyaEb2gGeoi7TnM/nYA4JvZp6ijKxMd4yzJ1xvL8vImlHMdJwCUaYQ6uTJSK86SNlNXac8cy7sBgHdqLlMHVyZm1Yyzpt9K1HVaM+4n2xsCgGe2VOdWRr6It6jt1XXac7Xd7QDAN91mqWMrI5vFW9WJ6jotOsDuhgDgGcf+6o31gU2FChX9/cim/DdlAcC6dldnVmaGx13XxepKLaphc0MA8MvsNurIysx+cRd2urpSi14rsLgjAPjlOHViZSbOT6JWmjFOXatF1WxuCQA+GTVEHViZ+ST+0j5V12pRh1H2tgQAr+yozqsMVY+/tP9T12rTrfa2BACfzFOnVaYy+Hl/Z2+vH16uvb1NAcAjR6rDKkNTMllcA3W1NnVtaGtPAPBIY3VWZWpsJqs7R12tVW/Z2hQA/LGkiTqqMjS6OJPlFTh1P0/G7re1LQB44151UGWqU2br+0xdr1V72tkUAPwxz60LbP5nXmYLPE1dr11n2dkWAHxRWFcdU5naJtMlbqOu2KoqsX8hBiBID6pTKmMjMl3iP9UV23WtjW0BwBcHDlSHVKbyF2a6xoU+33KQl1dSycbGAOCHoifVGZWxypmv8gV1zXZdVGR+YwDwxKvqhMrci5mv8hJ1zZb90/zGAOCH89z7+f+ELpkvs3i0umq7mr5ufmsA8EIzdT5lrk4263xFXbVl3xSa3hkAvLBUnU5ZODebhbZUV23bFqa3BgAfTK2qDqfMHZzdUh38T0tG8t8wuzUAeOEGdTZl4cLsllpdXbdtn2fxdQUAz32tTqYslI7Jbq0NF6srt+07s5sDgPtGLlAHUxbaZrvaa9WVW9fI5OYA4L4iJz+qvivb5R6orty6JjVNbg8AzntGnUrZ6Jn9eo9S127dp+Y2BwD3nZavDqVsVMt+wS+qa7fva3PbA4DrZkxSR1I2Bs7PfsWFLn4NkZnFx5rbIAAc10OdSFlpkMuSX1FXbx/vjQKwSi11HmVnt1zWvGuJunz7dja1QQC47c656jjKSt3cVv1Xdf32lbQ3s0EAuK3L3eo0ys7puS27hrr+BCyoaGaLAHDae+osys7ihjmuu756BQn4sdjIFgHgsuvUSZSl5rku/Gn1CpLQysQWAeCy3hPUQZSdkvtzXXm7Xuo1JGF/E5sEgMO2VsdQlobnvvSX1WtIwoKfcm8UAIftpE6hbH2Q+9q7qdeQiIN5cRQQsrPUGZStbU18rdhRvYpE3GugUwAcdYezH02fbWL5ITxM+T99TfQKgIvabasOoGyVGrlXt8jZ9WdkAh/NA4EqdvJO+RXqmOnAYep1JONKM90C4JpO6vTJWn5LMx2YP0y9kmTcaqZdANzi7DeveXlvm+pBHfVKErKvqYYBcIe737zm5X1kqgl3qleSkJJzTHUMgCvc/eY1L+9Hc21w82b9zFXdxVzPALjA4W9e8/J+NteHj9RrSUrXduaaBsABzdWpk4NDTF60uKd6NUlpVmCwawDS7j/qzMnF7SY7sb96NYkx9PQpABec5ubboVZa1tloLyaq15OY6kb7BiDF7nf0tuGVuptthsMPlGZo3J/Mdg5AWv3WRp03uSidbLYbxYeoV5SYRS3Mtg5AOo1x+zOKTqb7UUu9ouTcbPbDLgCpVHCxOmtyMvBY0w0Z2lq9puTszWXzgP8aqJMmN++a78hx6jUl6G1e9w347hd1zuQm/07zLRk8RL2qBF1QZL6BAFKksTplcrSHjaY4/i9fZt6z0UEAadF3ljpkcnSuja5MrqpeVpIMP4kKIE3ucfnXUMtVttOXv6vXlahqdpoIQO/+BeqAyVU/O42pGcjbRFY53U4XAagtnK6Ol1wZvHJ4XX9TryxR+Zva6iMApXbbqNMlZ0fY6s34UvXSEjVwmq1GAtAZvJ06W3K2vb3u7KNeW7LmHmOvlQA0Hr5SnSy5O81ee8Y3VS8uWR2usNdLAApLjlTnSu462mzQterVJWzxPJvdBJC0Li6/AHA1i3/KV6hwbGB/zOctNvaKdAB6Q92+oWylT+z2KLQ/5vOq8tk84I3Cv6oTxQTLHzH8FtJtNiuUNrLbUQBJKdhBnScmfGq7TWeqV5i4Xo/Y7imAJBT/Q50mRrxuu09jnP9lcMbGEfOAB4oeVWeJEVPsd2pz9RqTN+4S+20FYFlbdZIYkf+Y/U51qaJeZfIG7m6/rwBsKtpRnSNmvJxEszZTr1Jg1otJdBaALbNfUKeIGXOnJtGtgq7qdQqU/JpEawHYMWZPdYYY8rdk+vWxep0SFybTXADmtbtIHSCGLJ6fUMdeUq9UonZC3QVgWIue6vgwZd+kWvaIeqUaJ/HKb8BFBzZRh4cpTbok1jRfPuLK0AuzE+swAFPu8edHPgl+cHxHvnqxGnuOSa7HAIxo78+1LNMLEuxbW/VqRSb+lmCTAeTu53Hq2DDn8CQbd6x6tSo9WyTZZgA5ql6iDg1zTk62dd3V61Wp3y3ZRgPIwRbqxDAp4ZcajWmtXrDKBKuvaQFgTpdP1XlhUoOk27dUvWKZ0mlJ9xpANqZOVKeFScOOTbp/xa+p16xzW9LNBpC5Oyapo8Iowe8yz1GvWah5QfL9BpCR64apg8KoJg0FPQz0p1Er3MQTlUC6jfDo4ZrlzlI08Q71qpUmXaFoOYB4Cv14L9QaW2v6+Bf1upV6Sf5lBRBHza3VCWFawk9RrjajnnrhUltyqw2QTgdOV8eDaReoWnmVeuVaJy9UNR5AOb5frA4H06pWlDXzYPXatZq8Ies8gI0oOn+WOhqMe1XXzv6efYudqaaX63oPoCw191bngnnXFAgb+rt69Wp/HirsPoD1veHNG0PWcoyyo5MnqJevNrGlsv8A1la0+UB1JFhwtbapl6vXL9ch0SufAWycj5/W5OWVjtJ2tegbdQf0vkvuVYwANs7LT2vy8kao+3qXugMpsN2d6ikAKBrh46c1eXnbqBtbocJJ6h6kwJAB6ikAofPz05o88VevK00O+xewq7zbWT0HIGieflqTl3erurPLNVZ3IRX41AbQKXzAz09r8vKGjFT3doWQryBeg09tAJUDX1Kff2ueUPd2pZnj1I1Ihx2XqCcBhKio2lz14bfmSHVzV+uu7kRK9LxRPQkgPCN/VJ98ewam5pPghl3VvUiJ/J34cx5IVvUO6nNv0Vvq7q7RXt2L1Jj+lXoWQEgWVlafeZsuK1T3dy1Xq7uRGiV1xqiHAQTjnEXqE29TSao+A17o3a392ePPeSAZgy9Qn3a7nlM3eF37qfuRJtfy6TxgX9/66qNu1ykPqzu8njPUHUmTbRupxwH4rvc/1OfctrHqFq/vp6rqlqTKdzPUAwF8Vrj5MPUht018q3xZLlT3JF22/T/1QAB/XXq9+oRbN3q+usllaKbuSsoc9bp6IoCfpu6oPt0J2F/d5bKcx2c265q102D1TAD/FD8RwiN9L6vbXLb31X1JnXqbFauHAnjmgCvV5zoJbdL6uxs+s9nAS2+ohwL4ZPKWJepDnYSSFLw6pGznlap7k0KDFqrHAnjj8kBeWrSTutEb96y6N2k05Oyh6rkAXrjkNfVpTshlXdStLsdR6u6k0mXXqecCuG/e8eqTnJT8VH/Q+9MEdX/S6cdU3ToEuKfFoCA+kF9hC3Wzy/eBuj9p9Wk39WgAd81v5e/roDYwMU33DZdlkLpDaZV/wa7q2QBuKnx/gfr8JmhuS3W/o4zZVt2j1Gr67Xj1dAAH1fhcfXYTVUvd72h35aublF4dHuROYiAzNwb2TEdHdcPj2ELdpTQb/SyPVQLxHRFYxufVc+J//IVB/AA5a9O/VA8IcEXfI9XnNXFPqXsez8yAvg3PxiGnzlaPCEi/op+3U5/V5G2p7npcXDUfYdLtaf5pG5ACBQOuUZ9TgWvcSYYb1L1KvVNGpPXKOSAFZu93iPqMKgy8Q934+GryOGWkRQ9y+zxQpoZPTFKfT40R6s5n4kYep4zWoZUT36YDyVr4wGj12RQ5Q936zNRW98sJpfscqx4UkC6V2jZVn0sVNx6iXKN4e3XHHHH0R+pRAelR42L1idQpOULd/UyNWqbumSvqvp/Gd7UDiRtze0/1aVS6Rd3/zF2i7pk7hrU9TT0tQG3XOX3UJ1HqybTfRFmWOuquuWS7J/iDHiE7Zsos9SHU6tBbPYJsDL1Z3TenDHuXT+gRqIWvBvgr1/Xsrh5Cdu4com6cY146/WH1zIDEPX+Q+uSlwEnqKWRrU3XnnFN69bRi9dSABPX/tp761KXB9e7cbLC+b9W9c9Djf39MPTYgGb89O1F93tKhz/3qUWSv8Ad195z0w4VcfgDvFY59e5z6qKVEiSPXDZet4inq/rmpdKtH1KMDbGp/bRX1KUuP2upp5GY3LrTJEp/cwFedn9+RH02u5Qb1QHJ1vrqDDtuu1W58FwvPDP7y7WHqk5Uu27j/aN2/1D10Wr0dD5+hniBgyqhawweqz1TaVHX4m9fVHg76agoTOp44Uz1EIHfvjNhafZZSqOQS9VxMOJf/n+Xs+nv7FajnCGRv/n/eC/TFIFF2Vo/GjJ/VffTCsj1q8Sc9nPTGgzepj09qOf/N62o7qzvpi0kXNB6pHiaQiVG/brVIfW5S7DX3v3ldjXsqzKn73M811fME4hjz1C1Xqs9Lui1rqZ6ROZ25ntKkkr2aX+fPnwDw0oG3fbYXP5aJMOsr9ZhMajFa3U/fzPqm7eX3DVXPFdjQmEZP/2uB+oA44X31qMw6jRsrLGh60Xun9i9Qzxb4w/2Nt5wY+OtA4ntZPS3Tqqs76q25W1/b+PUi9XwRuqmbPPvdj4vVp8ElPxaoZ2bcTuqeem3uS3v88uV9vFUQAu36PfHc8TxIk6ltPXyKovgMdVcD0OT47za/zoMfTMMJ7ebV+G+nL5qod72bqnZTj8+G+duo+xqM6yu//EutGvfxbD2saPn9bbV//6LuXPU+d9pY9RTteJPbRpNW5crKJ+1c64M/3fHmb+rpw3Ejr3hkQLUtTjro5PrqXe2FzdXztGU3HrRRWtTm7pM79hi05S1vAWWrfeKpH/dt9FTfD3b/+OtfT73w/Woj9n2m1UkH/XjZBPXu9czR6jC2Z4C6twAgd1SBOost6q7uLgCIXeb303Bvq/sLAFLL3lTnsF0NL1J3GACExu2mjmHbxvMuAQABG6AOYfve4UfQAIL1izqCk9BI3WUAELlaHcDJ+LhE3WgAULi4UJ2/Cbld3WkAELh5jDp9E9Nc3WsASFybiursTU7RFHW3ASBhC4K6L7bwYnW/ASBRQ+5RB2+yxkxUdxwAEjRwE3XsJu23NuqeA0ByPlaHbvLu5y3vAIJxtjpyFe4Zom47ACSjkzpwNe4apm48ACQhkJ+8bujSpurWA4B9Hxao01bmuoHq5gOAbVsPVWet0H/y1e0HALtemqFOWqnbuLkMgNde+02ds2JL1RMAAIvqj1SnrNzm6hkAgDULHlNnbAp0V08BACzpcIA6YVOBmAfgp6ofqfM1JfjQBoCPFhPyq/1XPQsAMG7xPHW2pshSHqgE4BlCfh0vzlIPBABMIuTXs/s49UgAwBxCfgOP9FIPBQBMIeTL0KhUPRYAMGMZIV+W3TqoBwMAJiy4Qp2nKdWflwQC8EC9XdRpmlp31lcPBwBydQohv3G7HqIeDwDk5vGZ6iRNtal11QMCgFyccJ46R1Nu8kPqEQFA9rr+pE7R1Btzk3pIAJCtayqqM9QBDSurxwQA2bl7vDpB3dBAPSgAyMaTNdXx6YiiOupRAUDmKndRp6c7nlEPCwAy9WixOjpdwoXzABzzizo3HfMzNxEDcEj+qerUdE77IeqhAUBcc89RZ6aD7pmgHhsAxNPnPnViOun1JurBAUAck7ifLDsttlGPDgCivTRKnZbOGvyDengAEKXjEnVWOqzhFPX4AKB8jxaok9Jtt6gHCADleUCdks47NV89QwDYmFlfqjPSA+cMU48RAMrW4Sl1Qnph3mj1IAGgLFXOVeejJ968Rj1KANjQdr3V6eiNyR3VwwSA9fUYo85GjxTfqx4nAKwj/0F1MHrm517qkQLAGov3V6eid66YpB4qAKz2+f3qTPTQbzepxwoAKw2fr05ELxV0Ug8WAP6n5MwidR766iw+nAcgN2SsOgs99sbj6vECCF1XfgplEx/OA9DiI3nLCuaoRwwgYCVv8ZG8dT+XqscMIFQ8JZ+Icz9XDxpAmO7mKflkzP9QPWoAIXqhszr9wlGbV4sASNiszdXJF5S+E9QDBxCWU/qpcy8wuz6pHjmAkDQbr0694BQ2Vw8dQDDyuxerMy9E5/RRDx5AGOr9SZ13geJTGwBJaFZRnXbB4lMbANbln8mnNUJ8agPArnrt1TkXuBZ8agPAootHqVMueAVPN1XvAgC+ajqCy8lSoNJ26o0AwE+XVVLnG1aYfQsXHgAw770u6nTDasd0Ve8GAL5Z0FedbFjLks/UGwKAX86Yqs41rOuIKuo9AcAfvV5VZxo2MHmQelsA8MWV3dSJhrKcM1q9MwD4YNxbheo4Q9na3areHADcd/cV6izDxtVYpN4fANw2q9VsdZChPAsrq7cIAJdd84Y6xRBlwDL1LgHgqvzmQ9URhmgVb1BvFABu2uYYdX4hnq9bq/cKAPeUPsOjNc6ouaN6uwBwzfAW6uRCJtqfoN4xAFwyaVN1aiFDnefMUu8aAK4YuM8SdWYhc/O4dx5ALE9yoYGjnlZvHQAOWFRLnVXI2pvD1dsHQMqVvDxZnVTIxQfT1VsIQJp9c5o6pZCjLmfy9m8AG9Hnv8XqjELu7r9YvZEApNOfF6rzCWYc/rh6LwFIn7rcZ+CPJc3V2wlAylQdoQ4mGPX6GeotBSBF8n8fr04lmNZ3G/W2ApAWR52rTiRYUPgsN88D+J+uP6vjCJa0qzNQvbsAqHXYt6E6i2APH88DgctvO1WdQ7DrktfUmwyATscr1BkE6woubKLeZwA0Jk5TBxAS0fmZxeq9BiB50xsXqdMHSfmtE5fbAIFZ8OpsdfIgSW8+WqLecwCSM+zvM9Spg6TN+0K97QAkpe2x6sSBwiZHqncegCQMul+dNlDpe7B69wGwrOTWXdRJA6UP9lJvQQAWlbzAi7tDV/TzzeptCMCWDyupIwYpUHQWt1UCXhp+nzpekBa/fq7ejQBM24GMxxrFH/P5POCT/Fv5PB7rueQH9bYEYMi4ow9UJwrSqD3XEgM+mPtcb3WaIK3u+xf3HgCOqzpnoTpJkGbdGqi3KIAcnHLcYHWKIO16N+deYsBR21Xn3knEMH/EJPVeBZC5vXlHCOIq/HKier8CyEjTHXl0EhnZZLh60wKIrU9zrhZGxrq9N1e9cwHEcfPpXdR5ATfNP6ynevcCiDDu1n7qqIDDis6pzBP0QIpV6T5KHRNw3cxOfdT7GEDZfhjAk5MwoPNSrqAH0mfIu1eowwH+uLHtEPWOBrC2I09fos4F+GVGrSvVuxrAKhPq8HA8LDjguw7qvQ0gL6/Zrw3VaQBfLdnsSfX+BgK3oDlXx8Oqx3Z+Tb3LgWDNvfW6AnUGIAD33Luteq8DIWq2dIb69CMURV8911q94YGwdN35PPXBR2CmHc099EBCJvx+qfrEI0RDa1zNU/SAdYsHnVOgPu0IVuf/68HFlYBFw279z1D1OUfgZtxWeZz6IAB+6nXQi/zAFWnQbukX6tMAeKf0oNseVp9t4A+Dv3xhmPpQAP5YNug/vBgEadPl+UHL1EcD8EH9LZ8qUJ9noGxPfVZffUAAt11/743qcwyUp+iNB57k9VJAVnoNP7Gl+ggDMYyvPoX3SwEZmvR7DR6ogTsKG825Xn1oAGfM+vFp3vsE97R8f6vH1YcHSL/Pt9x9sPq0Atmaud+O09VnCEivents1lt9SoFcjbzt3Z7qswSkz9yOZx9QpD6egCFTX3yPz+mBP2w75dW7uJ8Gvmn387Uv5asPF6DWa+t9Dh+pPo2ALfNrzDlSfcgAmTZTqt2lPoSAdQX993vu5FL1cQOSNeymv+0+Sn34gOQU3FH9L1tzwRnC0LPB7QcUqM8cIFDc7bZON3VQn0DAngnNPnui33z1SQOkinYZ0Px4bkSAb3q91ODs61qojxeQGnfWeGbHIyeoDyZgQtdPz/y5m/pIAak0/k+n37vDNQPVhxTIUpUvvt3vo87qcwSkXWHLTU5vdfWRrdUnFoir9PpPnvvn7vP4AB7IyJJKNarNmbJ1G/UJBjZmwTefnPRg46/4kROQm1H3/ef2VxpcXLee+kwDy1Xt+uMLfzl7QL/71ScD8E/FSu2/rtbq5R22vr7KXPVRR1AW9LxoeIN99t1v/4/OU58CIBijXt/tnAHvP3NLnaP3uGHPJ++ePppfWcGMCY+/NrHZX98e9NmcB6pVr3FppRYz1Jsdufp/EuBmfBbh0rwAAAAASUVORK5CYII=">';
+  toc.appendChild(logo);
+  var tocLinks = Array.prototype.slice.call(toc.querySelectorAll('a'));
+
+  /* ---------- deck navigation ---------- */
+  function show(n, push){
+    idx = Math.max(0, Math.min(slides.length-1, n));
+    slides.forEach(function(s,i){ s.classList.toggle('active', i===idx); });
+    counter.textContent = (idx+1) + ' / ' + slides.length;
+    tocLinks.forEach(function(a){ a.classList.toggle('active', +a.getAttribute('data-i')===idx); });
+    if (push) history.replaceState(null, '', '#' + slides[idx].id);
+    if (body.classList.contains('deck')) window.scrollTo(0,0);
+  }
+  function go(d){ show(idx + d, true); }
+
+  /* ---------- modes ---------- */
+  function setMode(deck){
+    body.classList.toggle('deck', deck);
+    body.classList.toggle('doc', !deck);
+    modeBtn.textContent = deck ? 'Doc mode' : 'Deck mode';
+    modeBtn.classList.toggle('on', !deck);
+    setAllDetails(!deck);
+    if (deck) { show(idx, false); }
+    else { slides[idx].scrollIntoView({block:'start'}); }
+    try { localStorage.setItem('rc_mode', deck ? 'deck' : 'doc'); } catch(e){}
+  }
+  function setAllDetails(open){
+    document.querySelectorAll('details.deep').forEach(function(d){ d.open = open; });
+    expandBtn.textContent = open ? 'Collapse all' : 'Expand all';
+    expandBtn.classList.toggle('on', open);
+  }
+  function toggleDetails(){
+    var any = !!document.querySelector('details.deep:not([open])');
+    setAllDetails(any);
+  }
+  function setTheme(dark){
+    body.classList.toggle('dark', dark);
+    themeBtn.textContent = dark ? 'Light' : 'Dark';
+    try { localStorage.setItem('rc_theme', dark ? 'dark' : 'light'); } catch(e){}
+  }
+
+  modeBtn.addEventListener('click', function(){ setMode(!body.classList.contains('deck')); });
+  themeBtn.addEventListener('click', function(){ setTheme(!body.classList.contains('dark')); });
+  expandBtn.addEventListener('click', toggleDetails);
+
+  document.addEventListener('keydown', function(e){
+    var tag = (e.target.tagName||'').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey || e.altKey) return;
+    var deck = body.classList.contains('deck');
+    if (deck && (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ')) { e.preventDefault(); go(1); }
+    else if (deck && (e.key === 'ArrowLeft' || e.key === 'PageUp')) { e.preventDefault(); go(-1); }
+    else if (deck && e.key === 'Home') { e.preventDefault(); show(0,true); }
+    else if (deck && e.key === 'End')  { e.preventDefault(); show(slides.length-1,true); }
+    else if (e.key === 'd' || e.key === 'D') { setMode(!deck); }
+    else if (e.key === 'e' || e.key === 'E') { toggleDetails(); }
+    else if (e.key === 't' || e.key === 'T') { setTheme(!body.classList.contains('dark')); }
+  });
+
+  tocLinks.forEach(function(a){
+    a.addEventListener('click', function(){
+      if (body.classList.contains('deck')) { show(+a.getAttribute('data-i'), true); }
+    });
+  });
+
+  /* scrollspy in doc mode */
+  window.addEventListener('scroll', function(){
+    if (body.classList.contains('deck')) return;
+    var best = 0;
+    for (var i=0;i<slides.length;i++){
+      if (slides[i].getBoundingClientRect().top <= 120) best = i;
+    }
+    if (best !== idx){
+      idx = best;
+      counter.textContent = (idx+1) + ' / ' + slides.length;
+      tocLinks.forEach(function(a){ a.classList.toggle('active', +a.getAttribute('data-i')===idx); });
+    }
+  }, {passive:true});
+
+  /* ---------- gap index ---------- */
+  var gaps = Array.prototype.slice.call(document.querySelectorAll('.needs'));
+  var gapHost = document.getElementById('gaplist');
+  gapchip.textContent = gaps.length + (gaps.length === 1 ? ' gap' : ' gaps');
+  if (gapHost){
+    gaps.forEach(function(g, n){
+      var sec = g.closest('.slide');
+      if (!sec || sec.id === 'open-items') return;
+      var title = sec.getAttribute('data-title');
+      var part  = sec.getAttribute('data-part');
+      var q     = g.querySelector('.q');
+      var card  = document.createElement('div');
+      card.className = 'card';
+      card.style.margin = '10px 0';
+      var qhtml = q ? q.innerHTML : '';
+      card.innerHTML =
+        '<h4 style="margin:0 0 6px"><span class="pill warn">' + (n+1) + '</span> ' +
+        '<a href="#' + sec.id + '" data-i="' + slides.indexOf(sec) + '">' + part + ' &rarr; ' + title + '</a></h4>' +
+        '<div style="font-size:13.2px;color:var(--muted);line-height:1.6">' + qhtml + '</div>';
+      gapHost.appendChild(card);
+    });
+    gapHost.querySelectorAll('a[data-i]').forEach(function(a){
+      a.addEventListener('click', function(){
+        if (body.classList.contains('deck')) show(+a.getAttribute('data-i'), true);
+      });
+    });
+  }
+  gapchip.addEventListener('click', function(){
+    var target = document.getElementById('open-items');
+    if (!target) return;
+    if (body.classList.contains('deck')) show(slides.indexOf(target), true);
+    else target.scrollIntoView({block:'start'});
+  });
+
+  /* ---------- copy buttons ---------- */
+  document.querySelectorAll('.code .copy').forEach(function(b){
+    b.addEventListener('click', function(){
+      var pre = b.parentNode.querySelector('pre');
+      if (!pre) return;
+      navigator.clipboard.writeText(pre.innerText).then(function(){
+        var old = b.textContent;
+        b.textContent = 'copied'; b.classList.add('ok');
+        setTimeout(function(){ b.textContent = old; b.classList.remove('ok'); }, 1200);
+      }).catch(function(){});
+    });
+  });
+
+  /* ---------- boot ---------- */
+  var savedTheme = null, savedMode = null;
+  try { savedTheme = localStorage.getItem('rc_theme'); savedMode = localStorage.getItem('rc_mode'); } catch(e){}
+  setTheme(savedTheme ? savedTheme === 'dark'
+                      : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+  var start = 0;
+  if (location.hash){
+    var h = location.hash.slice(1);
+    for (var i=0;i<slides.length;i++){ if (slides[i].id === h) start = i; }
+  }
+  idx = start;
+  setMode(savedMode ? savedMode === 'deck' : true);
+  show(start, false);
+})();
+</script>
+</body>
+</html>
