@@ -804,15 +804,15 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
     (<code>build-essential</code>, <code>cmake</code>, Boost dev headers) — see the install slide.
   </div>
 
-  <p>The code lives in the <b><code>robot-control</code></b> checkout inside WSL — that clone is the
-     working copy, and <code>uv run</code> from its root is how everything is launched.</p>
+  <p>The host runs <b>Ubuntu 24.04.1</b> on WSL 2.7.10 (kernel
+     <code>6.18.33.2-microsoft-standard-WSL2</code>). The code lives in the
+     <b><code>robot-control</code></b> checkout, and <code>uv run</code> from its root launches
+     everything.</p>
 
   <div class="needs">
     <span class="q" style="margin-top:0">
-      · Which <code>apt</code> packages were needed to build <code>ur_rtde</code> here
-        (<code>find_urrtde_deps.sh</code> recovers this from the machine).<br>
       · Is <code>ROBOT_API_TOKEN</code> set persistently (<code>~/.bashrc</code>?) or typed per session?
-        Right now it matters more than it looks — see the Network slide.<br>
+        It matters more than it looks — see the Network slide.<br>
       · Does anything start on boot beyond the camera attach, or is every run manual?
     </span>
   </div>
@@ -912,11 +912,11 @@ uv run scripts/sim.py ur15          <span class="c"># nothing needs activating; 
     <div class="card">
       <h4>Linux / WSL <span class="tag">the lab</span></h4>
       <p><code>ur_rtde</code> publishes no wheels, so it compiles from source on every machine.
-      You need a C++ toolchain, CMake and Boost development headers present before <code>uv sync</code>.</p>
-      <div class="needs" style="margin-bottom:0">
-        <span class="q" style="margin-top:0">Confirm the exact <code>apt install</code> line that worked in your WSL —
-        this is the one command a newcomer will get stuck on.</span>
-      </div>
+      Verified on the lab host (<b>Ubuntu 24.04.1</b>, gcc 13.3, CMake 3.28.3):</p>
+      <div class="code"><button class="copy">copy</button><pre>sudo apt install -y build-essential cmake libboost-all-dev git git-lfs</pre></div>
+      <p style="font-size:13.2px;color:var(--muted)">That is the whole prerequisite. Ubuntu 24.04 ships
+      <b>Boost 1.83</b>, which is below the 1.87 change that breaks the build on macOS — so on Linux it
+      simply works, no version pinning needed.</p>
     </div>
     <div class="card">
       <h4>macOS <span class="tag">dev</span></h4>
@@ -926,6 +926,8 @@ uv run scripts/sim.py ur15          <span class="c"># nothing needs activating; 
 export BOOST_ROOT=/opt/homebrew/opt/boost@1.85
 export CMAKE_PREFIX_PATH=$BOOST_ROOT
 uv sync</pre></div>
+      <p style="font-size:13.2px;color:var(--muted)">The mirror image of Linux: Homebrew ships 1.90, so
+      macOS needs a deliberate <em>downgrade</em> to get below 1.87.</p>
     </div>
   </div>
 
@@ -935,6 +937,15 @@ uv sync</pre></div>
     miniconda and broke the moment the repo directory moved. Do not <code>pip install</code> into
     <code>.venv/</code> — change <code>pyproject.toml</code> and re-run <code>uv sync</code>, then commit
     the regenerated <code>uv.lock</code>.
+  </div>
+
+  <div class="warn">
+    <b>You do not need ffmpeg or the <code>libav*-dev</code> packages.</b> They appear in this host's
+    apt history because they were installed while chasing OpenCV's
+    <em>"configure with libavdevice"</em> message — which is <b>not a build problem at all</b>. cv2
+    emits it when no camera device is present, having silently fallen through to its FFMPEG backend.
+    The real fix was attaching the camera. <code>camera.py</code> now names the backend explicitly
+    (V4L2 / AVFoundation) so the error points at the missing device instead of a build flag.
   </div>
 
   <details class="deep"><summary>Non-obvious entries in the dependency manifest</summary>
@@ -985,15 +996,16 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
     interface while every port is open and the ring is green, check that toggle first.
   </div>
 
-  <div class="needs">
-    <span class="q" style="margin-top:0">
-      · Is the pendant already configured this way permanently, or does something reset it (a
-        PolyScope update, a power cycle)?<br>
-      · Any UR installation/safety settings a newcomer must not change — payload, TCP offset,
-        safety planes, reduced-mode limits?<br>
-      · Is the Hand-E declared as a payload on the pendant as well as in code
-        (<code>setPayload</code> is sent at startup from Python)?
-    </span>
+  <div class="note">
+    <b>The UR15 has its tool configured on the pendant.</b> That does not change how the software
+    drives it — every motion command is joint-space (<code>servoJ</code>), and the grasp point is
+    computed independently in Python as a fixed <code>tool0</code> offset from the Hand-E URDF. The
+    pendant tool matters for jogging, for what the pendant displays, and for gravity compensation.
+    <br><br>
+    <b>Keep the payloads consistent:</b> Python also sends
+    <code>setPayload(1.0 kg, (0, 0, 0.06))</code> at startup, which is what removes the end-of-play
+    droop. If the pendant's declared payload and that call ever disagree, the arm is being told two
+    different things about the same gripper.
   </div>
 </section>
 
@@ -1031,26 +1043,23 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
      cabinet front may need one press.</p>
 
   <div class="warn">
-    <b>From your notes — the boot-order trap.</b> When restarting the ABB controller, make sure the
-    <b>MGMT port is disconnected before it boots</b>, or you'll hit a startup error. Reconnect after
-    it has come up.
-    <div class="needs" style="margin:10px 0 0; background:transparent; border-style:solid">
-      <span class="q" style="margin-top:0">What exactly does it show — an event-log code, a pendant
-      dialog, a failure to reach Auto? And is this a known ABB behaviour (e.g. a DHCP/address conflict
-      with the PC on that subnet) or something specific to this cell? Knowing the mechanism tells the
-      next person whether it's still true after any network change.</span>
-    </div>
+    <b>The boot-order rule: unplug MGMT before powering the controller on.</b> Boot it with the cable
+    in and you get a startup error; disconnect first, let it come up, then reconnect. This is a
+    known-and-followed rule in this cell — <b>the exact error text was never recorded</b>, so treat
+    it as a procedure rather than something you'll recognise by its message. If you do hit it, capture
+    what the pendant says and add it here; the likely mechanism is an address conflict on
+    <code>192.168.125.0/24</code> while the controller brings its interface up.
   </div>
 
-  <div class="needs">
-    <span class="q" style="margin-top:0">
-      · Is the <b>EGM option licensed</b> on this controller? (Pendant → Settings → System →
-        installed options.) Without it, none of the GoFa motion path works, and that's the first thing
-        a newcomer with a fresh controller would hit.<br>
-      · Were <code>egm/EGM_COMM.cfg</code> and <code>EGM_MOC.cfg</code> applied with a controller
-        restart, and is that state persistent?<br>
-      · Any TCP / tool / work-object definition configured on the pendant that the code assumes?
-    </span>
+  <div class="note">
+    <b>EGM is licensed on this controller</b> — confirmed. Worth checking first on any <em>other</em>
+    OmniCore, though (pendant → Settings → System → installed options): without the option the entire
+    GoFa motion path is dead, and the failure is not obvious from the Python side.
+    <br><br>
+    <b>The GoFa has no tool defined</b> — it runs in the flange frame, which is why
+    <code>TARGET_LINK = "tool0"</code> is the end of the chain for this arm and there is no
+    grasp-offset step like the UR15's. The UR15, by contrast, <em>does</em> have its tool configured
+    on the pendant.
   </div>
 </section>
 
@@ -1131,9 +1140,11 @@ ENDMODULE</pre></div>
     then switching to Auto to replay.)
   </div>
 
-  <div class="needs">
-    <span class="q" style="margin-top:0">Did you ever find a working <code>resetpp</code> /
-    program-start over RWS, or is the pendant press still required on every install?</span>
+  <div class="warn">
+    <b>PP-to-Main + Play is still a manual pendant press.</b> Starting the RAPID program over RWS was
+    never made to work — every URL shape tried returned 400 "semantic error" or 403 — so the installer
+    ends by asking you to press the buttons. Plan for it: <b>the GoFa cannot be brought up entirely
+    from the PC</b>, which matters if you ever want unattended startup or remote recovery.
   </div>
 </section>
 
@@ -1174,13 +1185,14 @@ uv run scripts/api_smoketest.py</pre></div>
     </div>
   </div>
 
-  <div class="needs">
-    <span class="q" style="margin-top:0">
-      · Is this the order you actually use? Anything missing — air, e-stop reset, a specific
-        power sequence between the two cabinets?<br>
-      · Any pendant state that has to be re-established after a power cycle beyond PP-to-Main + Play?<br>
-      · What's the shutdown procedure at the end of a session?
-    </span>
+  <h3>Shutdown</h3>
+  <p>Deliberately simple: <b>end the scripts, then press an E-stop.</b> Nothing needs an orderly
+     teardown — the transports close cleanly on Ctrl-C, and leaving the arms e-stopped means nothing
+     can move if someone later starts a script without looking at the cell.</p>
+  <div class="note">
+    Remember that the E-stop is what you will then have to <em>clear</em> at the next cold start,
+    along with PP-to-Main + Play on the GoFa. That is the whole loop: E-stop to finish, release and
+    re-arm to begin.
   </div>
 </section>
 
