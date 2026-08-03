@@ -1524,9 +1524,89 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
 </section>
 
 
-<section class="slide" data-part="Operating it" data-title="Cameras">
+<section class="slide" data-part="Operating it" data-title="Camera streaming">
   <p class="kicker">Operating it · 21</p>
-  <h2>Cameras — and the two-clock trick</h2>
+  <h2>Camera streaming</h2>
+  <p class="lede">One USB camera per arm, four endpoints, and one capture thread no matter how
+     many people are watching.</p>
+
+  <table>
+    <tr><th style="width:26%">Endpoint</th><th>Returns</th><th>Use it when</th></tr>
+    <tr><td><code>GET /camera/info</code></td><td>JSON — availability, resolution, fps, latest seq/timestamps</td><td>Checking whether an arm even has a camera</td></tr>
+    <tr><td><code>GET /camera/frame</code></td><td>One JPEG + <code>X-Frame-*</code> headers</td><td>You need a single frame <em>and</em> its timestamps</td></tr>
+    <tr><td><code>GET /camera/frame.json</code></td><td><code>{robot, ts, ts_unix, seq, jpeg_b64}</code></td><td>You'd rather have one JSON object than headers plus a body</td></tr>
+    <tr><td><code>GET /camera/stream</code></td><td>MJPEG, <code>multipart/x-mixed-replace</code></td><td>Live viewing — drop it straight into an <code>&lt;img&gt;</code></td></tr>
+  </table>
+
+  <div class="code"><button class="copy">copy</button><pre><span class="c"># per-arm, like everything else</span>
+curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
+
+<span class="c"># the token may also go in the query string — an &lt;img&gt; can't set headers</span>
+&lt;img src="http://host:8000/gofa/camera/stream?token=$TOK"&gt;</pre></div>
+
+  <ul class="key">
+    <li><b>One grab thread per arm, one latest-frame slot</b>
+      <small><code>CameraSource</code> owns the <code>cv2.VideoCapture</code> and grabs continuously
+      into a single slot. Ten viewers don't mean ten captures — they all read the same frame.</small></li>
+    <li><b>The stream pushes at the capture rate; it does not poll</b>
+      <small><code>wait_for_next(after_seq)</code> blocks on a condition variable until a frame newer
+      than the one you last saw lands. No busy-wait, no fixed-interval polling, and a slow client
+      simply gets fewer frames rather than backing anything up.</small></li>
+    <li><b>Every frame carries a <code>seq</code>, counting from 1</b>
+      <small>So a client can detect dropped or stale frames instead of quietly rendering a frozen
+      image and believing it's live.</small></li>
+    <li><b>MJPEG per-part headers exist but browsers hide them</b>
+      <small>The stream's parts carry the same <code>X-Frame-*</code> timestamps, but JS can't read
+      them out of an <code>&lt;img&gt;</code>. <b>Use <code>frame</code> / <code>frame.json</code>
+      whenever you need to pair an image with telemetry</b> — see the next slide.</small></li>
+  </ul>
+
+  <div class="warn">
+    <b>An MJPEG connection stays open as long as <code>src</code> is set.</b> Hiding the element is not
+    enough — the console <em>removes the <code>src</code> attribute</em> when you leave the Camera tab,
+    and tears the feed down and rebuilds it on disconnect and on arm switch. Get this wrong in your own
+    client and you'll hold capture connections open indefinitely, or show one arm's video on the other
+    arm's panel.
+  </div>
+
+  <details class="deep"><summary>Tunables, bandwidth, and the defaults on this machine</summary>
+    <div class="body">
+      <table>
+        <tr><th>Env var</th><th>Default</th><th>Effect</th></tr>
+        <tr><td><code>UR_CAMERA_INDEX</code></td><td><code>0</code></td><td>Device index or path; <code>-1</code> disables</td></tr>
+        <tr><td><code>GOFA_CAMERA_INDEX</code></td><td><code>2</code> on Linux, <code>1</code> elsewhere</td><td>Second camera — see the UVC metadata-node note</td></tr>
+        <tr><td><code>CAMERA_WIDTH</code> / <code>CAMERA_HEIGHT</code></td><td>640 × 480</td><td>Requested capture size</td></tr>
+        <tr><td><code>CAMERA_FPS</code></td><td>15</td><td>Grab rate — <b>also the ceiling on the MJPEG stream</b></td></tr>
+        <tr><td><code>CAMERA_JPEG_QUALITY</code></td><td>80</td><td><code>cv2.IMWRITE_JPEG_QUALITY</code></td></tr>
+      </table>
+      <p><b>Rough bandwidth:</b> 640×480 at quality 80 is on the order of 30–60 kB per frame, so a
+      15 fps stream runs somewhere around 0.5–1 MB/s per viewer. Two arms watched by two people is
+      a few MB/s — fine on a wired LAN, worth thinking about over anything slower. Drop
+      <code>CAMERA_FPS</code> before dropping quality; the frame rate scales the cost linearly.</p>
+      <p>On the lab host both cameras are Arducam 477 12MP-S-HDR and the defaults are correct
+      (<code>/dev/video0</code> = UR15, <code>/dev/video2</code> = GoFa), so <b>no camera env vars are
+      set</b>.</p>
+    </div>
+  </details>
+
+  <details class="deep"><summary>Failure behaviour</summary>
+    <div class="body">
+      <p>Cameras are <b>best-effort</b>, exactly like the Hand-E gripper. If the device isn't
+      configured, cv2 is missing, or the camera never delivers a frame, the server <em>still starts</em>
+      and <code>/camera/*</code> returns <code>503</code>, with <code>/camera/info</code> reporting
+      <code>{"available": false, "error": "&lt;why&gt;"}</code>. The reason is printed at startup too.</p>
+      <p>The design rule: a missing camera is a degraded view, never a reason the robot can't be
+      driven. Nothing in the motion path depends on capture succeeding.</p>
+      <p>An arm with no camera shows a quiet "no camera on ‹ARM›" note in the console, taken from
+      <code>/camera/info</code> rather than from a failed image load.</p>
+    </div>
+  </details>
+</section>
+
+
+<section class="slide" data-part="Operating it" data-title="Frame pairing">
+  <p class="kicker">Operating it · 22</p>
+  <h2>Pairing frames with telemetry</h2>
   <p class="lede">One USB camera per arm. The interesting part isn't the video, it's the timestamps.</p>
 
   <div class="code"><button class="copy">copy</button><pre>GET /ur15/camera/frame
@@ -1556,7 +1636,7 @@ X-Frame-Seq:     11</pre></div>
 <!-- ============================ PART IV — HOW IT WORKS ============================ -->
 
 <section class="slide" data-part="How it works" data-title="RobotController">
-  <p class="kicker">How it works · 22</p>
+  <p class="kicker">How it works · 23</p>
   <h2>The controller core</h2>
   <p class="lede">One thread-safe motion implementation behind every surface. This refactor is the
      spine of the project — everything after it was cheap because of it.</p>
@@ -1602,7 +1682,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="Motion model">
-  <p class="kicker">How it works · 23</p>
+  <p class="kicker">How it works · 24</p>
   <h2>The motion model</h2>
   <p class="lede">Two interpolation modes, one velocity profile, and a hard speed ceiling that the
      user interface cannot raise.</p>
@@ -1667,7 +1747,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="Seeded IK">
-  <p class="kicker">How it works · 24</p>
+  <p class="kicker">How it works · 25</p>
   <h2>Why the stock IK solver wasn't enough</h2>
   <p class="lede">PyRoki's example <code>solve_ik</code> has no seed and no posture cost. It returns
      <em>a</em> valid solution — frequently in a distant null-space branch.</p>
@@ -1696,7 +1776,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="Offline simulator">
-  <p class="kicker">How it works · 25</p>
+  <p class="kicker">How it works · 26</p>
   <h2>The offline simulator</h2>
   <p class="lede">It doesn't reimplement the robot. It runs the real scripts and lies to them about
      what's on the other end of the socket.</p>
@@ -1736,7 +1816,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="Safety architecture">
-  <p class="kicker">How it works · 26</p>
+  <p class="kicker">How it works · 27</p>
   <h2>Safety, layer by layer</h2>
   <p class="lede">No single mechanism is trusted. Each layer below assumes the one above it failed.</p>
 
@@ -1777,7 +1857,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="RobotState">
-  <p class="kicker">How it works · 27</p>
+  <p class="kicker">How it works · 28</p>
   <h2><code>RobotState</code> — the one shape</h2>
   <p class="lede">Produced by the controller's poll thread, consumed by every surface. If you learn
      one data structure in this codebase, learn this one.</p>
@@ -1817,7 +1897,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 <!-- ============================ PART V — WAR STORIES ============================ -->
 
 <section class="slide" data-part="War stories" data-title="Convergence">
-  <p class="kicker">War stories · 28</p>
+  <p class="kicker">War stories · 29</p>
   <h2>Chasing the last millimetre</h2>
   <p class="lede">Nine commits over two days, all on one problem: the arm stopped <em>near</em> the end
      of a trajectory instead of <em>at</em> it.</p>
@@ -1855,7 +1935,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="War stories" data-title="Gripper pivot">
-  <p class="kicker">War stories · 29</p>
+  <p class="kicker">War stories · 30</p>
   <h2>The gripper that couldn't be talked to</h2>
   <p class="lede">A design constraint that only appears once both halves are running at the same time.</p>
 
@@ -1898,7 +1978,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="War stories" data-title="OmniCore RWS">
-  <p class="kicker">War stories · 30</p>
+  <p class="kicker">War stories · 31</p>
   <h2>Ten ways OmniCore RWS will waste your afternoon</h2>
   <p class="lede">The most-starred ABB Python client doesn't work on this controller. Here is
      everything learned the hard way, so nobody relearns it.</p>
@@ -1927,7 +2007,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="War stories" data-title="Offline by design">
-  <p class="kicker">War stories · 31</p>
+  <p class="kicker">War stories · 32</p>
   <h2>A machine cabled to a robot has no internet</h2>
   <p class="lede">An obvious statement that quietly invalidates a lot of standard tooling.
      Several decisions in this repo exist only because of it.</p>
@@ -1980,7 +2060,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VI — OPERATIONS ============================ -->
 
 <section class="slide" data-part="Operations" data-title="E-stop &amp; recovery">
-  <p class="kicker">Operations · 32</p>
+  <p class="kicker">Operations · 33</p>
   <h2>E-stop and recovery</h2>
   <p class="lede">The most important operational procedure in the system, and the one most likely to
      be needed while someone is watching.</p>
@@ -2050,7 +2130,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Operations" data-title="Troubleshooting">
-  <p class="kicker">Operations · 33</p>
+  <p class="kicker">Operations · 34</p>
   <h2>Troubleshooting matrix</h2>
   <p class="lede">Symptom → cause → fix. Everything learned in the lab and everything learned in the
      code, in one table. Start here before reading any source.</p>
@@ -2098,7 +2178,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Operations" data-title="Testing">
-  <p class="kicker">Operations · 34</p>
+  <p class="kicker">Operations · 35</p>
   <h2>Verifying the system</h2>
   <p class="lede">Three offline test suites and two hardware probes. All five run without touching
      a robot except the probes, which exist precisely to test hardware.</p>
@@ -2128,7 +2208,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VII — HANDOFF ============================ -->
 
 <section class="slide" data-part="Handoff" data-title="What's not done">
-  <p class="kicker">Handoff · 35</p>
+  <p class="kicker">Handoff · 36</p>
   <h2>What isn't done</h2>
   <p class="lede">Stated plainly, because the next person will find these anyway — better they find
      them here first, with context.</p>
@@ -2153,7 +2233,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Handoff" data-title="Day one">
-  <p class="kicker">Handoff · 36</p>
+  <p class="kicker">Handoff · 37</p>
   <h2>If you're inheriting this — start here</h2>
   <p class="lede">A path from zero to commanding a real arm, ordered so that each step's failures are
      diagnosable before the next step can confuse them.</p>
@@ -2202,7 +2282,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Handoff" data-title="Summary">
-  <p class="kicker">Handoff · 37</p>
+  <p class="kicker">Handoff · 38</p>
   <h2>What was built</h2>
 
   <div class="stats" style="margin:22px 0 26px">
@@ -2236,7 +2316,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Handoff" data-title="Open items">
-  <p class="kicker">Handoff · 38</p>
+  <p class="kicker">Handoff · 39</p>
   <h2>Open items in this document</h2>
   <p class="lede">Every <b>NEEDS INPUT</b> block, collected. These are facts that live in your head or
      in the lab — not in the repository — and each one is a thing the next person will otherwise
