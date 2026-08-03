@@ -293,11 +293,6 @@
     <div><b>Deep dive</b>Audience: engineers inheriting the system</div>
   </div>
 
-  <div class="needs">
-    Cover-slide details I can't know.
-    <span class="q">Team / org name for the subtitle, presentation date, and whether to credit a manager or mentor on this slide.</span>
-  </div>
-
   <div class="note" style="margin-top:22px">
     <b>How to use this document.</b> It is both the talk and the handover manual.
     <b>Deck mode</b> shows one slide at a time — that's the presentation.
@@ -600,15 +595,27 @@
     network.</b>
   </div>
 
-  <div class="needs">
-    Physical facts a newcomer will ask about on day one.
-    <span class="q">
-      · How are the two arms mounted and how far apart — do their workspaces overlap?<br>
-      · Where does each arm's USB camera physically sit (wrist-mounted? on a tripod looking at the cell)?<br>
-      · Is there anything else in the cell — fixtures, a table, parts to pick?<br>
-      · Where is the physical E-stop for each arm, and is there a shared one?<br>
-      · Anything about powering the Hand-E (tool-flange wiring) that has to be checked before use?
-    </span>
+  <h3>The cell</h3>
+  <ul>
+    <li>The two arms are on <b>two separate tables</b>. Nothing else on them is relevant to operation.</li>
+    <li>The Arducams are <b>monitoring cameras</b> watching the cell — they are not wrist-mounted and
+        nothing in the motion path depends on them.</li>
+    <li><b>The E-stops are on the pendants, and the pendants live on a separate table.</b></li>
+  </ul>
+
+  <div class="warn">
+    <b>The two arms can reach each other.</b> Their working envelopes overlap, and
+    <b>nothing in software knows that</b> — there is no collision model spanning the two robots, and a
+    single API server can drive both at once. Two independently valid commands can put them in the same
+    place. Until that changes, <b>the interlock is the operator</b>: move one arm at a time, or check
+    the other's pose first.
+  </div>
+
+  <div class="warn">
+    <b>Know where the pendant is before you command motion.</b> The E-stops are on the pendants and the
+    pendants are on a different table from the arms — so the stop button is not within arm's reach of the
+    thing you are stopping. Worth a deliberate look before the first move of a session, and worth
+    mentioning to anyone watching a demo.
   </div>
 </section>
 
@@ -797,17 +804,16 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
     (<code>build-essential</code>, <code>cmake</code>, Boost dev headers) — see the install slide.
   </div>
 
+  <p>The code lives in the <b><code>robot-control</code></b> checkout inside WSL — that clone is the
+     working copy, and <code>uv run</code> from its root is how everything is launched.</p>
+
   <div class="needs">
-    Host-specific facts to lock down.
-    <span class="q">
-      · Where is the repo checked out inside WSL, and which WSL distro/version?<br>
-      · Is it on the WSL filesystem (<code>~/…</code>) or a Windows mount (<code>/mnt/c/…</code>)? This
-        matters — <code>uv sync</code> and JAX are dramatically slower on <code>/mnt/c</code>.<br>
-      · Which build packages did you actually have to <code>apt install</code> to get
-        <code>ur_rtde</code> to compile in WSL?<br>
-      · Is <code>ROBOT_API_TOKEN</code> set persistently (in <code>~/.bashrc</code>?) and to what,
-        or typed each session?<br>
-      · Does anything start automatically on boot, or is every run manual?
+    <span class="q" style="margin-top:0">
+      · Which <code>apt</code> packages were needed to build <code>ur_rtde</code> here
+        (<code>find_urrtde_deps.sh</code> recovers this from the machine).<br>
+      · Is <code>ROBOT_API_TOKEN</code> set persistently (<code>~/.bashrc</code>?) or typed per session?
+        Right now it matters more than it looks — see the Network slide.<br>
+      · Does anything start on boot beyond the camera attach, or is every run manual?
     </span>
   </div>
 </section>
@@ -1830,6 +1836,14 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     <tr><td><b>Interaction</b></td><td>"Execute" auto-unticks at play start · free-drive/Live/Play mutually exclusive · always-available Stop and E-stop</td><td>Operator error</td></tr>
   </table>
 
+  <div class="warn">
+    <b>What no layer covers: the two arms colliding with each other.</b> Every mechanism above protects
+    an arm from a bad command or a person from an arm. None of them models the <em>other robot</em> —
+    the arms are on separate tables with overlapping reach, each controller plans in its own frame, and
+    the multi-arm server will happily run both at once. This is the one hazard in the cell that is
+    entirely procedural, and the first thing to fix if the two arms ever need to work simultaneously.
+  </div>
+
   <ul class="key">
     <li><b>Stop is never lease-gated</b>
       <small>Any authenticated client can stop the arm at any time, including one that never held
@@ -2220,7 +2234,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
     <tr><td><b><code>ROBOT_API_TOKEN</code> defaults to <code>changeme</code></b></td><td>Warns loudly at startup, but still starts</td><td>Make it required for any deployment past a direct cable</td></tr>
     <tr><td><b>Stale claims in <code>CLAUDE.md</code></b></td><td>Two things it documents are no longer true: WSL cameras "cannot work", and GoFa lead-through "verify on hardware". Both work.</td><td>One-line fixes; worth doing before handover so the docs don't argue with reality</td></tr>
     <tr><td><b>No CI</b></td><td>Three good offline suites, run by hand</td><td>They're stdlib-assert scripts — trivial to wire into any runner</td></tr>
-    <tr><td><b>Coordinated dual-arm motion</b></td><td>Never attempted. Both arms are served from one process, but each moves independently</td><td>Unspecified — would need collision awareness between the two workspaces</td></tr>
+    <tr><td><b>Cross-arm collision awareness</b></td><td><b>Nothing prevents the two arms hitting each other.</b> Their envelopes overlap, each plans in its own frame, and one server can drive both. Today the interlock is the operator.</td><td>The prerequisite for any coordinated dual-arm work: a shared world model, or at minimum a mutual-exclusion rule in the multi-arm server</td></tr>
     <tr><td><b>Legacy <code>robot_control/</code> directory</b></td><td>The dead pre-uv venv, gitignored, still on disk</td><td><code>rm -rf robot_control/</code> — noted in <code>.gitignore</code> as safe to delete</td></tr>
   </table>
 
