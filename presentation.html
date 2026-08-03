@@ -818,11 +818,18 @@ uv run scripts/verify_cameras.py --save   <span class="c"># writes JPEGs so you 
     follow the physical USB port, so they change if the cameras are moved.
   </div>
 
-  <div class="needs">
-    <span class="q" style="margin-top:0">Which camera is aimed at which arm, and the
-    <code>UR_CAMERA_INDEX</code> / <code>GOFA_CAMERA_INDEX</code> values in use (or are they left at
-    the defaults?). <code>uv run scripts/verify_cameras.py --save</code> answers both — it writes a
-    JPEG per device so you can just look.</span>
+  <div class="note">
+    <b>On this machine: <code>/dev/video0</code> is the UR15, <code>/dev/video2</code> is the GoFa.</b>
+    Those are exactly the built-in defaults, so <b>no environment variables are needed</b> — leave
+    <code>UR_CAMERA_INDEX</code> and <code>GOFA_CAMERA_INDEX</code> unset and it works.
+    <br><br>
+    Note the jump from 0 to <b>2</b>, not 1: on Linux each UVC camera claims two
+    <code>/dev/video*</code> nodes (capture + metadata) and only the first yields frames, so the
+    second physical camera lands on index 2. That is the reasoning behind
+    <code>_SECOND_CAMERA_DEFAULT</code> in <code>robot_common.py</code>, now confirmed on hardware
+    rather than assumed. If the mapping ever drifts, re-run
+    <code>uv run scripts/verify_cameras.py --save</code> — it writes a JPEG per device so you can
+    just look.
   </div>
 
   <details class="deep"><summary>How camera device selection works in the code</summary>
