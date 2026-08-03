@@ -205,6 +205,21 @@
   .tl .what{font-size:14.5px; font-weight:600; margin:1px 0 2px}
   .tl .detail{font-size:13.2px; color:var(--muted); line-height:1.55}
 
+  /* photo / screenshot slots */
+  figure.shot{margin:16px 0; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--panel)}
+  figure.shot img{display:block; width:100%; height:auto}
+  figure.shot figcaption{padding:9px 14px; font-size:12.7px; color:var(--muted); border-top:1px solid var(--line)}
+  figure.shot.tight img{max-height:52vh; object-fit:contain; background:var(--bg)}
+  .shot-ph{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px;
+    min-height:180px; padding:26px 22px; text-align:center; background:var(--bg);
+    border-bottom:2px dashed var(--line);
+  }
+  .shot-ph b{color:var(--accent); font-size:11px; letter-spacing:.11em; text-transform:uppercase}
+  .shot-ph span{font-size:13.4px; max-width:54ch; line-height:1.55; color:var(--muted)}
+  .shot-ph code{font-size:11.5px}
+  .cols figure.shot{margin:0}
+
   /* keyboard hint footer */
   .hint{
     position:fixed; bottom:12px; right:14px; z-index:55; font-size:11.5px; color:var(--muted);
@@ -604,6 +619,11 @@
     <li><b>The E-stops are on the pendants, and the pendants live on a separate table.</b></li>
   </ul>
 
+<figure class="shot" data-shot="cell-wide">
+  <div class="shot-ph"><b>Photo &middot; cell-wide</b><span>Both arms, wide, from an angle that makes the <b>overlapping reach obvious</b> &mdash; ideally with both extended toward each other. This is the single most valuable image in the deck.</span></div>
+  <figcaption>The cell: UR15 and GoFa on separate tables, with overlapping working envelopes.</figcaption>
+</figure>
+
   <div class="warn">
     <b>The two arms can reach each other.</b> Their working envelopes overlap, and
     <b>nothing in software knows that</b> — there is no collision model spanning the two robots, and a
@@ -611,6 +631,11 @@
     place. Until that changes, <b>the interlock is the operator</b>: move one arm at a time, or check
     the other's pose first.
   </div>
+
+<figure class="shot" data-shot="pendants-estop">
+  <div class="shot-ph"><b>Photo &middot; pendants-estop</b><span>The two pendants on their table, with the <b>E-stop buttons visible</b>. Include enough background to show the distance from the arms.</span></div>
+  <figcaption>Both pendants, and the E-stops &mdash; on a separate table from the arms they stop.</figcaption>
+</figure>
 
   <div class="warn">
     <b>Know where the pendant is before you command motion.</b> The E-stops are on the pendants and the
@@ -656,6 +681,11 @@
     If you must change it, update <code>EGM_COMM.cfg</code> <code>RemoteAddress</code> and
     <code>PC_IP_EXPECTED</code> in <code>install_gofa_egm.py</code>, then re-run the installer.
   </div>
+
+<figure class="shot" data-shot="host-cabling">
+  <div class="shot-ph"><b>Photo &middot; host-cabling</b><span>The back of the control PC showing <b>both Ethernet connections</b> &mdash; the built-in port and the USB dongle &mdash; close enough to tell them apart. A stick-on label reading &ldquo;ROBOT NET&rdquo; on the dongle would be worth adding while you are there.</span></div>
+  <figcaption>The two links: the USB dongle carries the robot network; the built-in 2.5&nbsp;GbE carries the ordinary one.</figcaption>
+</figure>
 
   <h3>The confirmed configuration</h3>
   <p>Captured from the running lab host. This is the part that could not be recovered if the
@@ -1042,6 +1072,11 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
     protects, but <b>do not run high-speed Auto motion with people in the workspace.</b>
   </div>
 
+<figure class="shot" data-shot="gofa-x14">
+  <div class="shot-ph"><b>Photo &middot; gofa-x14</b><span>The <b>X14 terminal block</b> with the four jumper pairs fitted, close enough to count the pins. Hardest thing in the whole bring-up to describe in words.</span></div>
+  <figcaption>X14 with ES1/ES2 and AS1/AS2 jumpered &mdash; without AS, Auto mode guard-stops immediately.</figcaption>
+</figure>
+
   <h3>2 · Network — use the MGMT port</h3>
   <p>The C30 has three logical networks. RWS lives on <b>MGMT</b> (rightmost of the three at the
      bottom-right) at <code>192.168.125.1</code>, and on WAN if configured. The <b>LAN</b> port and the
@@ -1051,6 +1086,12 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
   <p>The C30 has <b>no physical Auto/Manual key switch</b> — mode is a touchscreen control in the
      FlexPendant's top status bar. Tap it → Automatic → confirm. The white motors-on button on the
      cabinet front may need one press.</p>
+
+  <figure class="shot" data-shot="gofa-pendant-auto">
+  <div class="shot-ph"><b>Photo &middot; gofa-pendant-auto</b><span>The FlexPendant screen with the <b>mode icon in the top status bar</b> visible, ideally mid-switch to Automatic. A second shot of the PP-to-Main / Play controls would pair well.</span></div>
+  <figcaption>Mode lives in the pendant status bar, not on a key switch &mdash; the step newcomers hunt for.</figcaption>
+</figure>
+
 
   <div class="warn">
     <b>The boot-order rule: unplug MGMT before powering the controller on.</b> Boot it with the cable
@@ -1261,6 +1302,11 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
                          re-solve IK each tick, write q to BOTH the browser and
                          the robot (only if "Execute" is ticked)</div>
 
+<figure class="shot tight" data-shot="viser-ui">
+  <div class="shot-ph"><b>Screenshot &middot; viser-ui</b><span>The viser teleop UI <b>mid-plan</b>: robot rendered, gizmo grabbed, two or three waypoint frames placed, the control panel visible. <b>Runs in sim</b> &mdash; <code>uv run scripts/sim.py ur15</code>, no robot needed.</span></div>
+  <figcaption>The teleop UI: 6-DoF gizmo, waypoint frames, and the shared control panel.</figcaption>
+</figure>
+
   <ul class="key">
     <li><b>The preview and the arm never disagree</b>
       <small>The same <code>q</code> drives the URDF render and the robot on every tick — not two
@@ -1399,6 +1445,11 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
       with the repo rather than living only on the lab PC.</small></li>
   </ul>
 
+<figure class="shot tight" data-shot="cli-recorder">
+  <div class="shot-ph"><b>Screenshot &middot; cli-recorder</b><span>The <code>teleop.py</code> terminal dashboard mid-record &mdash; grasp pose, six joints, gripper %, waypoint count. <b>Runs in sim.</b> A plain terminal screenshot; the in-place redraw reads well as a still.</span></div>
+  <figcaption>The headless recorder&rsquo;s live dashboard, redrawn in place at 10&nbsp;Hz.</figcaption>
+</figure>
+
   <details class="deep"><summary>The headless recorder — <code>teleop.py</code></summary>
     <div class="body">
       <div class="code"><button class="copy">copy</button><pre>uv run scripts/teleop.py [name] [--robot ur|gofa]</pre></div>
@@ -1511,6 +1562,11 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
   <p class="lede">A single static page served at <code>/</code> — same origin, so there's no CORS and
      the token never leaves the tab. Vanilla HTML and JS, no build step.</p>
 
+<figure class="shot tight" data-shot="web-console">
+  <div class="shot-ph"><b>Screenshot &middot; web-console</b><span>The console <b>connected, lease held, telemetry live</b> &mdash; joint bars populated, 3D arm rendered, the Teleop box filled in. Full browser width. <b>Runs in sim</b> &mdash; <code>uv run scripts/sim.py api</code>.</span></div>
+  <figcaption>The web console: live telemetry, lease state, 3D view, and every control gated behind the API.</figcaption>
+</figure>
+
   <ul class="key">
     <li><b>It drives the arm purely through the public API</b>
       <small>Every button is an endpoint call. If it works in the console it works from
@@ -1571,6 +1627,11 @@ curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
 
 <span class="c"># the token may also go in the query string — an &lt;img&gt; can't set headers</span>
 &lt;img src="http://host:8000/gofa/camera/stream?token=$TOK"&gt;</pre></div>
+
+<figure class="shot tight" data-shot="camera-feed">
+  <div class="shot-ph"><b>Screenshot &middot; camera-feed</b><span>The console&rsquo;s <b>Camera tab</b> showing a live feed of one arm, with the telemetry column beside it. Needs the real cameras, so take this one in the lab.</span></div>
+  <figcaption>The Camera tab: an MJPEG feed of the arm, alongside the telemetry it can be paired with.</figcaption>
+</figure>
 
   <ul class="key">
     <li><b>One grab thread per arm, one latest-frame slot</b>
@@ -1974,6 +2035,11 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   <p class="kicker">War stories · 30</p>
   <h2>The gripper that couldn't be talked to</h2>
   <p class="lede">A design constraint that only appears once both halves are running at the same time.</p>
+
+<figure class="shot tight" data-shot="hande-wrist">
+  <div class="shot-ph"><b>Photo &middot; hande-wrist</b><span>The UR15 wrist with the <b>Hand-E fitted</b>, close enough to see the fingers and the tool-flange cabling. Bonus: one open and one closed, side by side.</span></div>
+  <figcaption>The Robotiq Hand-E on the UR15 wrist &mdash; RS-485 and 24&nbsp;V through the tool flange.</figcaption>
+</figure>
 
   <ul class="key">
     <li><b>The conflict</b>
