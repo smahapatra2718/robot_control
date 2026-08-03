@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   One-time setup so the USB cameras appear inside WSL automatically at logon.
 
@@ -25,7 +25,7 @@
 .PARAMETER HardwareId
   Alternative to -BusId: VID:PID, e.g. -HardwareId 046d:0825
   More robust than a BUSID (which changes if you move the camera to another port),
-  but useless if both cameras are the same model — they share a hardware id.
+  but useless if both cameras are the same model - they share a hardware id.
   Use -BusId in that case.
 
 .PARAMETER Distro
@@ -45,6 +45,11 @@
 .EXAMPLE
   .\scripts\setup_cameras_windows.ps1 -Remove
 #>
+
+# NOTE: keep this file ASCII-only, and keep the UTF-8 BOM. Windows PowerShell 5.1 reads a
+# BOM-less .ps1 as CP1252, which turns a UTF-8 em dash into a smart quote -- and PowerShell
+# treats smart quotes as real string delimiters, so the file stops parsing partway through
+# a string with a cascade of confusing "missing terminator" / "missing closing }" errors.
 [CmdletBinding(DefaultParameterSetName = 'ByBusId')]
 param(
     [Parameter(ParameterSetName = 'ByBusId')]
@@ -102,7 +107,7 @@ if (-not $devices) {
 }
 
 if (-not (Test-Admin)) {
-    Write-Error 'Run this in an Administrator PowerShell — `usbipd bind` requires it. (The logon tasks it creates do not.)'
+    Write-Error 'Run this in an Administrator PowerShell - `usbipd bind` requires it. (The logon tasks it creates do not.)'
 }
 
 # ---------------------------------------------------------------- bind + task
@@ -124,7 +129,7 @@ foreach ($dev in $devices) {
     Write-Host "  binding (persists across reboots)..."
     & usbipd bind $flag $value
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "  bind returned $LASTEXITCODE — if it says 'already shared', that is fine."
+        Write-Warning "  bind returned $LASTEXITCODE - if it says 'already shared', that is fine."
     }
 
     # The command the logon task runs. Waking WSL first matters: `attach --wsl` needs a
@@ -162,7 +167,8 @@ Write-Host ''
 Write-Host 'Done. Verify without rebooting:' -ForegroundColor Green
 Write-Host ''
 foreach ($dev in $devices) {
-    Write-Host "    Start-ScheduledTask -TaskName '$TaskPrefix$($dev.Value -replace '[^A-Za-z0-9]', '_')'"
+    $safeName = $dev.Value -replace '[^A-Za-z0-9]', '_'
+    Write-Host "    Start-ScheduledTask -TaskName '$TaskPrefix$safeName'"
 }
 Write-Host ''
 Write-Host '    usbipd list                 # STATE should read "Attached"'
