@@ -209,12 +209,16 @@ path (`/dev/video0`, or better a stable `/dev/v4l/by-id/...` symlink); `-1` disa
 names the backend explicitly (V4L2 on Linux, AVFoundation on macOS) rather than letting cv2
 auto-select — with no device present cv2 silently falls through to `CAP_FFMPEG` and reports
 "configure with libavdevice", which points at a build option instead of the missing camera.
-⚠️ **WSL2 has no USB cameras by default**: its kernel ships no `uvcvideo`, so nothing appears
-under `/dev/video*` even after `usbipd attach`. Run the server on Windows, or build a WSL kernel
-with UVC — a separate capture process would break the same-process monotonic clock that makes
-frames pairable. `camera.py` detects the no-`/dev/video*` case and says all this in the error
-(as a *hint appended after* a failed open, not a precondition — the sim's synthetic device has
-no `/dev` node and gating on one would break offline runs on Linux). See API.md → Cameras.
+**WSL2 USB cameras work** — verified on the lab host (WSL 2.7.10, kernel `6.18.33.2-microsoft-standard-WSL2`,
+a *stock* Microsoft kernel with `uvcvideo` loaded; no custom kernel build needed). Forward each camera
+from Windows with [usbipd-win](https://github.com/dorssel/usbipd-win) — `scripts/setup_cameras_windows.ps1`
+does the one-time `bind` plus a logon task per camera so they attach automatically. Older WSL2 kernels
+shipped no `uvcvideo` and nothing appeared under `/dev/video*` even after `usbipd attach`; if you hit
+that, update WSL (`wsl --update`) rather than running the server on Windows — a separate capture process
+would break the same-process monotonic clock that makes frames pairable with telemetry. `camera.py`
+detects the no-`/dev/video*` case and says so in the error (as a *hint appended after* a failed open,
+not a precondition — the sim's synthetic device has no `/dev` node and gating on one would break
+offline runs on Linux). See API.md → Cameras.
 
 **Both arms from one server** — run `api` with **no arm** (`real.py api` / `sim.py api`) and
 `build_multi_app` mounts a full `build_app` under `/ur15` and `/gofa`, advertises the roster at
@@ -505,7 +509,7 @@ Knobs (edit in `install_gofa_egm.py`, then rerun the installer — Ctrl+C any ru
 - `\LpFilter := 20` — low-pass cutoff (Hz); lower = smoother but laggier.
 - `\CondTime := 1` — seconds of convergence before `EGMRunJoint` returns (how the session ends after the final target is held).
 
-**Lead-through (`SetLeadThrough`) caveats — verify on hardware.** The RAPID hand-guiding instruction (3HAC050917-001 / RW7 3HAC065038). Two unknowns to confirm on the actual GoFa: (1) **RW6** documents it as YuMi-only — RW7/OmniCore reportedly extends it to GoFa, but if the controller rejects it the build error shows at `/rw/rapid/tasks/T_ROB1/program/builderror` (check after the installer loads `PyEgm`); (2) whether it engages in **Auto** (EGM needs Auto) or requires Manual + enabling device — the physical lead-through button working in your Auto setup is a good sign. If it can't run in Auto, teach in Manual and switch to Auto to replay. On failure the physical button path is unaffected.
+**Lead-through (`SetLeadThrough`) — verified working on our GoFa, in Auto.** The RAPID hand-guiding instruction (3HAC050917-001 / RW7 3HAC065038). Worth stating explicitly because **RW6 documents it as YuMi-only**, so ABB's own docs suggest it can't work here — RW7/OmniCore does extend it to the GoFa, and it engages in Auto (which matters, since EGM needs Auto). If a future controller ever rejects it, the build error shows at `/rw/rapid/tasks/T_ROB1/program/builderror` (check after the installer loads `PyEgm`), and the fallback is to teach in Manual and switch to Auto to replay. On failure the physical lead-through button is unaffected.
 
 ## Architecture of `teleop_gofa_egm.py`
 

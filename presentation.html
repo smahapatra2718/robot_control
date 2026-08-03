@@ -649,20 +649,51 @@
     <code>PC_IP_EXPECTED</code> in <code>install_gofa_egm.py</code>, then re-run the installer.
   </div>
 
-  <div class="needs">
-    The host networking configuration. It <b>works</b> — but it was set up once and the settings
-    were never written down, so today it survives only as long as nobody reinstalls WSL or
-    reimages the PC. The block below recovers it from the running machine.
-    <span class="q">
-      · Which adapter carries the robot network — the USB dongle or the built-in port — and its
-        static IP / netmask / gateway.<br>
-      · Whether there's a switch between the PC and the two robots, or a cable each.<br>
-      · Which WSL networking mode makes <code>192.168.125.x</code> reachable from inside WSL.<br>
-      · Anything on the Windows firewall allowing inbound UDP 6510.
-    </span>
+  <h3>The confirmed configuration</h3>
+  <p>Captured from the running lab host. This is the part that could not be recovered if the
+     machine were ever reimaged — now it can.</p>
+
+  <table>
+    <tr><th>Windows adapter</th><th>Hardware</th><th>Address</th><th>Carries</th></tr>
+    <tr><td><code>Ethernet 2</code></td><td>Realtek <b>USB</b> GbE Family Controller <span class="pill">the dongle</span></td><td><code>192.168.125.50/24</code></td><td><b>The robot network</b> — both arms</td></tr>
+    <tr><td><code>Ethernet</code></td><td>Realtek Gaming 2.5GbE (built-in)</td><td><code>192.168.42.176/24</code></td><td>The regular network</td></tr>
+  </table>
+
+  <p><b>WSL sees both directly</b> — <code>eth4</code> holds <code>192.168.125.50</code> and
+     <code>eth0</code> holds <code>192.168.42.176</code>, the same addresses Windows has. That is
+     mirrored networking, and it is the whole configuration:</p>
+
+  <div class="code"><button class="copy">copy</button><pre><span class="c"># C:\Users\sudo\.wslconfig  — two lines, and the reason EGM works at all</span>
+[wsl2]
+networkingMode=mirrored</pre></div>
+
+  <div class="note">
+    <b>Why mirrored is load-bearing, not incidental.</b> Under default NAT, outbound TCP to the robots
+    would still work — RWS and RTDE would look fine. But the GoFa sends EGM feedback <em>inbound</em>
+    to <code>192.168.125.50:6510</code>, and inbound UDP does not reach a NAT'd WSL
+    (<code>netsh portproxy</code> is TCP-only, so it can't be worked around that way either).
+    Lose this line and the symptom is the nastiest kind: <b>RWS connects, the installer succeeds,
+    <code>egm_go</code> sets true — and the arm never moves.</b> Requires WSL 2.0.0+ on
+    Windows 11 22H2+; this host runs WSL 2.7.10.
   </div>
 
-  <details class="deep" open><summary>Recovering the configuration from the running machine</summary>
+  <div class="warn">
+    <b>The flaky dongle <em>is</em> the robot network.</b> <code>Ethernet 2</code> — the adapter that
+    carries both arms — is the USB Realtek, the one that needs replugging when the UR15 connect hangs.
+    The built-in 2.5 GbE port carries the ordinary network instead. Worth knowing before you spend
+    twenty minutes debugging RTDE: <b>if both robots go unreachable at once, suspect the dongle first.</b>
+    Swapping the two cables so the robots use the built-in port would remove a whole class of failure.
+  </div>
+
+  <div class="warn">
+    <b>Security consequence of mirrored mode.</b> WSL shares <em>every</em> Windows interface, and
+    <code>api_server.py</code> binds <code>0.0.0.0</code> by default — so the robot API is reachable
+    on the ordinary network at <code>192.168.42.176:8000</code>, not just the robot subnet. With
+    <code>ROBOT_API_TOKEN</code> unset it would be <code>changeme</code>. <b>Set a real token, or bind
+    <code>--host 127.0.0.1</code>.</b>
+  </div>
+
+  <details class="deep"><summary>Re-deriving this on a rebuilt machine</summary>
     <div class="body">
       <p>Run this in WSL on the lab PC. It answers every question above — <code>powershell.exe</code>
       is callable straight from WSL, so it covers the Windows side too without switching shells.</p>
@@ -805,17 +836,22 @@ uv run scripts/verify_cameras.py --save   <span class="c"># writes JPEGs so you 
     or a WSL restart. <b>Power on → log in → open WSL → the cameras are already there.</b>
   </div>
 
-  <div class="warn">
-    <b>Correction to <code>CLAUDE.md</code>.</b> It currently states that WSL2 ships no
-    <code>uvcvideo</code> driver and that USB cameras therefore cannot work there. <b>That is wrong for
-    this machine</b> — both cameras work through <code>usbipd</code>. The claim should be replaced with
-    what actually happens here, or the next person will read it and stop trying.
+  <div class="note">
+    <b>No custom kernel is needed — this is a stock WSL2 kernel.</b>
+    <code>6.18.33.2-microsoft-standard-WSL2</code>, with <code>uvcvideo</code> loaded as shipped.
+    Older WSL2 kernels genuinely had no UVC support, which is where the "cameras can't work in WSL"
+    folklore comes from; on a current WSL it simply works. If you land on a machine where it
+    doesn't, <code>wsl --update</code> before anything more drastic.
+    (<code>CLAUDE.md</code> asserted the opposite until this was measured — now corrected.)
   </div>
 
   <div class="note">
-    <b>On this machine the cameras are BUSID <code>2-9</code> and <code>2-10</code>,</b> already bound
-    with logon tasks registered. A rebuilt PC needs <code>usbipd list</code> re-run first — BUSIDs
-    follow the physical USB port, so they change if the cameras are moved.
+    <b>The cameras are two Arducam 477 12MP-S-HDR on BUSID <code>2-9</code> and <code>2-10</code></b>,
+    bound with logon tasks registered. Two things follow from them being the <em>same model</em>:
+    they share a USB hardware id (<code>0c40:0433</code>), so the setup script must be given
+    <code>-BusId</code> and not <code>-HardwareId</code>; and only the BUSID distinguishes them, which
+    follows the physical port — <b>move a camera to another socket and the arm mapping swaps.</b>
+    A rebuilt PC needs <code>usbipd list</code> re-run first.
   </div>
 
   <div class="note">
