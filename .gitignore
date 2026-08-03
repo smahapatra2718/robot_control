@@ -16,3 +16,8 @@ __pycache__/
 # Lab credentials (PC / WSL / UR pendant logins). This repo is PUBLIC — these stay
 # on the lab machine only. presentation.html points at this file rather than quoting it.
 important_notes.txt
+
+# Photo/screenshot sources for presentation.html. Baked in by
+# scripts/embed_images.py, so the deck stays a single self-contained file.
+# Keep originals out of git: the embedded copies are what ship.
+images/
