@@ -789,8 +789,8 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
      <a href="https://github.com/dorssel/usbipd-win">usbipd-win</a>.</p>
 
   <div class="code"><button class="copy">copy</button><pre><span class="c"># --- ONE TIME, in an Administrator PowerShell ---</span>
-usbipd list                                        <span class="c"># find the two cameras, note their BUSIDs</span>
-.\scripts\setup_cameras_windows.ps1 -BusId 1-4,1-8  <span class="c"># binds them + registers logon tasks</span>
+usbipd list                                         <span class="c"># confirm the two cameras are on 2-9 and 2-10</span>
+.\scripts\setup_cameras_windows.ps1 -BusId 2-9,2-10  <span class="c"># binds them + registers logon tasks</span>
 
 <span class="c"># --- from then on, nothing. In WSL, just confirm: ---</span>
 ls -l /dev/video*
@@ -812,13 +812,17 @@ uv run scripts/verify_cameras.py --save   <span class="c"># writes JPEGs so you 
     what actually happens here, or the next person will read it and stop trying.
   </div>
 
+  <div class="note">
+    <b>On this machine the cameras are BUSID <code>2-9</code> and <code>2-10</code>,</b> already bound
+    with logon tasks registered. A rebuilt PC needs <code>usbipd list</code> re-run first — BUSIDs
+    follow the physical USB port, so they change if the cameras are moved.
+  </div>
+
   <div class="needs">
-    <span class="q" style="margin-top:0">
-      · The two BUSIDs (or the camera model names) so a newcomer can spot them in
-        <code>usbipd list</code> — needed to run the setup script.<br>
-      · Which camera is aimed at which arm, and the <code>UR_CAMERA_INDEX</code> /
-        <code>GOFA_CAMERA_INDEX</code> values you use (or are they left at the defaults?).
-    </span>
+    <span class="q" style="margin-top:0">Which camera is aimed at which arm, and the
+    <code>UR_CAMERA_INDEX</code> / <code>GOFA_CAMERA_INDEX</code> values in use (or are they left at
+    the defaults?). <code>uv run scripts/verify_cameras.py --save</code> answers both — it writes a
+    JPEG per device so you can just look.</span>
   </div>
 
   <details class="deep"><summary>How camera device selection works in the code</summary>
