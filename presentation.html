@@ -1945,7 +1945,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     <tr><td>Script hangs at the <b>UR15 connect</b> stage</td><td>USB-Ethernet dongle link dropped</td><td><b>Check the dongle's lights; unplug and replug it</b>, then re-run the script</td></tr>
     <tr><td>Ping works, <b>every TCP port times out</b></td><td>PolyScope X firewall</td><td>Pendant → Settings → Security → Services: enable 29999, 30001, 30004, 63352</td></tr>
     <tr><td>Cannot attach the RTDE control interface</td><td>UR is in <b>Local</b> mode</td><td>Toggle <b>Remote Control</b> (top-right on the pendant)</td></tr>
-    <tr><td>Every robot port refused, ping fails too</td><td>A VPN claiming <code>192.168.125.0/24</code> is capturing the route</td><td>Disconnect the VPN; verify with <code>ip route get 192.168.125.1</code></td></tr>
     <tr><td>GoFa unreachable on 443</td><td>Cable in the <b>LAN</b> port (I/O network) instead of <b>MGMT</b></td><td>Move to MGMT — rightmost of the three at the bottom-right</td></tr>
     <tr><td><b>Startup error after rebooting the ABB controller</b></td><td>MGMT was connected during boot</td><td><b>Disconnect MGMT before powering on</b>; reconnect once it's up</td></tr>
   </table>
@@ -1953,7 +1952,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   <h3>GoFa / RAPID</h3>
   <table>
     <tr><th style="width:31%">Symptom</th><th>Cause</th><th>Fix</th></tr>
-    <tr><td>Everything reports success, <b>the arm never moves</b></td><td><code>PyEgm</code> isn't running/parked, or the EGM peer IP is wrong</td><td>PP to Main + Play on the pendant; confirm <code>EGM_COMM.cfg</code> <code>RemoteAddress</code> = the PC's IP</td></tr>
+    <tr><td>Everything reports success, <b>the arm never moves</b></td><td><code>PyEgm</code> isn't running/parked, or the EGM peer IP is wrong</td><td>PP to Main + Play on the pendant; confirm <code>EGM_COMM.cfg</code> <code>RemoteAddress</code> = the PC's IP. If it still will not move, <b>re-run <code>install_gofa_egm.py</code></b> to reload the supervisor — Ctrl-C any running teleop first so RAPID mastership is free</td></tr>
     <tr><td>RWS returns <b>403</b> on mastership</td><td>Orphaned mastership from a crashed process</td><td>Wait ~30 s, or reboot from the pendant</td></tr>
     <tr><td><b>406 Not Acceptable</b> on a POST</td><td>Missing the <code>;v=2.0</code> content-type suffix</td><td>Use <code>abb_rws._post()</code>, which sets it</td></tr>
     <tr><td>"Errors in RAPID program" (event 40160)</td><td>Usually the <code>MainModule</code> <code>main()</code> collision</td><td>Read <code>/rw/rapid/tasks/T_ROB1/program/builderror</code>; re-run the installer, which unloads it</td></tr>
