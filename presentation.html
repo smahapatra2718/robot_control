@@ -753,20 +753,7 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
      <b><code>robot-control</code></b> checkout, and <code>uv run</code> from its root launches
      everything.</p>
 
-  <div class="warn">
-    <b>The API token is currently left at the default, <code>changeme</code>.</b> Stated plainly because
-    it combines badly with two other facts: mirrored networking shares every Windows interface, and
-    <code>api_server.py</code> binds <code>0.0.0.0</code>. So while the server is running, <b>anyone on
-    the ordinary <code>192.168.42.0/24</code> network can drive both arms</b> — acquire the lease, send
-    a move, engage free-drive.
-    <br><br>
-    Fine for a bench nobody else can reach; this bench <em>is</em> reachable. Either fix is one line:
-    <div class="code" style="margin-top:10px"><button class="copy">copy</button><pre><span class="c"># pick a real token...</span>
-export ROBOT_API_TOKEN='something-long'          <span class="c"># in ~/.bashrc to make it stick</span>
-
-<span class="c"># ...or keep the arms off the network entirely</span>
-uv run scripts/real.py api --host 127.0.0.1</pre></div>
-  </div>
+  
 
   <p>Nothing else starts automatically at boot beyond the camera attach — every run is launched by hand.</p>
 </section>
@@ -1502,7 +1489,7 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
       delays your next <em>command</em> — a motion already running is untouched.</small></li>
     <li><b>Bearer token on every endpoint</b>
       <small><code>ROBOT_API_TOKEN</code>, defaulting to <code>changeme</code> with a startup warning.
-      Set it for anything beyond a direct cable.</small></li>
+      It still serves with the default — see below.</small></li>
     <li><b>A single-writer lease</b>
       <small><code>POST /control/acquire</code> returns a <code>lease_token</code> that every write
       must carry in an <code>X-Lease</code> header. A second client gets <code>409</code> —
@@ -1517,6 +1504,19 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
       <small>If the lease holder goes silent while the arm is live, a watchdog stops it and
       releases the lease.</small></li>
   </ul>
+
+  <div class="warn">
+    <b>In the lab today the token is still <code>changeme</code>.</b> On its own that would be a
+    reasonable default for a machine nobody else can reach — but this one is reachable. Mirrored
+    networking shares every Windows interface and the server binds <code>0.0.0.0</code>, so while it
+    is running, <b>anyone on the ordinary <code>192.168.42.0/24</code> network can acquire the lease,
+    send a move, or engage free-drive on either arm.</b>
+    <div class="code" style="margin-top:11px"><button class="copy">copy</button><pre><span class="c"># pick a real token...</span>
+export ROBOT_API_TOKEN='something-long'        <span class="c"># in ~/.bashrc to make it stick</span>
+
+<span class="c"># ...or keep the arms off the network entirely</span>
+uv run scripts/real.py api --host 127.0.0.1</pre></div>
+  </div>
 
   <details class="deep"><summary>Why that boundary is what makes remote control safe</summary>
     <div class="body">
