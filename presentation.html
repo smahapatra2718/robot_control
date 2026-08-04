@@ -1416,23 +1416,7 @@ export ROBOT_API_TOKEN='something-long'        <span class="c"># in ~/.bashrc to
 uv run scripts/real.py api --host 127.0.0.1</pre></div>
   </div>
 
-  <details class="deep"><summary>Why that boundary is what makes remote control safe</summary>
-    <div class="body">
-      <p>Every other safety property on this slide follows from it. Because the arm only ever
-      receives <em>goals</em>, the worst a badly-behaved or disconnected client can do is fail to
-      send the next one. It cannot produce a jerky motion, and it cannot leave the arm mid-trajectory
-      with no one driving it — the motion in flight completes under local control regardless.</p>
-      <p>That is also why the <b>deadman</b> is a watchdog on the telemetry socket rather than
-      something in the motion path. The question it answers is not "did a packet arrive on time"
-      (nothing depends on that) but "is the operator still there at all". If the lease holder goes
-      silent while the arm is live, the watchdog stops it — a policy decision layered on top, not a
-      real-time requirement.</p>
-      <p>And it is why <code>speed</code> is validated to <code>(0, 1.0]</code> and joint vectors are
-      shape- and finiteness-checked at the edge: since the client's influence is limited to the
-      <em>content</em> of a goal, validating that content is sufficient. There is no second channel
-      through which a client could affect the arm.</p>
-    </div>
-  </details>
+  
 
   <details class="deep"><summary>Endpoint reference</summary>
     <div class="body">
@@ -1458,18 +1442,7 @@ uv run scripts/real.py api --host 127.0.0.1</pre></div>
     </div>
   </details>
 
-  <details class="deep"><summary>Both arms from one server, and per-arm Swagger docs</summary>
-    <div class="body">
-      <p>Run <code>api</code> with <b>no arm</b> and <code>build_multi_app</code> mounts a full app under
-      <code>/ur15</code> and <code>/gofa</code>, advertises the roster at <code>GET /robots</code>, and
-      serves the dashboard at <code>/</code>. Startup is <b>tolerant</b> — one unreachable arm is listed
-      as unavailable, not fatal. Each arm keeps its own lease, watchdog and telemetry stream.</p>
-      <p><b>Docs are per-arm.</b> In multi mode the root <code>/docs</code> only lists
-      <code>/health</code> and <code>/robots</code> — that genuinely is the parent app's whole schema.
-      The arm endpoints live in the mounted sub-apps, so browse <b><code>/ur15/docs</code></b> or
-      <b><code>/gofa/docs</code></b>. The root page links to both.</p>
-    </div>
-  </details>
+  
 </section>
 
 <section class="slide" data-part="Operating it" data-title="Web console">
