@@ -1558,8 +1558,6 @@ curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
 <section class="slide" data-part="Operating it" data-title="Frame pairing">
   <p class="kicker">Operating it · 20</p>
   <h2>Pairing frames with telemetry</h2>
-  <p class="lede">One USB camera per arm. The interesting part isn't the video, it's the timestamps.</p>
-
   <div class="code"><button class="copy">copy</button><pre>GET /ur15/camera/frame
 X-Frame-Ts:      1215836.808263416     <span class="c">← time.monotonic() — the SAME clock as RobotState.ts</span>
 X-Frame-Ts-Unix: 1785538137.972138     <span class="c">← wall clock</span>
