@@ -1319,10 +1319,23 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
       with the repo rather than living only on the lab PC.</small></li>
   </ul>
 
-<figure class="shot tight" data-shot="cli-recorder">
-  <div class="shot-ph"><b>Screenshot &middot; cli-recorder</b><span>The <code>teleop.py</code> terminal dashboard mid-record &mdash; grasp pose, six joints, gripper %, waypoint count. <b>Runs in sim.</b> A plain terminal screenshot; the in-place redraw reads well as a still.</span></div>
-  <figcaption>The headless recorder&rsquo;s live dashboard, redrawn in place at 10&nbsp;Hz.</figcaption>
-</figure>
+<div class="code"><button class="copy">copy</button><pre><span class="c">[sim] offline simulator active — no robot, no network (teleop)</span>
+Trajectory name (blank to exit): Test
+Robot?  [1] UR  [2] GoFa: 1
+Connecting to ur15 ...
+ <span class="k">teleop · ur15 · 'Test'  —  FREE-DRIVE, hand-guide the arm</span>
+ <span class="c">────────────────────────────────────────────────────────</span>
+ Pose    X  +1118.6   Y   +344.4   Z   +627.4   mm
+         R    +90.0   P     +0.0   Y   +122.7   deg
+ Joints    +0.0   -57.3   +57.3    +0.0   +57.3    +0.0   deg
+ Gripper 0% closed
+ Points  3 captured
+ <span class="c">────────────────────────────────────────────────────────</span>
+ <span class="k">c</span> capture    <span class="k">o/p</span> open/close    <span class="k">Enter</span> save    <span class="k">w</span> stop    <span class="k">q</span> E-STOP
+ &gt; <span class="s">captured waypoint 3</span></pre></div>
+
+  <p class="dg-note" style="text-align:left">The recorder's dashboard, redrawn in place at 10&nbsp;Hz.
+     Shown under <code>sim.py</code>, which is why no arm is attached.</p>
 
   <details class="deep"><summary>The headless recorder — <code>teleop.py</code></summary>
     <div class="body">
