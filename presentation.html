@@ -193,11 +193,59 @@
   }
   .stack .layer .swap b{color:var(--accent)}
 
-  /* ascii/mono diagram */
+  /* file tree — genuinely monospace, but lighter than a code block */
   .diagram{
-    background:var(--code-bg); color:var(--code-ink); border-radius:10px; padding:16px 18px;
-    overflow-x:auto; font-size:12.4px; line-height:1.5; margin:14px 0; white-space:pre;
+    background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:10px;
+    padding:15px 18px; overflow-x:auto; font-size:12.3px; line-height:1.62; margin:14px 0;
+    white-space:pre;
   }
+  .diagram .t{color:var(--muted); opacity:.55}          /* tree glyphs */
+  .diagram .d{color:var(--accent); font-weight:600}     /* directories */
+  .diagram .c{color:var(--muted)}                       /* comments */
+
+  /* boxes + flows */
+  .dg{margin:16px 0}
+  .dg-box{
+    border:1px solid var(--line); border-radius:9px; padding:10px 13px; background:var(--panel);
+    font-size:12.9px; line-height:1.45;
+  }
+  .dg-box b{display:block; font-size:13.3px; letter-spacing:-.1px; margin-bottom:2px}
+  .dg-box small{color:var(--muted); font-size:11.7px; display:block; line-height:1.45}
+  .dg-box.accent{border-color:var(--accent); background:var(--accent-soft)}
+  .dg-box.ghost{background:var(--bg); border-style:dashed}
+  .dg-down{text-align:center; color:var(--muted); line-height:1; padding:6px 0; font-size:15px}
+  .dg-split{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  @media (max-width:700px){ .dg-split{grid-template-columns:1fr} }
+  .dg-note{font-size:11.8px; color:var(--muted); text-align:center; margin:6px 0 0}
+
+  /* numbered sequence */
+  ol.seq{list-style:none; counter-reset:sq; padding:0; margin:16px 0}
+  ol.seq>li{
+    counter-increment:sq; position:relative; padding:12px 15px 12px 48px;
+    border:1px solid var(--line); border-radius:10px; margin:8px 0; background:var(--panel);
+  }
+  ol.seq>li::before{
+    content:counter(sq); position:absolute; left:14px; top:13px;
+    width:23px; height:23px; border-radius:50%; background:var(--accent); color:#fff;
+    font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;
+  }
+  .seq-ch{
+    display:inline-block; font-size:10.3px; font-weight:700; letter-spacing:.07em;
+    background:var(--accent-soft); color:var(--accent); padding:2px 8px; border-radius:99px;
+    margin-bottom:6px; text-transform:uppercase;
+  }
+  .seq-what{font-size:13.5px; line-height:1.5}
+  .seq-then{
+    margin-top:7px; padding-left:12px; border-left:2px solid var(--accent); opacity:.92;
+    font-size:12.5px; color:var(--muted); line-height:1.5;
+  }
+  .seq-then b{color:var(--ink)}
+
+  /* svg figures */
+  svg.fig{display:block; width:100%; height:auto; margin:14px 0;
+          border:1px solid var(--line); border-radius:10px; background:var(--panel)}
+
+  /* keyboard hint footer */
 
   /* timeline */
   .tl{margin:16px 0; border-left:2px solid var(--line); padding-left:0}
@@ -430,32 +478,32 @@
      vendored trees in their own folders. Nothing is an installable package — every script
      bootstraps its own <code>sys.path</code>.</p>
 
-  <div class="diagram">robot_control/
-├── scripts/                    <span class="c"># entry points — uv run scripts/&lt;script&gt;</span>
-│   ├── real.py  /  sim.py      <span class="c">#   dispatchers: &lt;ur15|gofa|play|teleop|api&gt;</span>
-│   ├── teleop_ur15.py          <span class="c">#   viser UI + RTDE/servoJ + Hand-E</span>
-│   ├── teleop_gofa_egm.py      <span class="c">#   viser UI + EGM joint streaming</span>
-│   ├── teleop.py               <span class="c">#   headless recorder (free-drive + keypress)</span>
-│   ├── play_trajectory.py      <span class="c">#   headless replay</span>
-│   ├── api_server.py           <span class="c">#   remote API + web console at /</span>
-│   ├── install_gofa_egm.py     <span class="c">#   ONE-TIME GoFa bring-up</span>
-│   ├── verify_hande.py         <span class="c">#   probe: is the gripper reachable?</span>
-│   ├── verify_cameras.py       <span class="c">#   probe: which camera is which arm?</span>
-│   └── *_smoketest.py          <span class="c">#   offline test suites (sim / control / api)</span>
-│
-├── lib/                        <span class="c"># importable modules</span>
-│   ├── robot_common.py         <span class="c">#   ALL shared config lives here</span>
-│   ├── control/                <span class="c">#   the RobotController core</span>
-│   ├── robot_api.py            <span class="c">#   FastAPI app</span>
-│   ├── abb_rws.py / abb_egm.py <span class="c">#   ABB transports</span>
-│   ├── hande_gripper.py        <span class="c">#   Robotiq transport</span>
-│   ├── camera.py               <span class="c">#   USB capture</span>
-│   └── robot_sim.py            <span class="c">#   offline fakes</span>
-│
-├── web/                        <span class="c"># static console: dashboard.html + vendor/ + models/</span>
-├── urdf/  egm/  trajectories/  <span class="c"># assets, controller config, saved teach paths</span>
-├── docs/                       <span class="c"># design specs + implementation plans</span>
-└── CLAUDE.md  README.md  API.md  usage.html</div>
+  <div class="diagram"><span class="d">robot_control/</span>
+<span class="t">├── </span><span class="d">scripts/</span>                    <span class="c"># entry points — uv run scripts/&lt;script&gt;</span>
+<span class="t">│   ├── </span>real.py  /  sim.py      <span class="c">#   dispatchers: &lt;ur15|gofa|play|teleop|api&gt;</span>
+<span class="t">│   ├── </span>teleop_ur15.py          <span class="c">#   viser UI + RTDE/servoJ + Hand-E</span>
+<span class="t">│   ├── </span>teleop_gofa_egm.py      <span class="c">#   viser UI + EGM joint streaming</span>
+<span class="t">│   ├── </span>teleop.py               <span class="c">#   headless recorder (free-drive + keypress)</span>
+<span class="t">│   ├── </span>play_trajectory.py      <span class="c">#   headless replay</span>
+<span class="t">│   ├── </span>api_server.py           <span class="c">#   remote API + web console at /</span>
+<span class="t">│   ├── </span>install_gofa_egm.py     <span class="c">#   ONE-TIME GoFa bring-up</span>
+<span class="t">│   ├── </span>verify_hande.py         <span class="c">#   probe: is the gripper reachable?</span>
+<span class="t">│   ├── </span>verify_cameras.py       <span class="c">#   probe: which camera is which arm?</span>
+<span class="t">│   └── </span>*_smoketest.py          <span class="c">#   offline test suites (sim / control / api)</span>
+<span class="t">│</span>
+<span class="t">├── </span><span class="d">lib/</span>                        <span class="c"># importable modules</span>
+<span class="t">│   ├── </span>robot_common.py         <span class="c">#   ALL shared config lives here</span>
+<span class="t">│   ├── </span><span class="d">control/</span>                <span class="c">#   the RobotController core</span>
+<span class="t">│   ├── </span>robot_api.py            <span class="c">#   FastAPI app</span>
+<span class="t">│   ├── </span>abb_rws.py / abb_egm.py <span class="c">#   ABB transports</span>
+<span class="t">│   ├── </span>hande_gripper.py        <span class="c">#   Robotiq transport</span>
+<span class="t">│   ├── </span>camera.py               <span class="c">#   USB capture</span>
+<span class="t">│   └── </span>robot_sim.py            <span class="c">#   offline fakes</span>
+<span class="t">│</span>
+<span class="t">├── </span><span class="d">web/</span>                        <span class="c"># static console: dashboard.html + vendor/ + models/</span>
+<span class="t">├── </span><span class="d">urdf/  egm/  trajectories/</span>  <span class="c"># assets, controller config, saved teach paths</span>
+<span class="t">├── </span><span class="d">docs/</span>                       <span class="c"># design specs + implementation plans</span>
+<span class="t">└── </span>CLAUDE.md  README.md  API.md  usage.html</div>
 
   <details class="deep"><summary>The <code>sys.path</code> bootstrap, and why there's no package</summary>
     <div class="body">
@@ -646,20 +694,33 @@
   <p class="lede">Both robots live on one private subnet. The control PC is a third host on it.
      Nothing about this is discoverable from the code except the addresses.</p>
 
-  <div class="diagram">                  ┌──────────────────────────┐
-                  │   Windows control PC     │
-                  │   (WSL runs the code)    │
-                  └─────┬──────────────┬─────┘
-        robot network   │              │   regular network
-        192.168.125.50  │              │   (internet / corporate)
-                        │              └──────────► <span class="c">uv sync, git, browsing</span>
-              ┌─────────┴─────────┐
-              │                   │
-   ┌──────────▼─────────┐  ┌──────▼──────────────┐
-   │  GoFa OmniCore C30 │  │  UR15 controller    │
-   │  192.168.125.1     │  │  192.168.125.2      │
-   │  MGMT port · HTTPS │  │  RTDE 30004 etc.    │
-   └────────────────────┘  └─────────────────────┘</div>
+  <div class="dg">
+    <div class="dg-box accent" style="text-align:center">
+      <b>Windows control PC</b>
+      <small>WSL runs the code &middot; <code>networkingMode=mirrored</code></small>
+    </div>
+    <div class="dg-split" style="margin-top:10px">
+      <div>
+        <div class="dg-down">↓ &nbsp;<span style="font-size:11.5px">robot network</span></div>
+        <div class="dg-box"><b>Ethernet 2</b><small>Realtek <b>USB dongle</b><br><code>192.168.125.50/24</code></small></div>
+      </div>
+      <div>
+        <div class="dg-down">↓ &nbsp;<span style="font-size:11.5px">ordinary network</span></div>
+        <div class="dg-box ghost"><b>Ethernet</b><small>built-in 2.5 GbE<br><code>192.168.42.176/24</code> &mdash; internet, git, uv</small></div>
+      </div>
+    </div>
+    <div class="dg-split" style="margin-top:10px">
+      <div>
+        <div class="dg-down">↓</div>
+        <div class="dg-box"><b>GoFa &mdash; OmniCore C30</b><small><code>192.168.125.1</code> &middot; MGMT port<br>443 RWS (HTTPS only) &middot; 6510/udp EGM</small></div>
+      </div>
+      <div>
+        <div class="dg-down">↓</div>
+        <div class="dg-box"><b>UR15 controller</b><small><code>192.168.125.2</code><br>30004 RTDE &middot; 29999 &middot; 30001 &middot; 63352 Hand-E</small></div>
+      </div>
+    </div>
+    <p class="dg-note">Both arms share one subnet; the PC is a third host on it at <code>.50</code>.</p>
+  </div>
 
   <table>
     <tr><th>Host</th><th>Address</th><th>Ports that matter</th></tr>
@@ -1135,30 +1196,37 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
      <b>EGM is the data plane</b> (UDP, streams targets). The GoFa needs both, which is why
      <code>abb_rws.py</code> and <code>abb_egm.py</code> are separate modules.</p>
 
-  <div class="diagram">  PC                                              OmniCore
-  │                                                  │
-  │  <span class="c">1. once:</span> upload PyEgm.mod, load into T_ROB1, start │
-  │ ───────────────── RWS / HTTPS ─────────────────► │
-  │                                        PyEgm parked at
-  │                                    <span class="k">WaitUntil egm_go = TRUE</span>
-  │                                                  │
-  │  <span class="c">2.</span> egm_go := TRUE       <span class="c">(control plane)</span>        │
-  │ ───────────────── RWS / HTTPS ─────────────────► │
-  │                                          RAPID wakes:
-  │                                          EGMSetupUC \Joint
-  │                                          EGMActJoint
-  │                                          <span class="k">EGMRunJoint</span>  <span class="c">← blocks here</span>
-  │                                                  │
-  │  <span class="c">3.</span> EgmRobot   <span class="c">joint feedback, degrees</span>          │
-  │ ◄──────────────── UDP :6510 ──────────────────── │  <span class="c">every 10 ms</span>
-  │     EgmSensor  <span class="c">target joints, degrees</span>            │  <span class="c">(data plane)</span>
-  │ ──────────────────────────────────────────────►  │
-  │                   <span class="c">…repeat at 100 Hz…</span>             │
-  │                                                  │
-  │  <span class="c">4.</span> hold final target 1.5 s → \CondTime fires  │
-  │                                          EGMRunJoint returns
-  │                                          egm_go := FALSE
-  │                                          back to WaitUntil</div>
+  <ol class="seq">
+    <li>
+      <span class="seq-ch">RWS &middot; HTTPS</span>
+      <div class="seq-what"><b>Once:</b> upload <code>PyEgm.mod</code>, load it into task
+        <code>T_ROB1</code>, start it.</div>
+      <div class="seq-then">PyEgm now runs forever, parked at
+        <code>WaitUntil egm_go = TRUE</code> &mdash; idle, consuming a RAPID task.</div>
+    </li>
+    <li>
+      <span class="seq-ch">RWS &middot; HTTPS</span>
+      <div class="seq-what">Python sets <code>egm_go := TRUE</code>. <b>The control plane</b> &mdash;
+        a boolean, not motion.</div>
+      <div class="seq-then">RAPID wakes: <code>EGMSetupUC \Joint</code> &rarr;
+        <code>EGMActJoint</code> &rarr; <b><code>EGMRunJoint</code>, which blocks</b>. While blocked,
+        the controller drives the arm from whatever arrives on UDP.</div>
+    </li>
+    <li>
+      <span class="seq-ch">UDP :6510 &middot; 100 Hz</span>
+      <div class="seq-what"><b>The data plane.</b> Protobuf both ways, every 10 ms:
+        <code>EgmRobot</code> carries joint feedback back, <code>EgmSensor</code> carries the next
+        target out.</div>
+      <div class="seq-then">The first feedback packet is also how Python knows EGM really started.</div>
+    </li>
+    <li>
+      <span class="seq-ch">UDP &rarr; session end</span>
+      <div class="seq-what">Hold the final target for <code>HOLD_AFTER_PLAY_S</code> (1.5 s) so
+        RAPID's <code>\CondTime := 1</code> convergence fires.</div>
+      <div class="seq-then"><code>EGMRunJoint</code> returns, <code>egm_go := FALSE</code>, and PyEgm
+        parks again at step 1. <b>The session closes itself.</b></div>
+    </li>
+  </ol>
 
   <div class="warn">
     <b>Every step of that chain fails silently.</b> Wrong PC address in <code>EGM_COMM.cfg</code>,
@@ -1346,17 +1414,30 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
   <p class="lede">Both arms share one UI. Drag a 3D handle, add waypoints, plan, play —
      with the browser preview and the real arm driven by the same joint values, every tick.</p>
 
-  <div class="diagram">  Idle          drag the gizmo; the browser mirrors the live arm
-    │
-    ├─ Add waypoint ──►  snapshot (position, orientation, gripper) + a scene frame
-    │
-    ├─ Plan ──────────►  seeded IK at each waypoint; each solution seeds the next
-    │                    result: plan_segments = [(q_start, q_goal, grip), …]
-    │
-    └─ Play ──────────►  per segment: advance alpha 0→1, shape it through the
-                         trapezoidal profile, lerp position + slerp orientation,
-                         re-solve IK each tick, write q to BOTH the browser and
-                         the robot (only if "Execute" is ticked)</div>
+  <ol class="seq">
+    <li>
+      <span class="seq-ch">Idle</span>
+      <div class="seq-what">Drag the gizmo. The browser mirrors the live arm; nothing has moved.</div>
+    </li>
+    <li>
+      <span class="seq-ch">Add waypoint</span>
+      <div class="seq-what">Snapshot position, orientation and the current gripper fraction, and drop
+        a frame into the scene.</div>
+    </li>
+    <li>
+      <span class="seq-ch">Plan</span>
+      <div class="seq-what">Seeded IK at each waypoint, <b>each solution seeding the next</b>, so the
+        arm stays in one kinematic family.</div>
+      <div class="seq-then">Result: <code>plan_segments = [(q_start, q_goal, grip), …]</code></div>
+    </li>
+    <li>
+      <span class="seq-ch">Play</span>
+      <div class="seq-what">Per segment, advance <code>alpha</code> 0&rarr;1, shape it through the
+        trapezoidal profile, lerp position and slerp orientation, and re-solve IK each tick.</div>
+      <div class="seq-then">The resulting <code>q</code> goes to the browser <b>and</b> to the robot
+        &mdash; but only if <b>Execute</b> is ticked.</div>
+    </li>
+  </ol>
 
 <figure class="shot tight" data-shot="viser-ui">
   <div class="shot-ph"><b>Screenshot &middot; viser-ui</b><span>The viser teleop UI <b>mid-plan</b>: robot rendered, gizmo grabbed, two or three waypoint frames placed, the control panel visible. <b>Runs in sim</b> &mdash; <code>uv run scripts/sim.py ur15</code>, no robot needed.</span></div>
@@ -1900,13 +1981,35 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
      zero velocity at both ends. <code>RAMP_FRAC = 0.25</code> by default; <code>0.5</code> gives a
      pure triangle, <code>0.1</code> a sharper ramp.</p>
 
-  <div class="diagram">speed
-  │        ┌─────────────────┐
-  │       ╱                   ╲          RAMP_FRAC = 0.25
-  │      ╱                     ╲
-  │     ╱                       ╲
-  └────┴───────────────────────┴────► alpha
-   0   .25                   .75    1</div>
+  <svg class="fig" viewBox="0 0 560 190" role="img" aria-label="Trapezoidal velocity profile">
+    <defs><linearGradient id="tg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/>
+      <stop offset="1" stop-color="var(--accent)" stop-opacity=".05"/>
+    </linearGradient></defs>
+    <!-- axes -->
+    <line x1="62" y1="150" x2="530" y2="150" stroke="var(--line)" stroke-width="1.5"/>
+    <line x1="62" y1="26"  x2="62"  y2="150" stroke="var(--line)" stroke-width="1.5"/>
+    <!-- ramp boundaries -->
+    <line x1="179" y1="42" x2="179" y2="150" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
+    <line x1="413" y1="42" x2="413" y2="150" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
+    <!-- profile -->
+    <path d="M62,150 L179,42 L413,42 L530,150 Z" fill="url(#tg)"/>
+    <path d="M62,150 L179,42 L413,42 L530,150" fill="none"
+          stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- labels -->
+    <text x="62" y="18" fill="var(--muted)" font-size="11" font-family="sans-serif">speed</text>
+    <text x="120" y="168" fill="var(--muted)" font-size="10.5" font-family="sans-serif" text-anchor="middle">accelerate</text>
+    <text x="296" y="168" fill="var(--muted)" font-size="10.5" font-family="sans-serif" text-anchor="middle">cruise</text>
+    <text x="472" y="168" fill="var(--muted)" font-size="10.5" font-family="sans-serif" text-anchor="middle">decelerate</text>
+    <text x="62"  y="185" fill="var(--muted)" font-size="10" font-family="monospace" text-anchor="middle">0</text>
+    <text x="179" y="185" fill="var(--accent)" font-size="10" font-family="monospace" text-anchor="middle">0.25</text>
+    <text x="413" y="185" fill="var(--accent)" font-size="10" font-family="monospace" text-anchor="middle">0.75</text>
+    <text x="530" y="185" fill="var(--muted)" font-size="10" font-family="monospace" text-anchor="middle">1.0</text>
+    <text x="296" y="34" fill="var(--muted)" font-size="10.5" font-family="sans-serif" text-anchor="middle">v_peak = 1 / (1 &#8722; r)</text>
+    <text x="545" y="154" fill="var(--muted)" font-size="10.5" font-family="monospace" text-anchor="end" opacity="0">a</text>
+  </svg>
+  <p class="dg-note">Zero velocity at both ends, so every segment starts and stops smoothly.
+     <code>RAMP_FRAC = 0.25</code>; <code>0.5</code> gives a pure triangle, <code>0.1</code> a sharper ramp.</p>
 
   <div class="warn">
     <b>The GoFa speed cap is computed analytically, not by simulation.</b> For a straight tool line the
@@ -1973,15 +2076,21 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   <p class="lede">It doesn't reimplement the robot. It runs the real scripts and lies to them about
      what's on the other end of the socket.</p>
 
-  <div class="diagram">sim.py ur15
-   │
-   ├─ robot_sim.install()      inject fakes into sys.modules:
-   │                             rtde_control, rtde_receive,
-   │                             hande_gripper, abb_rws, abb_egm
-   │
-   └─ runpy → scripts/teleop_ur15.py     <span class="c">← the REAL script, unmodified</span>
-                    │
-                    └─ import rtde_control   <span class="c">← gets the fake, transparently</span></div>
+  <div class="dg">
+    <div class="dg-box accent"><b><code>sim.py ur15</code></b>
+      <small>the dispatcher, identical to <code>real.py</code> but for one extra step</small></div>
+    <div class="dg-down">↓</div>
+    <div class="dg-box"><b><code>robot_sim.install()</code></b>
+      <small>injects fakes into <code>sys.modules</code>: <code>rtde_control</code>,
+        <code>rtde_receive</code>, <code>hande_gripper</code>, <code>abb_rws</code>,
+        <code>abb_egm</code></small></div>
+    <div class="dg-down">↓</div>
+    <div class="dg-box"><b><code>runpy</code> &rarr; <code>scripts/teleop_ur15.py</code></b>
+      <small>the <b>real script</b>, unmodified &mdash; real IK, real profiles, real URDFs, real UI</small></div>
+    <div class="dg-down">↓</div>
+    <div class="dg-box ghost"><b><code>import rtde_control</code></b>
+      <small>&hellip;transparently gets the fake. The script never knows.</small></div>
+  </div>
 
   <ul class="key">
     <li><b>Every feature works in simulation automatically</b>
