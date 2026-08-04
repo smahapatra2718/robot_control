@@ -412,7 +412,7 @@
     <div class="arrow">↓</div>
     <div class="layer"><b>Remote API</b><span><code>lib/robot_api.py</code> — FastAPI: auth, single-writer lease, async commands, telemetry WS, deadman</span></div>
     <div class="arrow">↓</div>
-    <div class="layer core"><b>RobotController</b><span><code>lib/control/</code> — one motion implementation: command executor, state loop, segment builder, IK</span></div>
+    <div class="layer core"><b>RobotController</b><span><code>lib/control/</code> — one motion implementation: command executor, state loop, segment builder, IK</span><span class="swap" style="color:var(--muted); border-top-color:var(--line)">Everything here trades in <b><code>q</code></b> — the six joint angles in radians. IK turns a pose into a <code>q</code>; forward kinematics turns a <code>q</code> back into a pose; <code>servoJ</code> and EGM both take one.</span></div>
     <div class="arrow">↓</div>
     <div class="layer"><b>Hardware clients</b><span><code>ur_rtde</code> &nbsp;·&nbsp; <code>abb_rws.py</code> (HTTPS) &nbsp;·&nbsp; <code>abb_egm.py</code> (UDP/protobuf) &nbsp;·&nbsp; <code>hande_gripper.py</code> (TCP) &nbsp;·&nbsp; <code>camera.py</code></span><span class="swap">↔ <b><code>robot_sim.py</code> swaps this row for fakes</b> — everything above it then runs unchanged, with no robot and no network.</span></div>
     <div class="arrow">↓</div>
@@ -1172,8 +1172,9 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
       <span class="seq-ch">Play</span>
       <div class="seq-what">Per segment, advance <code>alpha</code> 0&rarr;1, shape it through the
         trapezoidal profile, lerp position and slerp orientation, and re-solve IK each tick.</div>
-      <div class="seq-then">The resulting <code>q</code> goes to the browser <b>and</b> to the robot
-        &mdash; but only if <b>Execute</b> is ticked.</div>
+      <div class="seq-then">The resulting <code>q</code> — the six joint angles in radians, which is
+        what every layer below the UI actually passes around — goes to the browser <b>and</b> to the
+        robot, but only if <b>Execute</b> is ticked.</div>
     </li>
   </ol>
 
