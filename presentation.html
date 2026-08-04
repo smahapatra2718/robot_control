@@ -992,6 +992,12 @@ uv sync</pre></div>
      <code>PyEgm</code> is running and parked, waiting for a flag. Installing that program is a
      one-time step — but you will re-run it whenever the supervisor changes.</p>
 
+  <div class="note">
+    <b>Already installed on this controller</b> — <code>PyEgm.mod</code> is loaded and running, so
+    you do not need this in normal use. Re-run it only after <em>changing</em> the supervisor, and
+    stop any running teleop first (Ctrl-C) so RAPID mastership is free, or the installer is refused.
+  </div>
+
   <div class="code"><button class="copy">copy</button><pre>uv run scripts/install_gofa_egm.py</pre></div>
 
   <ol>
@@ -1075,11 +1081,6 @@ uv sync</pre></div>
     </div>
   </details>
 
-  <div class="note">
-    <b>Re-run the installer after any change to the supervisor</b> — including the lead-through
-    feature. Stop any running teleop first (Ctrl-C) so RAPID mastership is free, or the installer
-    will be refused.
-  </div>
 
   <details class="deep"><summary>What <code>PyEgm.mod</code> actually does</summary>
     <div class="body">
