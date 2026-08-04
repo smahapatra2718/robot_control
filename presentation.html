@@ -1490,6 +1490,13 @@ uv run scripts/real.py api --host 127.0.0.1</pre></div>
     <tr><td><code>GET /camera/stream</code></td><td>MJPEG, <code>multipart/x-mixed-replace</code></td><td>Live viewing — drop it straight into an <code>&lt;img&gt;</code></td></tr>
   </table>
 
+  <div class="note">
+    <b><code>frame</code> and <code>frame.json</code> are the same frame, differently wrapped.</b>
+    <code>/frame</code> is the raw JPEG with its timestamps in <code>X-Frame-*</code> headers;
+    <code>/frame.json</code> is that identical image base64-encoded, with the same timestamps, in
+    one object. Take whichever your client parses more easily.
+  </div>
+
   <div class="code"><button class="copy">copy</button><pre><span class="c"># per-arm, like everything else</span>
 curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
 
