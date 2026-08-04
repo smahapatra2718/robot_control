@@ -110,7 +110,6 @@
   .pill.warn{background:var(--warn-bg); color:var(--warn)}
   .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px 20px; margin:14px 0}
   .note{border-left:3px solid var(--accent); background:var(--accent-soft); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
-  .note.done{border-left-color:var(--ok); background:var(--ok-bg)}
   .warn{border-left:3px solid var(--warn); background:var(--warn-bg); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
   .warn b, .note b{font-weight:700}
 
@@ -868,8 +867,8 @@ uv sync</pre></div>
 <section class="slide" data-part="The lab" data-title="UR15 bring-up">
   <p class="kicker">The lab · 10</p>
   <h2>UR15 controller bring-up</h2>
-  <p class="lede">Two checks before each session. The one-time configuration is already done
-     on this robot.</p>
+  <p class="lede">Two checks before each session — the firewall configuration is already done and
+     persists across reboots.</p>
 
   <ol>
     <li><b>Remote Control mode</b> — the top-right toggle on the pendant.
@@ -883,14 +882,6 @@ uv sync</pre></div>
 
   <div class="code"><button class="copy">copy</button><pre><span class="c"># from the control PC — all four should succeed</span>
 for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></div>
-
-  <div class="note done">
-    <span class="pill ok">already done</span> <b>The firewall is configured and persists across
-    reboots</b> — Settings → Security → Services has Dashboard (29999), Primary (30001), RTDE (30004)
-    and 63352 (Hand-E URCap) enabled. Recorded only because it is invisible until it bites: on a
-    <em>fresh</em> UR, or if a PolyScope update resets it, ping succeeds while every TCP port times
-    out.
-  </div>
 
   <p style="font-size:13.4px; color:var(--muted)"><b>Only if the gripper misbehaves:</b>
      <code>uv run scripts/verify_hande.py</code> probes the URCap socket on 63352. A diagnostic, not
