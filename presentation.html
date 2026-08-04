@@ -1681,13 +1681,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   <p class="dg-note">Zero velocity at both ends, so every segment starts and stops smoothly.
      <code>RAMP_FRAC = 0.25</code>; <code>0.5</code> gives a pure triangle, <code>0.1</code> a sharper ramp.</p>
 
-  <div class="warn">
-    <b>The GoFa speed cap is computed analytically, not by simulation.</b> For a straight tool line the
-    peak speed is exactly <code>‖p₁−p₀‖ · v_peak / seg_duration</code>, so
-    <code>_cap_seg_duration_cartesian()</code> stretches each segment until real TCP speed is under
-    <code>MAX_TCP_SPEED</code> (0.25 m/s, the ISO/TS 15066 collaborative limit). <b>The slider can only
-    scale below that cap</b> — no combination of slider and pose can exceed it.
-  </div>
+  
 
   <details class="deep"><summary>Key tunables, and where they live</summary>
     <div class="body">
