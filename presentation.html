@@ -1500,6 +1500,12 @@ uv run scripts/real.py api --host 127.0.0.1</pre></div>
     off an <code>&lt;img&gt;</code>, and the timestamps are the whole point — they are what pairs a
     frame with <code>RobotState</code>. So <code>/frame</code> is the <em>image</em> endpoint and
     <code>/frame.json</code> is the <em>data</em> endpoint, at the cost of ~33% for base64.
+    <br><br>
+    <b>Why the timestamps pair at all:</b> <code>ts</code> is <code>time.monotonic()</code> — the
+    <em>same clock</em> as <code>RobotState.ts</code>, so the two subtract directly. <code>ts_unix</code>
+    is wall time, so one frame also anchors that clock and converts any <code>RobotState.ts</code> to
+    absolute time. This only holds because capture runs <b>in-process</b>: a separate capture process
+    would have its own monotonic origin and the pairing would break.
   </div>
 
   <div class="code"><button class="copy">copy</button><pre><span class="c"># per-arm, like everything else</span>
@@ -1527,7 +1533,7 @@ curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
     <li><b>MJPEG per-part headers exist but browsers hide them</b>
       <small>The stream's parts carry the same <code>X-Frame-*</code> timestamps, but JS can't read
       them out of an <code>&lt;img&gt;</code>. <b>Use <code>frame</code> / <code>frame.json</code>
-      whenever you need to pair an image with telemetry</b> — see the next slide.</small></li>
+      whenever you need to pair an image with telemetry</b>.</small></li>
   </ul>
 
   
@@ -1555,37 +1561,10 @@ curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
   
 </section>
 
-<section class="slide" data-part="Operating it" data-title="Frame pairing">
-  <p class="kicker">Operating it · 20</p>
-  <h2>Pairing frames with telemetry</h2>
-  <div class="code"><button class="copy">copy</button><pre>GET /ur15/camera/frame
-X-Frame-Ts:      1215836.808263416     <span class="c">← time.monotonic() — the SAME clock as RobotState.ts</span>
-X-Frame-Ts-Unix: 1785538137.972138     <span class="c">← wall clock</span>
-X-Frame-Seq:     11</pre></div>
-
-  <ul class="key">
-    <li><b><code>ts</code> is the same monotonic clock as <code>RobotState.ts</code></b>
-      <small>That's what makes a frame pairable with telemetry — you can say with confidence which
-      joint configuration a given image corresponds to.</small></li>
-    <li><b><code>ts_unix</code> anchors that clock to absolute time</b>
-      <small>One frame gives you <code>ts_unix − ts</code>, which converts <em>any</em>
-      <code>RobotState.ts</code> to wall time. So <code>RobotState</code> needs no extra field.</small></li>
-    <li><b>This is why capture runs in-process</b>
-      <small>A separate capture process would have its own monotonic origin and the pairing would
-      break. It's also why the WSL camera question matters so much.</small></li>
-  </ul>
-
-  <div class="note">
-    <b>Best-effort by design</b>, like the gripper. No camera means <code>503</code> plus
-    <code>{"available": false, "error": "&lt;why&gt;"}</code> — never a startup failure. The reason is
-    carried through rather than swallowed, and printed at startup.
-  </div>
-</section>
-
 <!-- ============================ PART IV — HOW IT WORKS ============================ -->
 
 <section class="slide" data-part="How it works" data-title="RobotController">
-  <p class="kicker">How it works · 21</p>
+  <p class="kicker">How it works · 20</p>
   <h2>The controller core</h2>
   <p class="lede">One thread-safe motion implementation behind the headless tools and the API.
      This refactor is what made everything after it cheap.</p>
@@ -1653,7 +1632,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="How it works" data-title="Motion model">
-  <p class="kicker">How it works · 22</p>
+  <p class="kicker">How it works · 21</p>
   <h2>The motion model</h2>
   <p class="lede">Two interpolation modes, one velocity profile, and a hard speed ceiling that the
      user interface cannot raise.</p>
@@ -1739,7 +1718,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="How it works" data-title="Seeded IK">
-  <p class="kicker">How it works · 23</p>
+  <p class="kicker">How it works · 22</p>
   <h2>Why the stock IK solver wasn't enough</h2>
   <p class="lede">PyRoki's example <code>solve_ik</code> has no seed and no posture cost. It returns
      <em>a</em> valid solution — frequently in a distant null-space branch.</p>
@@ -1767,7 +1746,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="How it works" data-title="Offline simulator">
-  <p class="kicker">How it works · 24</p>
+  <p class="kicker">How it works · 23</p>
   <h2>The offline simulator</h2>
   <p class="lede">It doesn't reimplement the robot. It runs the real scripts and lies to them about
      what's on the other end of the socket.</p>
@@ -1812,7 +1791,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="How it works" data-title="Safety architecture">
-  <p class="kicker">How it works · 25</p>
+  <p class="kicker">How it works · 24</p>
   <h2>Safety, layer by layer</h2>
   <p class="lede">No single mechanism is trusted. Each layer below assumes the one above it failed.</p>
 
@@ -1860,7 +1839,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="How it works" data-title="RobotState">
-  <p class="kicker">How it works · 26</p>
+  <p class="kicker">How it works · 25</p>
   <h2><code>RobotState</code> — the one shape</h2>
   <p class="lede">Produced by the controller's poll thread, consumed by every surface. If you learn
      one data structure in this codebase, learn this one.</p>
@@ -1900,7 +1879,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 <!-- ============================ PART V — WAR STORIES ============================ -->
 
 <section class="slide" data-part="War stories" data-title="Convergence">
-  <p class="kicker">War stories · 27</p>
+  <p class="kicker">War stories · 26</p>
   <h2>Chasing the last millimetre</h2>
   <p class="lede">Nine commits over two days, all on one problem: the arm stopped <em>near</em> the end
      of a trajectory instead of <em>at</em> it.</p>
@@ -1937,7 +1916,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="War stories" data-title="Gripper pivot">
-  <p class="kicker">War stories · 28</p>
+  <p class="kicker">War stories · 27</p>
   <h2>The gripper that couldn't be talked to</h2>
   <p class="lede">A design constraint that only appears once both halves are running at the same time.</p>
 
@@ -1984,7 +1963,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="War stories" data-title="OmniCore RWS">
-  <p class="kicker">War stories · 29</p>
+  <p class="kicker">War stories · 28</p>
   <h2>Ten ways OmniCore RWS will waste your afternoon</h2>
   <p class="lede">The most-starred ABB Python client doesn't work on this controller. Here is
      everything learned the hard way, so nobody relearns it.</p>
@@ -2012,7 +1991,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="War stories" data-title="Offline by design">
-  <p class="kicker">War stories · 30</p>
+  <p class="kicker">War stories · 29</p>
   <h2>A machine cabled to a robot has no internet</h2>
   <p class="lede">An obvious statement that quietly invalidates a lot of standard tooling.
      Several decisions in this repo exist only because of it.</p>
@@ -2065,7 +2044,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VI — OPERATIONS ============================ -->
 
 <section class="slide" data-part="Operations" data-title="E-stop &amp; recovery">
-  <p class="kicker">Operations · 31</p>
+  <p class="kicker">Operations · 30</p>
   <h2>E-stop and recovery</h2>
   <p class="lede">The most important operational procedure in the system, and the one most likely to
      be needed while someone is watching.</p>
@@ -2140,7 +2119,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Operations" data-title="Troubleshooting">
-  <p class="kicker">Operations · 32</p>
+  <p class="kicker">Operations · 31</p>
   <h2>Troubleshooting matrix</h2>
   <p class="lede">Symptom → cause → fix. Everything learned in the lab and everything learned in the
      code, in one table. Start here before reading any source.</p>
@@ -2187,7 +2166,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Operations" data-title="Testing">
-  <p class="kicker">Operations · 33</p>
+  <p class="kicker">Operations · 32</p>
   <h2>Verifying the system</h2>
   <p class="lede">Three offline test suites and two hardware probes. All five run without touching
      a robot except the probes, which exist precisely to test hardware.</p>
@@ -2217,7 +2196,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VII — HANDOFF ============================ -->
 
 <section class="slide" data-part="Handoff" data-title="What's not done">
-  <p class="kicker">Handoff · 34</p>
+  <p class="kicker">Handoff · 33</p>
   <h2>What isn't done</h2>
   <p class="lede">Stated plainly, because the next person will find these anyway — better they find
      them here first, with context.</p>
@@ -2241,7 +2220,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Day one">
-  <p class="kicker">Handoff · 35</p>
+  <p class="kicker">Handoff · 34</p>
   <h2>If you're inheriting this — start here</h2>
   <p class="lede">A path from zero to commanding a real arm, ordered so that each step's failures are
      diagnosable before the next step can confuse them.</p>
@@ -2289,7 +2268,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Summary">
-  <p class="kicker">Handoff · 36</p>
+  <p class="kicker">Handoff · 35</p>
   <h2>What was built</h2>
 
   <div class="stats" style="margin:22px 0 26px">
@@ -2322,7 +2301,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Open items">
-  <p class="kicker">Handoff · 37</p>
+  <p class="kicker">Handoff · 36</p>
   <h2>Open items</h2>
   <p class="lede">This page collects anything still marked <b>NEEDS INPUT</b> — facts that live in
      someone's head rather than in the repository. Keep it at zero.</p>
