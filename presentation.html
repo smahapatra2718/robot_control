@@ -1833,9 +1833,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     <li><b>…and it only ever holds a <em>running</em> command</b>
       <small>The moment one finishes it reverts to all-<code>null</code>. Terminal outcomes live at
       <code>GET /command/{id}</code>, not here.</small></li>
-    <li><b><code>?flat=1</code> gives a scalar-only version</b>
-      <small><code>q_0…q_5</code>, <code>pose_pos_x</code>, <code>command_status</code> — for clients
-      that can't walk nested JSON. Identical key set on every frame and for both arms.</small></li>
     <li><b>Absent values are <code>None</code>, never a missing key</b>
       <small>A consumer never has to distinguish "not applicable" from "field disappeared".</small></li>
   </ul>
