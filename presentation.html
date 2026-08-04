@@ -589,33 +589,32 @@
      Nothing about this is discoverable from the code except the addresses.</p>
 
   <div class="dg">
-    <div class="dg-box accent" style="text-align:center">
-      <b>Windows control PC</b>
-      <small>WSL runs the code &middot; <code>networkingMode=mirrored</code></small>
-    </div>
-    <div class="dg-split" style="margin-top:10px">
+    <div class="dg-box ghost" style="text-align:center"><b>Internet / ordinary network</b>
+      <small>upstream</small></div>
+    <div class="dg-down">↓</div>
+    <div class="dg-box accent" style="text-align:center"><b>Ubiquiti switch</b>
+      <small>every link in the lab terminates here</small></div>
+    <div class="dg-split" style="margin-top:12px">
       <div>
-        <div class="dg-down">↓ &nbsp;<span style="font-size:11.5px">robot network</span></div>
-        <div class="dg-box"><b>Ethernet 2</b><small>Realtek <b>USB dongle</b><br><code>192.168.125.50/24</code></small></div>
-        <div class="dg-down">↓</div>
-        <div class="dg-box"><b>Network switch</b><small>both arms hang off this &mdash; one cable back to the PC</small></div>
-        <div class="dg-split" style="margin-top:10px">
-          <div>
-            <div class="dg-down">↓</div>
-            <div class="dg-box"><b>GoFa</b><small>OmniCore C30, MGMT port<br><code>192.168.125.1</code><br>443 RWS &middot; 6510/udp EGM</small></div>
-          </div>
-          <div>
-            <div class="dg-down">↓</div>
-            <div class="dg-box"><b>UR15</b><small>PolyScope X<br><code>192.168.125.2</code><br>30004 RTDE &middot; 63352 Hand-E</small></div>
-          </div>
-        </div>
+        <div class="dg-down">↓ &nbsp;<span style="font-size:11.5px">the arms</span></div>
+        <div class="dg-box"><b>GoFa &mdash; OmniCore C30</b>
+          <small>MGMT port &middot; <code>192.168.125.1</code><br>443 RWS (HTTPS only) &middot; 6510/udp EGM</small></div>
+        <div style="height:8px"></div>
+        <div class="dg-box"><b>UR15 &mdash; PolyScope X</b>
+          <small><code>192.168.125.2</code><br>30004 RTDE &middot; 29999 &middot; 30001 &middot; 63352 Hand-E</small></div>
       </div>
       <div>
-        <div class="dg-down">↓ &nbsp;<span style="font-size:11.5px">ordinary network</span></div>
-        <div class="dg-box ghost"><b>Ethernet</b><small>built-in 2.5 GbE<br><code>192.168.42.176/24</code><br>internet, git, uv</small></div>
+        <div class="dg-down">↓ &nbsp;<span style="font-size:11.5px">control PC &mdash; two links</span></div>
+        <div class="dg-box"><b>Ethernet 2</b>
+          <small>Realtek <b>USB dongle</b> &middot; &ldquo;Robot Net&rdquo;<br><code>192.168.125.50/24</code></small></div>
+        <div style="height:8px"></div>
+        <div class="dg-box ghost"><b>Ethernet</b>
+          <small>built-in 2.5 GbE &middot; &ldquo;Internet&rdquo;<br><code>192.168.42.176/24</code></small></div>
       </div>
     </div>
-    <p class="dg-note">Both arms share one subnet behind the switch; the PC is a third host on it at <code>.50</code>.</p>
+    <p class="dg-note"><b>Both PC links run into the switch</b> — the two networks are separated at
+      the switch, not by separate cabling. WSL sees both directly (<code>eth4</code> and
+      <code>eth0</code>) because of mirrored networking.</p>
   </div>
 
   <table>
@@ -633,12 +632,7 @@
     <code>PC_IP_EXPECTED</code> in <code>install_gofa_egm.py</code>, then re-run the installer.
   </div>
 
-<figure class="shot" data-shot="host-cabling">
-  <div class="shot-ph"><b>Photo &middot; host-cabling</b><span>The back of the control PC showing <b>both Ethernet connections</b> &mdash; the built-in port and the USB dongle &mdash; close enough to tell them apart. A stick-on label reading &ldquo;ROBOT NET&rdquo; on the dongle would be worth adding while you are there.</span></div>
-  <figcaption>The two links: the USB dongle carries the robot network; the built-in 2.5&nbsp;GbE carries the ordinary one.</figcaption>
-</figure>
-
-  <h3>The confirmed configuration</h3>
+<h3>The confirmed configuration</h3>
   <p>Captured from the running lab host. This is the part that could not be recovered if the
      machine were ever reimaged — now it can.</p>
 
