@@ -957,6 +957,14 @@ uv sync</pre></div>
      bottom-right) at <code>192.168.125.1</code>, and on WAN if configured. The <b>LAN</b> port and the
      X1–X5 switch are the I/O network — fieldbus only, <b>no RWS</b>.</p>
 
+  <figure class="shot" data-shot="gofa-mgmt-port">
+    <div class="shot-ph"><b>Photo &middot; gofa-mgmt-port</b><span>The three ports at the bottom-right
+      of the C30, close enough to tell <b>MGMT</b> from <b>WAN</b> and <b>LAN</b> — with the cable in
+      the right one.</span></div>
+    <figcaption>MGMT is the rightmost of the three. LAN and the X1&ndash;X5 switch carry the I/O
+      network and will not serve RWS.</figcaption>
+  </figure>
+
   <div class="warn">
     <b>The boot-order rule: unplug MGMT before powering the controller on.</b> Boot it with the cable
     in and you get a startup error; disconnect first, let it come up, then reconnect. This is a
@@ -978,11 +986,6 @@ uv sync</pre></div>
 
   
 
-  <div class="note">
-    <b>The GoFa has no tool defined</b> — it runs in the flange frame, which is why
-    <code>TARGET_LINK = "tool0"</code> is the end of the chain for this arm and there is no
-    grasp-offset step like the UR15's.
-  </div>
 </section>
 
 <section class="slide" data-part="The lab" data-title="EGM supervisor">
