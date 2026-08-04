@@ -1131,6 +1131,68 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
         PP-to-Main and the green Play button on the pendant</b>.</li>
   </ol>
 
+  <h3>How a GoFa move actually happens</h3>
+  <p>Two channels doing different jobs: <b>RWS is the control plane</b> (HTTPS, flips a boolean),
+     <b>EGM is the data plane</b> (UDP, streams targets). The GoFa needs both, which is why
+     <code>abb_rws.py</code> and <code>abb_egm.py</code> are separate modules.</p>
+
+  <div class="diagram">  PC                                              OmniCore
+  │                                                  │
+  │  <span class="c">1. once:</span> upload PyEgm.mod, load into T_ROB1, start │
+  │ ───────────────── RWS / HTTPS ─────────────────► │
+  │                                        PyEgm parked at
+  │                                    <span class="k">WaitUntil egm_go = TRUE</span>
+  │                                                  │
+  │  <span class="c">2.</span> egm_go := TRUE       <span class="c">(control plane)</span>        │
+  │ ───────────────── RWS / HTTPS ─────────────────► │
+  │                                          RAPID wakes:
+  │                                          EGMSetupUC \Joint
+  │                                          EGMActJoint
+  │                                          <span class="k">EGMRunJoint</span>  <span class="c">← blocks here</span>
+  │                                                  │
+  │  <span class="c">3.</span> EgmRobot   <span class="c">joint feedback, degrees</span>          │
+  │ ◄──────────────── UDP :6510 ──────────────────── │  <span class="c">every 10 ms</span>
+  │     EgmSensor  <span class="c">target joints, degrees</span>            │  <span class="c">(data plane)</span>
+  │ ──────────────────────────────────────────────►  │
+  │                   <span class="c">…repeat at 100 Hz…</span>             │
+  │                                                  │
+  │  <span class="c">4.</span> hold final target 1.5 s → \CondTime fires  │
+  │                                          EGMRunJoint returns
+  │                                          egm_go := FALSE
+  │                                          back to WaitUntil</div>
+
+  <div class="warn">
+    <b>Every step of that chain fails silently.</b> Wrong PC address in <code>EGM_COMM.cfg</code>,
+    program not parked at Main, licence absent, UDP blocked — none of them produce an error on the
+    Python side. RWS connects, the flag sets, the stream sends, and <b>the arm simply does not
+    move</b>. That is why the troubleshooting matrix has a row for exactly this.
+    <br><br>
+    Compare the UR, where the whole of the above is <code>rtde_c.servoJ(q, …)</code>.
+  </div>
+
+  <details class="deep"><summary>The wire format, and why UDP</summary>
+    <div class="body">
+      <p>Two protobuf messages, defined in <code>lib/egm.proto</code> and compiled to
+      <code>lib/egm_pb2.py</code>:</p>
+      <ul>
+        <li><b>Controller → PC:</b> <code>EgmRobot</code>, carrying <code>feedBack.joints</code> —
+          where the arm actually is. The first of these is also how Python knows EGM really started.</li>
+        <li><b>PC → Controller:</b> <code>EgmSensor</code> with
+          <code>header.mtype = MSGTYPE_CORRECTION</code> and <code>planned.joints.joints</code> —
+          where you want it.</li>
+      </ul>
+      <p><b>Degrees on the wire</b> (ABB convention), radians everywhere else in the codebase;
+      <code>abb_egm.py</code> converts at the boundary.</p>
+      <p><b>The PC replies to whatever address the feedback came from</b> —
+      <code>sendto(reply, addr)</code> using the <code>addr</code> from <code>recvfrom</code>. The
+      controller initiates. That is why <code>EGM_COMM.cfg</code> on the <em>robot</em> has to name
+      your PC's IP, and why getting it wrong yields silence rather than a connection error.</p>
+      <p><b>Why UDP and not TCP:</b> a late target is worse than a missing one. Drop a packet and you
+      want the <em>next</em> one on schedule, not a retransmission of stale data. TCP's reliability is
+      actively harmful in a 10 ms control cycle.</p>
+    </div>
+  </details>
+
   <div class="note">
     <b>Re-run the installer after any change to the supervisor</b> — including the lead-through
     feature. Stop any running teleop first (Ctrl-C) so RAPID mastership is free, or the installer
