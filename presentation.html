@@ -48,11 +48,6 @@
   .btn:hover{color:var(--ink)}
   .btn.on{color:var(--accent); background:var(--accent-soft); border-color:var(--accent)}
   .counter{font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap}
-  .gapchip{
-    font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:99px;
-    background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn); cursor:pointer;
-  }
-  .gapchip.clear{background:var(--ok-bg); color:var(--ok); border-color:var(--ok)}
 
   /* ---------- sidebar (doc mode only) ---------- */
   nav{
@@ -113,23 +108,6 @@
   .warn{border-left:3px solid var(--warn); background:var(--warn-bg); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
   .warn b, .note b{font-weight:700}
 
-  /* the loud "someone has to fill this in" marker */
-  .needs{
-    border:1px dashed var(--warn); background:var(--warn-bg); color:var(--ink);
-    border-radius:8px; padding:12px 15px; margin:14px 0; font-size:13.8px;
-  }
-  .needs::before{
-    content:"NEEDS INPUT"; display:inline-block; font-size:10px; font-weight:800; letter-spacing:.1em;
-    background:var(--warn); color:#fff; padding:2px 8px; border-radius:4px; margin-right:9px;
-    vertical-align:2px;
-  }
-  .needs .q{display:block; margin-top:8px; color:var(--muted); font-size:13px}
-  .needs ul{margin:8px 0 0}
-  .guess{
-    display:inline-block; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
-    background:var(--panel); color:var(--warn); border:1px solid var(--warn);
-    padding:1px 6px; border-radius:4px; margin-right:6px; vertical-align:1px;
-  }
 
   /* code */
   .code{position:relative; margin:12px 0}
@@ -337,7 +315,6 @@
 <div class="topbar">
   <div class="brand">robot_control <span>·</span> project review &amp; handbook</div>
   <div class="spacer"></div>
-  <span class="gapchip" id="gapchip" title="Jump to the list of unfilled facts">0 gaps</span>
   <span class="counter" id="counter">1 / 1</span>
   <button class="btn" id="modeBtn" title="Switch between slide deck and scrolling handbook">Doc mode</button>
   <button class="btn" id="expandBtn" title="Open/close every deep-dive block">Expand all</button>
@@ -2030,22 +2007,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   </ul>
 </section>
 
-<section class="slide" data-part="Handoff" data-title="Open items">
-  <p class="kicker">Handoff · 29</p>
-  <h2>Open items</h2>
-  <p class="lede">This page collects anything still marked <b>NEEDS INPUT</b> — facts that live in
-     someone's head rather than in the repository. Keep it at zero.</p>
-
-  <div id="gaplist"></div>
-
-  <div class="note">
-    <b>If you add a NEEDS INPUT block while editing, it appears here automatically</b> — the counter in
-    the top bar links to this page. The mechanism is worth keeping: it makes "we never wrote that down"
-    visible instead of silent, which is how the lab setup went undocumented for two months in the first
-    place.
-  </div>
-</section>
-
 </main>
 
 <script>
@@ -2058,7 +2019,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   var modeBtn = document.getElementById('modeBtn');
   var themeBtn= document.getElementById('themeBtn');
   var expandBtn=document.getElementById('expandBtn');
-  var gapchip = document.getElementById('gapchip');
   var idx = 0;
 
   function slug(s){
@@ -2169,53 +2129,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
       tocLinks.forEach(function(a){ a.classList.toggle('active', +a.getAttribute('data-i')===idx); });
     }
   }, {passive:true});
-
-  /* ---------- gap index ---------- */
-  var gaps = Array.prototype.slice.call(document.querySelectorAll('.needs'));
-  var gapHost = document.getElementById('gaplist');
-  gapchip.textContent = gaps.length ? (gaps.length + (gaps.length === 1 ? ' gap' : ' gaps'))
-                                    : 'no gaps';
-  gapchip.classList.toggle('clear', gaps.length === 0);
-  if (gapHost && !gaps.length){
-    gapHost.innerHTML =
-      '<div class="card" style="border-color:var(--ok)">' +
-      '<h4 style="margin:0 0 6px"><span class="pill ok">clear</span> Nothing outstanding</h4>' +
-      '<div style="font-size:13.4px;color:var(--muted);line-height:1.6">' +
-      'Every fact this document needed has been captured, including the ones that only existed ' +
-      'as live state on the lab PC: the mirrored-networking line, which adapter carries the robot ' +
-      'network, the camera BUSIDs and their arm mapping, the build prerequisites, and the E-stop ' +
-      'recovery sequence. If you add a NEEDS INPUT block, it will appear here.' +
-      '</div></div>';
-  }
-  if (gapHost && gaps.length){
-    gaps.forEach(function(g, n){
-      var sec = g.closest('.slide');
-      if (!sec || sec.id === 'open-items') return;
-      var title = sec.getAttribute('data-title');
-      var part  = sec.getAttribute('data-part');
-      var q     = g.querySelector('.q');
-      var card  = document.createElement('div');
-      card.className = 'card';
-      card.style.margin = '10px 0';
-      var qhtml = q ? q.innerHTML : '';
-      card.innerHTML =
-        '<h4 style="margin:0 0 6px"><span class="pill warn">' + (n+1) + '</span> ' +
-        '<a href="#' + sec.id + '" data-i="' + slides.indexOf(sec) + '">' + part + ' &rarr; ' + title + '</a></h4>' +
-        '<div style="font-size:13.2px;color:var(--muted);line-height:1.6">' + qhtml + '</div>';
-      gapHost.appendChild(card);
-    });
-    gapHost.querySelectorAll('a[data-i]').forEach(function(a){
-      a.addEventListener('click', function(){
-        if (body.classList.contains('deck')) show(+a.getAttribute('data-i'), true);
-      });
-    });
-  }
-  gapchip.addEventListener('click', function(){
-    var target = document.getElementById('open-items');
-    if (!target) return;
-    if (body.classList.contains('deck')) show(slides.indexOf(target), true);
-    else target.scrollIntoView({block:'start'});
-  });
 
   /* ---------- copy buttons ---------- */
   document.querySelectorAll('.code .copy').forEach(function(b){
