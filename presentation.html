@@ -1719,9 +1719,13 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
         <code>"ur15"</code> to <code>scripts/teleop_ur15.py</code></small></div>
     <div class="dg-down">↓</div>
     <div class="dg-box"><b><code>robot_sim.install()</code></b>
-      <small><b>the only step <code>real.py</code> skips</b> — injects fakes into
-        <code>sys.modules</code> for <code>rtde_control</code>, <code>rtde_receive</code>,
-        <code>hande_gripper</code>, <code>abb_rws</code>, <code>abb_egm</code></small></div>
+      <small><b>the only step <code>real.py</code> skips.</b> Puts fake modules into
+        <code>sys.modules</code> under the real names — <code>rtde_control</code>,
+        <code>rtde_receive</code>, <code>hande_gripper</code>, <code>abb_rws</code>,
+        <code>abb_egm</code>, plus <code>cv2</code> — and seeds the arm's home pose.
+        <br><b>Why that is enough:</b> Python checks <code>sys.modules</code> before it looks at the
+        filesystem, so any later <code>import</code> of those names gets the fake. No monkeypatching,
+        no import hooks. It just has to run <em>first</em>.</small></div>
     <div class="dg-down">↓</div>
     <div class="dg-box"><b><code>runpy.run_path(teleop_ur15.py, "__main__")</code></b>
       <small>the real script runs <b>in this same process</b> — real IK, real profiles, real URDFs,
