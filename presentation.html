@@ -621,13 +621,7 @@
     <tr><td>Control PC</td><td><code>192.168.125.50</code></td><td><b>6510/udp</b> inbound EGM feedback · 8000 API · 8080 viser</td></tr>
   </table>
 
-  <div class="warn">
-    <b>The PC's robot-network IP is not free to change.</b> <code>192.168.125.50</code> is written into
-    <code>egm/EGM_COMM.cfg</code> on the <em>ABB controller</em> as the EGM peer address. Change the PC's
-    IP and the GoFa will stream feedback into the void — the arm simply never responds, with no error.
-    If you must change it, update <code>EGM_COMM.cfg</code> <code>RemoteAddress</code> and
-    <code>PC_IP_EXPECTED</code> in <code>install_gofa_egm.py</code>, then re-run the installer.
-  </div>
+  
 
 <h3>The confirmed configuration</h3>
   <p>Captured from the running lab host. This is the part that could not be recovered if the
@@ -647,31 +641,11 @@
 [wsl2]
 networkingMode=mirrored</pre></div>
 
-  <div class="note">
-    <b>Why mirrored is load-bearing, not incidental.</b> Under default NAT, outbound TCP to the robots
-    would still work — RWS and RTDE would look fine. But the GoFa sends EGM feedback <em>inbound</em>
-    to <code>192.168.125.50:6510</code>, and inbound UDP does not reach a NAT'd WSL
-    (<code>netsh portproxy</code> is TCP-only, so it can't be worked around that way either).
-    Lose this line and the symptom is the nastiest kind: <b>RWS connects, the installer succeeds,
-    <code>egm_go</code> sets true — and the arm never moves.</b> Requires WSL 2.0.0+ on
-    Windows 11 22H2+; this host runs WSL 2.7.10.
-  </div>
+  
 
-  <div class="warn">
-    <b>The flaky dongle <em>is</em> the robot network.</b> <code>Ethernet 2</code> — the adapter that
-    carries both arms — is the USB Realtek, the one that needs replugging when the UR15 connect hangs.
-    The built-in 2.5 GbE port carries the ordinary network instead. Worth knowing before you spend
-    twenty minutes debugging RTDE: <b>if both robots go unreachable at once, suspect the dongle first.</b>
-    Swapping the two cables so the robots use the built-in port would remove a whole class of failure.
-  </div>
+  
 
-  <div class="warn">
-    <b>Security consequence of mirrored mode.</b> WSL shares <em>every</em> Windows interface, and
-    <code>api_server.py</code> binds <code>0.0.0.0</code> by default — so the robot API is reachable
-    on the ordinary network at <code>192.168.42.176:8000</code>, not just the robot subnet. With
-    <code>ROBOT_API_TOKEN</code> unset it would be <code>changeme</code>. <b>Set a real token, or bind
-    <code>--host 127.0.0.1</code>.</b>
-  </div>
+  
 
   <details class="deep"><summary>Re-deriving this on a rebuilt machine</summary>
     <div class="body">
