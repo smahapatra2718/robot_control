@@ -474,10 +474,6 @@
 <section class="slide" data-part="Orientation" data-title="Repo map">
   <p class="kicker">Orientation · 04</p>
   <h2>Where everything lives</h2>
-  <p class="lede">Runnable things in <code>scripts/</code>, importable things in <code>lib/</code>,
-     vendored trees in their own folders. Nothing is an installable package — every script
-     bootstraps its own <code>sys.path</code>.</p>
-
   <div class="diagram"><span class="d">robot_control/</span>
 <span class="t">├── </span><span class="d">scripts/</span>                    <span class="c"># entry points — uv run scripts/&lt;script&gt;</span>
 <span class="t">│   ├── </span>real.py  /  sim.py      <span class="c">#   dispatchers: &lt;ur15|gofa|play|teleop|api&gt;</span>
@@ -504,19 +500,6 @@
 <span class="t">├── </span><span class="d">urdf/  egm/  trajectories/</span>  <span class="c"># assets, controller config, saved teach paths</span>
 <span class="t">├── </span><span class="d">docs/</span>                       <span class="c"># design specs + implementation plans</span>
 <span class="t">└── </span>CLAUDE.md  README.md  API.md  usage.html</div>
-
-  <details class="deep"><summary>The <code>sys.path</code> bootstrap, and why there's no package</summary>
-    <div class="body">
-      <p>Each script in <code>scripts/</code> starts by putting the repo root and <code>lib/</code>
-      on <code>sys.path</code>. That's why you see <code>import robot_common</code> rather than
-      <code>from lib import robot_common</code>, and why scripts work from any working directory.</p>
-      <p>Asset paths resolve from <code>robot_common._ROOT</code> (the parent of <code>lib/</code>),
-      derived from <code>__file__</code> — never from the CWD. <code>pyproject.toml</code> sets
-      <code>package = false</code>: there is deliberately no build step and nothing to install.</p>
-      <p>The repo root is on the path because <code>pyroki_snippets/</code> — which holds the custom
-      seeded-IK solver — is imported by bare name and is <em>not</em> part of the installed pyroki package.</p>
-    </div>
-  </details>
 
   <details class="deep"><summary>Vendored third-party trees (and why each one is vendored)</summary>
     <div class="body">
