@@ -1861,175 +1861,10 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   </div>
 </section>
 
-<!-- ============================ PART V — WAR STORIES ============================ -->
-
-<section class="slide" data-part="War stories" data-title="Convergence">
-  <p class="kicker">War stories · 25</p>
-  <h2>Chasing the last millimetre</h2>
-  <p class="lede">Nine commits over two days, all on one problem: the arm stopped <em>near</em> the end
-     of a trajectory instead of <em>at</em> it.</p>
-
-  <div class="tl">
-    <div class="ev"><div class="what">Symptom</div>
-      <div class="detail">A play would finish and the arm would sit visibly short of the taught pose —
-        and then <em>snap back</em> slightly when the next command arrived.</div></div>
-    <div class="ev"><div class="what">Cause 1 — the stream ended before the arm arrived</div>
-      <div class="detail"><code>servoJ</code> is a <em>target</em>, not a guarantee. When the loop stopped
-        sending, the arm stopped wherever it had got to. Fix: hold the final target until it actually
-        converges.</div></div>
-    <div class="ev"><div class="what">Cause 2 — "good enough" was a moving target</div>
-      <div class="detail">A fixed tolerance was either too loose (visible error) or unreachable (hung
-        forever). Fix: <b>plateau detection</b> — keep holding while error still improves by at least
-        <code>UR_SETTLE_EPS_RAD</code>; after <code>UR_SETTLE_STALL_TICKS</code> non-improving checks
-        you are at the hardware floor, so stop. Capped at <code>UR_SETTLE_MAX_S</code> so it can
-        never hang.</div></div>
-    <div class="ev"><div class="what">Cause 3 — gravity droop from an undeclared payload</div>
-      <div class="detail">The ~1 kg gripper made <code>servoJ</code> hold the loaded joints slightly below
-        target. Fix: <code>setPayload(1.0, (0,0,0.06))</code> at startup so the controller compensates.</div></div>
-    <div class="ev"><div class="what">A red herring worth knowing</div>
-      <div class="detail">The error <em>looked</em> worse than it was. The gizmo targets the grasp point,
-        ~156 mm past <code>tool0</code>, so the same joint error shows up as a larger Cartesian shift.
-        Geometric, not a regression.</div></div>
-  </div>
-
-  <div class="note">
-    <b>Result:</b> a stiffer settle gain (600 vs 300 during motion) plus plateau detection drives joint
-    error to the <code>servoJ</code> floor — roughly 0.6 mm at the tip — on every play, regardless of
-    load. <b>The transferable lesson:</b> when you can't pick a tolerance, stop guessing and detect
-    when improvement stops.
-  </div>
-</section>
-
-<section class="slide" data-part="War stories" data-title="Gripper pivot">
-  <p class="kicker">War stories · 26</p>
-  <h2>The gripper that couldn't be talked to</h2>
-  <p class="lede">A design constraint that only appears once both halves are running at the same time.</p>
-
-<figure class="shot tight" data-shot="hande-wrist">
-  <div class="shot-ph"><b>Photo &middot; hande-wrist</b><span>The UR15 wrist with the <b>Hand-E fitted</b>, close enough to see the fingers and the tool-flange cabling. Bonus: one open and one closed, side by side.</span></div>
-  <figcaption>The Robotiq Hand-E on the UR15 wrist &mdash; RS-485 and 24&nbsp;V through the tool flange.</figcaption>
-</figure>
-
-  <ul class="key">
-    <li><b>The conflict</b>
-      <small><code>ur_rtde</code> keeps its control script resident for the whole session. A Robotiq
-      gripper <em>program</em> also needs to run on the controller. Both cannot hold the program slot,
-      so the obvious approach — run the vendor's gripper program — is structurally impossible.</small></li>
-    <li><b>The insight</b>
-      <small>The Grippers URCap doesn't only provide a program. It also runs a <b>background daemon</b>
-      that owns the wrist RS-485 bus and serves a socket on port <b>63352</b> — independent of whatever
-      program is running.</small></li>
-    <li><b>The result</b>
-      <small><code>hande_gripper.py</code> speaks that socket's newline-terminated ASCII protocol,
-      stdlib only. It coexists with <code>ur_rtde</code>, and the pendant's own gripper buttons keep
-      working because they talk to the same daemon.</small></li>
-  </ul>
-
-  <div class="code"><button class="copy">copy</button><pre><span class="c"># the whole protocol, essentially</span>
-SET POS 255 SPE 255 FOR 150 GTO 1   →  ack        <span class="c"># 0 open .. 255 closed</span>
-GET STA                             →  STA 3      <span class="c"># 3 = activated</span>
-GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stopped on an object</span></pre></div>
-
-  <div class="warn">
-    <b>Port 63352 is firewalled by default in PolyScope X</b>, exactly like RTDE. Open it under
-    Settings → Security → Services, and <b>run <code>scripts/verify_hande.py</code> before trusting
-    gripper control</b>. If it stays unreachable, the fallbacks are a USB-RS485 adapter speaking
-    Modbus directly, or the RS485 URCap socket bridge — both absorbed by swapping the transport inside
-    <code>HandEGripper</code>. The connection is best-effort: with no socket, the system logs it and
-    runs visualisation-only.
-  </div>
-
-  <div class="note">
-    <b>One tracked value.</b> <code>gripper_frac</code> (0.0 open … 1.0 closed) is the single source of
-    truth — the slider drives it, waypoints record it, the render always shows it, and the startup
-    "open" command means the value is known without polling. Legacy <code>"open"</code>/<code>"close"</code>
-    strings in old trajectory files normalise on load.
-  </div>
-</section>
-
-<section class="slide" data-part="War stories" data-title="OmniCore RWS">
-  <p class="kicker">War stories · 27</p>
-  <h2>Ten ways OmniCore RWS will waste your afternoon</h2>
-  <p class="lede">The most-starred ABB Python client doesn't work on this controller. Here is
-     everything learned the hard way, so nobody relearns it.</p>
-
-  <table>
-    <tr><th style="width:30%">Trap</th><th>What actually happens</th></tr>
-    <tr><td><b>The obvious library is wrong</b></td><td><code>abb-robot-client</code> supports IRC5 only. On OmniCore it silently 401s. Hence <code>abb_rws.py</code>.</td></tr>
-    <tr><td><b>Basic auth, not Digest</b></td><td>RWS 2.0 advertises <code>WWW-Authenticate: Basic</code>. The popular client uses Digest — that's the silent 401.</td></tr>
-    <tr><td><b>HTTPS only, port 443</b></td><td>Port 80 is disabled. Self-signed cert, so verification is off and the warning suppressed.</td></tr>
-    <tr><td><b>The <code>;v=2.0</code> suffix</b></td><td>Every POST/PUT needs <code>Content-Type: application/x-www-form-urlencoded;v=2.0</code>. Without the suffix: <code>406 Not Acceptable</code>.</td></tr>
-    <tr><td><b>No consistent URL convention</b></td><td>Mastership puts the action <em>in the path</em> (<code>/rw/mastership/edit/request</code>); many other endpoints keep it in the body. IRC5 did the opposite.</td></tr>
-    <tr><td><b>Symbol paths need the module</b></td><td><code>/rw/rapid/symbol/RAPID/{task}/{module}/{var}/data</code> — the module name is required on OmniCore, and wasn't on IRC5.</td></tr>
-    <tr><td><b>Mastership orphans easily</b></td><td>A crashed process leaves the controller believing mastership is held; later requests 403. Wait ~30 s or reboot from the pendant. <code>abb_rws.py</code> registers an <code>atexit</code> hook to release on clean exit.</td></tr>
-    <tr><td><b><code>MainModule</code> collides</b></td><td>It ships with its own <code>PROC main()</code>; RAPID won't compile two. The installer unloads it first.</td></tr>
-    <tr><td><b>Build errors hide in plain sight</b></td><td>The event log says "Errors in RAPID program". The <em>useful</em> detail — module, row, column, type — is at <code>/rw/rapid/tasks/T_ROB1/program/builderror</code>.</td></tr>
-    <tr><td><b>No Auto/Manual key switch</b></td><td>The C30 has none — mode is a touchscreen control. Larger ABB controllers do have one; don't assume.</td></tr>
-  </table>
-
-  <div class="warn">
-    <b>Still unsolved:</b> <code>resetpp</code> (PP-to-Main) and program start over RWS. Every URL shape
-    tried returned 400 "semantic error" or 403, so <code>install_gofa_egm.py</code> falls back to asking
-    you to press the buttons on the pendant. Cracking this would make the install fully automatic —
-    a good first task for whoever picks this up.
-  </div>
-</section>
-
-<section class="slide" data-part="War stories" data-title="Offline by design">
-  <p class="kicker">War stories · 28</p>
-  <h2>A machine cabled to a robot has no internet</h2>
-  <p class="lede">An obvious statement that quietly invalidates a lot of standard tooling.
-     Several decisions in this repo exist only because of it.</p>
-
-  <ul class="key">
-    <li><b>Swagger UI is vendored</b>
-      <small>FastAPI's stock docs page loads <code>swagger-ui-bundle.js</code> from a CDN. On the robot
-      network that's <code>ERR_NAME_NOT_RESOLVED</code> and a blank page. Both apps are built with
-      <code>docs_url=None</code> and re-add <code>/docs</code> pointed at
-      <code>web/vendor/swagger-ui/</code>. ReDoc was dropped — CDN-only, same failure.</small></li>
-    <li><b>The 3D viewer uses a native import map, no bundler and no CDN</b>
-      <small>three.js and urdf-loader are vendored as ESM. Model bundles are <em>baked and committed</em>
-      so the server doesn't need a <code>robot_descriptions</code> cache to serve them.</small></li>
-    <li><b>The console is a single static file</b>
-      <small>Served same-origin, so there's no CORS and the token never leaves the tab. No build step
-      means nothing to rebuild on a machine with no npm registry.</small></li>
-    <li><b><code>uv.lock</code> pins everything, including the interpreter</b>
-      <small>Reproducibility on a machine you can't casually reinstall.</small></li>
-  </ul>
-
-  <div class="note">
-    <b>The general principle:</b> assume the deployment machine has no DNS, no package registry, and no
-    second chance. Anything that fetches at runtime is a latent outage. Everything this system needs to
-    render or serve is in the repository.
-  </div>
-
-  <details class="deep"><summary>Other gotchas worth carrying forward</summary>
-    <div class="body">
-      <ul>
-        <li><b>Boost 1.90 breaks <code>ur_rtde</code> on macOS.</b> Boost made Boost.System header-only
-          in 1.87+, so no <code>boost_system-*-Config.cmake</code> ships and
-          <code>find_package(boost_system CONFIG)</code> dies. This bites on <em>every</em> machine
-          because ur_rtde publishes no wheels and always compiles. Fix: keg-only
-          <code>boost@1.85</code> plus <code>BOOST_ROOT</code>/<code>CMAKE_PREFIX_PATH</code>.</li>
-        <li><b>yourdfpy can't open <code>file://</code> URIs.</b> xacrodoc resolves
-          <code>package://</code> into absolute <code>file://</code> paths, but yourdfpy's
-          <code>filename_handler</code> only fires for <em>unresolved</em> URIs — so the path goes
-          straight to trimesh, which fails. Both local URDFs are generated with the
-          <code>file://</code> prefix stripped back to <code>package://</code>.</li>
-        <li><b>The GoFa variant matters.</b> An early commit fixes <code>crb15000_12_127</code> →
-          <code>crb15000_5_95</code>. Match the URDF to the hardware nameplate — wrong link lengths
-          mean wrong IK, silently.</li>
-        <li><b>The pre-uv venv broke when the repo directory moved</b> — it was linked against a
-          miniconda interpreter. That's the direct reason uv now manages the interpreter too.</li>
-      </ul>
-    </div>
-  </details>
-</section>
-
 <!-- ============================ PART VI — OPERATIONS ============================ -->
 
 <section class="slide" data-part="Operations" data-title="E-stop &amp; recovery">
-  <p class="kicker">Operations · 29</p>
+  <p class="kicker">Operations · 25</p>
   <h2>E-stop and recovery</h2>
   <p class="lede">The most important operational procedure in the system, and the one most likely to
      be needed while someone is watching.</p>
@@ -2104,7 +1939,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Operations" data-title="Troubleshooting">
-  <p class="kicker">Operations · 30</p>
+  <p class="kicker">Operations · 26</p>
   <h2>Troubleshooting matrix</h2>
   <p class="lede">Symptom → cause → fix. Everything learned in the lab and everything learned in the
      code, in one table. Start here before reading any source.</p>
@@ -2151,7 +1986,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Operations" data-title="Testing">
-  <p class="kicker">Operations · 31</p>
+  <p class="kicker">Operations · 27</p>
   <h2>Verifying the system</h2>
   <p class="lede">Three offline test suites and two hardware probes. All five run without touching
      a robot except the probes, which exist precisely to test hardware.</p>
@@ -2181,7 +2016,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VII — HANDOFF ============================ -->
 
 <section class="slide" data-part="Handoff" data-title="What's not done">
-  <p class="kicker">Handoff · 32</p>
+  <p class="kicker">Handoff · 28</p>
   <h2>What isn't done</h2>
   <p class="lede">Stated plainly, because the next person will find these anyway — better they find
      them here first, with context.</p>
@@ -2205,7 +2040,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Day one">
-  <p class="kicker">Handoff · 33</p>
+  <p class="kicker">Handoff · 29</p>
   <h2>If you're inheriting this — start here</h2>
   <p class="lede">A path from zero to commanding a real arm, ordered so that each step's failures are
      diagnosable before the next step can confuse them.</p>
@@ -2253,7 +2088,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Summary">
-  <p class="kicker">Handoff · 34</p>
+  <p class="kicker">Handoff · 30</p>
   <h2>What was built</h2>
 
   <div class="stats" style="margin:22px 0 26px">
@@ -2286,7 +2121,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Open items">
-  <p class="kicker">Handoff · 35</p>
+  <p class="kicker">Handoff · 31</p>
   <h2>Open items</h2>
   <p class="lede">This page collects anything still marked <b>NEEDS INPUT</b> — facts that live in
      someone's head rather than in the repository. Keep it at zero.</p>
