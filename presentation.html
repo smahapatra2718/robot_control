@@ -893,8 +893,9 @@ uv sync</pre></div>
     <li><b>Normal state</b> — the base ring is <b>green</b>.</li>
   </ol>
 
-  <p style="font-size:13.4px; color:var(--muted)">Before trusting gripper control, run
-     <code>uv run scripts/verify_hande.py</code>.</p>
+  <p style="font-size:13.4px; color:var(--muted)"><b>Only if the gripper misbehaves:</b>
+     <code>uv run scripts/verify_hande.py</code> probes the URCap socket on 63352 and reports whether
+     it is reachable. It is a diagnostic, not a routine step — skip it unless something is wrong.</p>
 
   <div class="code"><button class="copy">copy</button><pre><span class="c"># from the control PC — all four should succeed</span>
 for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></div>
