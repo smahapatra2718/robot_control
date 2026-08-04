@@ -187,6 +187,11 @@
   .stack .layer span{color:var(--muted)}
   .stack .arrow{text-align:center; color:var(--muted); font-size:14px; line-height:1; margin:-1px 0}
   .stack .layer.core{border-color:var(--accent); background:var(--accent-soft)}
+  .stack .layer .swap{
+    flex-basis:100%; margin:8px 0 0; padding-top:7px; border-top:1px dashed var(--line);
+    font-size:11.9px; color:var(--accent); line-height:1.5;
+  }
+  .stack .layer .swap b{color:var(--accent)}
 
   /* ascii/mono diagram */
   .diagram{
@@ -354,16 +359,11 @@
     <div class="arrow">↓</div>
     <div class="layer core"><b>RobotController</b><span><code>lib/control/</code> — one motion implementation: command executor, state loop, segment builder, IK</span></div>
     <div class="arrow">↓</div>
-    <div class="layer"><b>Hardware clients</b><span><code>ur_rtde</code> &nbsp;·&nbsp; <code>abb_rws.py</code> (HTTPS) &nbsp;·&nbsp; <code>abb_egm.py</code> (UDP/protobuf) &nbsp;·&nbsp; <code>hande_gripper.py</code> (TCP) &nbsp;·&nbsp; <code>camera.py</code></span></div>
+    <div class="layer"><b>Hardware clients</b><span><code>ur_rtde</code> &nbsp;·&nbsp; <code>abb_rws.py</code> (HTTPS) &nbsp;·&nbsp; <code>abb_egm.py</code> (UDP/protobuf) &nbsp;·&nbsp; <code>hande_gripper.py</code> (TCP) &nbsp;·&nbsp; <code>camera.py</code></span><span class="swap">↔ <b><code>robot_sim.py</code> swaps this row for fakes</b> — everything above it then runs unchanged, with no robot and no network.</span></div>
     <div class="arrow">↓</div>
     <div class="layer"><b>Robots</b><span>UR15 controller (PolyScope X) &nbsp;·&nbsp; ABB OmniCore C30 running <code>PyEgm.mod</code></span></div>
   </div>
 
-  <div class="note">
-    <b>The load-bearing idea.</b> <code>lib/robot_sim.py</code> substitutes fakes at the
-    <em>hardware-client</em> layer — the row second from the bottom. Everything above it is
-    the real code path, which is why the simulator never drifts from reality.
-  </div>
 
 
   <details class="deep"><summary>Module map — what each file owns</summary>
