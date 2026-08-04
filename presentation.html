@@ -773,48 +773,30 @@ usbipd list                                         <span class="c"># confirm th
 ls -l /dev/video*
 uv run scripts/verify_cameras.py --save   <span class="c"># writes JPEGs so you can tell which arm is which</span></pre></div>
 
-  <div class="note">
-    <b>This used to be a manual step on every boot — it isn't any more.</b>
-    <code>usbipd bind</code> persists across reboots but <code>attach</code> does not, so the cameras
-    had to be handed to WSL by hand each morning.
-    <code>scripts/setup_cameras_windows.ps1</code> now does the bind once and registers a per-camera
-    logon task running <code>usbipd attach --wsl … --auto-attach</code>, which also survives a replug
-    or a WSL restart. <b>Power on → log in → open WSL → the cameras are already there.</b>
+  
+
+  
+
+  
+
+  
+
+    <table>
+    <tr><th style="width:23%">Devices</th><td>2 &times; Arducam 477 12MP-S-HDR &mdash; BUSID <code>2-9</code> and <code>2-10</code></td></tr>
+    <tr><th>Mapping</th><td><code>/dev/video0</code> = <b>UR15</b> &nbsp;&middot;&nbsp; <code>/dev/video2</code> = <b>GoFa</b></td></tr>
+    <tr><th>Config needed</th><td><b>None.</b> Those are the built-in defaults &mdash; leave <code>UR_CAMERA_INDEX</code> and <code>GOFA_CAMERA_INDEX</code> unset.</td></tr>
+    <tr><th>Kernel</th><td>Stock <code>microsoft-standard-WSL2</code> with <code>uvcvideo</code> as shipped. <b>No custom build.</b> If a machine lacks it, <code>wsl --update</code> first.</td></tr>
+    <tr><th>Per boot</th><td><b>Nothing.</b> The logon tasks attach both cameras before you open WSL.</td></tr>
+  </table>
+
+  <div class="warn">
+    <b>Both cameras are the same model</b>, so they share a USB hardware id
+    (<code>0c40:0433</code>) and only the BUSID tells them apart. Two consequences: the setup script
+    must be given <code>-BusId</code>, never <code>-HardwareId</code>; and <b>BUSID follows the
+    physical socket &mdash; move a camera to another port and the arm mapping swaps.</b>
   </div>
 
-  <div class="note">
-    <b>No custom kernel is needed — this is a stock WSL2 kernel.</b>
-    <code>6.18.33.2-microsoft-standard-WSL2</code>, with <code>uvcvideo</code> loaded as shipped.
-    Older WSL2 kernels genuinely had no UVC support, which is where the "cameras can't work in WSL"
-    folklore comes from; on a current WSL it simply works. If you land on a machine where it
-    doesn't, <code>wsl --update</code> before anything more drastic.
-    (<code>CLAUDE.md</code> asserted the opposite until this was measured — now corrected.)
-  </div>
-
-  <div class="note">
-    <b>The cameras are two Arducam 477 12MP-S-HDR on BUSID <code>2-9</code> and <code>2-10</code></b>,
-    bound with logon tasks registered. Two things follow from them being the <em>same model</em>:
-    they share a USB hardware id (<code>0c40:0433</code>), so the setup script must be given
-    <code>-BusId</code> and not <code>-HardwareId</code>; and only the BUSID distinguishes them, which
-    follows the physical port — <b>move a camera to another socket and the arm mapping swaps.</b>
-    A rebuilt PC needs <code>usbipd list</code> re-run first.
-  </div>
-
-  <div class="note">
-    <b>On this machine: <code>/dev/video0</code> is the UR15, <code>/dev/video2</code> is the GoFa.</b>
-    Those are exactly the built-in defaults, so <b>no environment variables are needed</b> — leave
-    <code>UR_CAMERA_INDEX</code> and <code>GOFA_CAMERA_INDEX</code> unset and it works.
-    <br><br>
-    Note the jump from 0 to <b>2</b>, not 1: on Linux each UVC camera claims two
-    <code>/dev/video*</code> nodes (capture + metadata) and only the first yields frames, so the
-    second physical camera lands on index 2. That is the reasoning behind
-    <code>_SECOND_CAMERA_DEFAULT</code> in <code>robot_common.py</code>, now confirmed on hardware
-    rather than assumed. If the mapping ever drifts, re-run
-    <code>uv run scripts/verify_cameras.py --save</code> — it writes a JPEG per device so you can
-    just look.
-  </div>
-
-  <details class="deep"><summary>How camera device selection works in the code</summary>
+<details class="deep"><summary>How camera device selection works in the code</summary>
     <div class="body">
       <p><code>UR_CAMERA_INDEX</code> / <code>GOFA_CAMERA_INDEX</code> accept either an integer index
       or a device path. <code>-1</code> disables that arm's camera.</p>
