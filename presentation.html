@@ -211,7 +211,7 @@
     border:1px solid var(--line); border-radius:9px; padding:10px 13px; background:var(--panel);
     font-size:12.9px; line-height:1.45;
   }
-  .dg-box b{display:block; font-size:13.3px; letter-spacing:-.1px; margin-bottom:2px}
+  .dg-box>b{display:block; font-size:13.3px; letter-spacing:-.1px; margin-bottom:2px}
   .dg-box small{color:var(--muted); font-size:11.7px; display:block; line-height:1.45}
   .dg-box.accent{border-color:var(--accent); background:var(--accent-soft)}
   .dg-box.ghost{background:var(--bg); border-style:dashed}
@@ -1711,19 +1711,24 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
      what's on the other end of the socket.</p>
 
   <div class="dg">
-    <div class="dg-box accent"><b><code>sim.py ur15</code></b>
-      <small>the dispatcher, identical to <code>real.py</code> but for one extra step</small></div>
+    <div class="dg-box accent"><b><code>uv run scripts/sim.py ur15</code></b>
+      <small>the offline dispatcher</small></div>
+    <div class="dg-down">↓</div>
+    <div class="dg-box"><b><code>dispatch("ur15", sim=True)</code></b>
+      <small><code>lib/dispatch.py</code>, shared with <code>real.py</code> — resolves
+        <code>"ur15"</code> to <code>scripts/teleop_ur15.py</code></small></div>
     <div class="dg-down">↓</div>
     <div class="dg-box"><b><code>robot_sim.install()</code></b>
-      <small>injects fakes into <code>sys.modules</code>: <code>rtde_control</code>,
-        <code>rtde_receive</code>, <code>hande_gripper</code>, <code>abb_rws</code>,
-        <code>abb_egm</code></small></div>
+      <small><b>the only step <code>real.py</code> skips</b> — injects fakes into
+        <code>sys.modules</code> for <code>rtde_control</code>, <code>rtde_receive</code>,
+        <code>hande_gripper</code>, <code>abb_rws</code>, <code>abb_egm</code></small></div>
     <div class="dg-down">↓</div>
-    <div class="dg-box"><b><code>runpy</code> &rarr; <code>scripts/teleop_ur15.py</code></b>
-      <small>the <b>real script</b>, unmodified &mdash; real IK, real profiles, real URDFs, real UI</small></div>
+    <div class="dg-box"><b><code>runpy.run_path(teleop_ur15.py, "__main__")</code></b>
+      <small>the real script runs <b>in this same process</b> — real IK, real profiles, real URDFs,
+        real UI</small></div>
     <div class="dg-down">↓</div>
-    <div class="dg-box ghost"><b><code>import rtde_control</code></b>
-      <small>&hellip;transparently gets the fake. The script never knows.</small></div>
+    <div class="dg-box ghost"><b>its <code>import rtde_control</code> resolves to the fake</b>
+      <small>the script is unmodified and never learns there is no robot</small></div>
   </div>
 
   <ul class="key">
