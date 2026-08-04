@@ -15,9 +15,10 @@ Slot names come from `data-shot="..."` in presentation.html. images/cell-wide.jp
 the slot named cell-wide; .jpg/.jpeg/.png/.webp all work.
 
 Re-running is safe and idempotent: replacing images/cell-wide.jpg and running again
-swaps the embedded copy. Photos are downscaled to MAX_WIDTH and re-encoded as JPEG,
-because a phone photo embeds at ~4 MB of base64 and a handful of those make the file
-unpleasant to open. Screenshots stay PNG (text stays sharp) unless they are huge.
+swaps the embedded copy. Everything is downscaled to MAX_WIDTH first, because a phone
+photo embeds at ~4 MB of base64 and a handful of those make the file unpleasant to
+open. A PNG that is still under PNG_MAX_BYTES after resizing stays PNG so screenshot
+text keeps its edges; anything larger becomes JPEG.
 """
 from __future__ import annotations
 
@@ -72,17 +73,19 @@ def encode(path: str) -> tuple[str, int]:
         h = round(im.height * MAX_WIDTH / im.width)
         im = im.resize((MAX_WIDTH, h), Image.LANCZOS)
 
-    # Keep PNG for crisp screenshot text, but not when it is really a photo.
-    keep_png = is_png and len(raw) <= PNG_MAX_BYTES
-    buf = io.BytesIO()
-    if keep_png:
+    # Keep PNG for crisp screenshot text. Judge by the size *after* downscaling, not the
+    # original: a 4K screenshot is huge as a file but usually small once resized, and
+    # re-encoding UI text as JPEG makes it fuzzy for no real saving.
+    data, mime = None, None
+    if is_png:
+        buf = io.BytesIO()
         im.save(buf, format="PNG", optimize=True)
-        mime = "image/png"
-    else:
+        if buf.tell() <= PNG_MAX_BYTES:
+            data, mime = buf.getvalue(), "image/png"
+    if data is None:
+        buf = io.BytesIO()
         im.convert("RGB").save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
-        mime = "image/jpeg"
-
-    data = buf.getvalue()
+        data, mime = buf.getvalue(), "image/jpeg"
     return f"data:{mime};base64," + base64.b64encode(data).decode(), len(data)
 
 
