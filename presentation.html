@@ -1063,38 +1063,9 @@ uv sync</pre></div>
     </li>
   </ol>
 
-  <div class="warn">
-    <b>Every step of that chain fails silently.</b> Wrong PC address in <code>EGM_COMM.cfg</code>,
-    program not parked at Main, licence absent, UDP blocked — none of them produce an error on the
-    Python side. RWS connects, the flag sets, the stream sends, and <b>the arm simply does not
-    move</b>. That is why the troubleshooting matrix has a row for exactly this.
-    <br><br>
-    Compare the UR, where the whole of the above is <code>rtde_c.servoJ(q, …)</code>.
-  </div>
+  
 
-  <details class="deep"><summary>The wire format, and why UDP</summary>
-    <div class="body">
-      <p>Two protobuf messages, defined in <code>lib/egm.proto</code> and compiled to
-      <code>lib/egm_pb2.py</code>:</p>
-      <ul>
-        <li><b>Controller → PC:</b> <code>EgmRobot</code>, carrying <code>feedBack.joints</code> —
-          where the arm actually is. The first of these is also how Python knows EGM really started.</li>
-        <li><b>PC → Controller:</b> <code>EgmSensor</code> with
-          <code>header.mtype = MSGTYPE_CORRECTION</code> and <code>planned.joints.joints</code> —
-          where you want it.</li>
-      </ul>
-      <p><b>Degrees on the wire</b> (ABB convention), radians everywhere else in the codebase;
-      <code>abb_egm.py</code> converts at the boundary.</p>
-      <p><b>The PC replies to whatever address the feedback came from</b> —
-      <code>sendto(reply, addr)</code> using the <code>addr</code> from <code>recvfrom</code>. The
-      controller initiates. That is why <code>EGM_COMM.cfg</code> on the <em>robot</em> has to name
-      your PC's IP, and why getting it wrong yields silence rather than a connection error.</p>
-      <p><b>Why UDP and not TCP:</b> a late target is worse than a missing one. Drop a packet and you
-      want the <em>next</em> one on schedule, not a retransmission of stale data. TCP's reliability is
-      actively harmful in a 10 ms control cycle.</p>
-    </div>
-  </details>
-
+  
 
   <details class="deep"><summary>What <code>PyEgm.mod</code> actually does</summary>
     <div class="body">
@@ -1136,21 +1107,9 @@ ENDMODULE</pre></div>
     </div>
   </details>
 
-  <div class="note">
-    <b><code>SetLeadThrough</code> is confirmed working on this GoFa, in Auto mode.</b> Worth stating
-    plainly because the RobotWare 6 documentation describes it as YuMi-only, and a reasonable person
-    reading ABB's docs would conclude it can't work here. RW7/OmniCore does support it on the GoFa.
-    (If a future controller ever rejects it, the build error surfaces at
-    <code>/rw/rapid/tasks/T_ROB1/program/builderror</code>, and the fallback is teaching in Manual
-    then switching to Auto to replay.)
-  </div>
+  
 
-  <div class="warn">
-    <b>PP-to-Main + Play is still a manual pendant press.</b> Starting the RAPID program over RWS was
-    never made to work — every URL shape tried returned 400 "semantic error" or 403 — so the installer
-    ends by asking you to press the buttons. Plan for it: <b>the GoFa cannot be brought up entirely
-    from the PC</b>, which matters if you ever want unattended startup or remote recovery.
-  </div>
+  
 </section>
 
 <!-- ============================ PART III — OPERATING IT ============================ -->
