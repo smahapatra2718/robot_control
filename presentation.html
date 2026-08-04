@@ -1809,8 +1809,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 <section class="slide" data-part="How it works" data-title="RobotState">
   <p class="kicker">How it works · 24</p>
   <h2><code>RobotState</code> — the one shape</h2>
-  <p class="lede">Produced by the controller's poll thread, consumed by every surface. If you learn
-     one data structure in this codebase, learn this one.</p>
+  <p class="lede">Produced by the controller's poll thread, consumed by every surface.</p>
 
   <div class="code"><button class="copy">copy</button><pre>{
   "ts": 1215836.808,          <span class="c">// monotonic — pairs with camera frame timestamps</span>
@@ -1831,12 +1830,33 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     <li><b><code>active_command</code> is never <code>null</code></b>
       <small>Its sub-keys are always present, so a client can read <code>active_command.status</code>
       without null-checking the parent, and the served shape never changes underneath it.</small></li>
+    <li><b>…and it only ever holds a <em>running</em> command</b>
+      <small>The moment one finishes it reverts to all-<code>null</code>. Terminal outcomes live at
+      <code>GET /command/{id}</code>, not here.</small></li>
     <li><b><code>?flat=1</code> gives a scalar-only version</b>
       <small><code>q_0…q_5</code>, <code>pose_pos_x</code>, <code>command_status</code> — for clients
       that can't walk nested JSON. Identical key set on every frame and for both arms.</small></li>
     <li><b>Absent values are <code>None</code>, never a missing key</b>
       <small>A consumer never has to distinguish "not applicable" from "field disappeared".</small></li>
   </ul>
+
+  <h3>What <code>active_command</code> can actually contain</h3>
+  <table>
+    <tr><th style="width:20%">Key</th><th>Values</th></tr>
+    <tr><td><code>id</code></td><td>Integer, unique per command &nbsp;·&nbsp; <code>null</code> when idle</td></tr>
+    <tr><td><code>kind</code></td><td><code>"moving"</code> — <code>move_to_joints</code>, <code>move_to_pose</code>, <code>set_gripper</code><br><code>"playing"</code> — <code>play</code><br><code>null</code> when idle</td></tr>
+    <tr><td><code>status</code></td><td><b>Only ever <code>"running"</code> or <code>null</code> here.</b> The terminal values — <code>"done"</code>, <code>"stopped"</code>, <code>"failed"</code> — exist, but are visible at <code>GET /command/{id}</code>, never in this field</td></tr>
+    <tr><td><code>progress</code></td><td>Float <code>0.0</code>–<code>1.0</code>, <b>per segment</b> — not overall completion &nbsp;·&nbsp; <code>null</code> until the first callback</td></tr>
+    <tr><td><code>error</code></td><td>The exception text, set only on <code>"failed"</code>. Since this field only holds running commands, <b>it is always <code>null</code> here</b> — read it from <code>GET /command/{id}</code></td></tr>
+  </table>
+
+  <div class="warn">
+    <b>Two traps in <code>progress</code>.</b> It is per <em>segment</em>, so a five-segment play
+    reaches 1.0 five times. And an interrupted segment still reports as finished — if
+    <code>stop()</code> lands after the segment's <code>run()</code> returns, the command is reported
+    <code>"stopped"</code> even though that motion completed. Treat it as an animation hint, not as
+    proof of arrival.
+  </div>
 
   <div class="note">
     <code>docs/robot-state-reference.md</code> documents every field individually — meaning, units,
