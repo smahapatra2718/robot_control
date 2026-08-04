@@ -380,6 +380,10 @@
       multiple clients exist. Enforcing it identically across four independent copies is hard in a
       way that copying a servo loop is not.</p>
 
+      <p>(The <em>network</em> boundary — what the remote API lets a client push, and what it
+      deliberately does not — is a separate decision, and a more consequential one. See
+      <em>The remote API</em>.)</p>
+
       <p><b>What it costs: indirection.</b> <code>teleop_ur15.py</code> shows you the servo loop right
       there on the page; <code>play_trajectory.py</code> sends you to <code>lib/control/base.py</code>.
       That is the honest reason the two viser scripts were never migrated — see <em>What's not done</em>.</p>
@@ -1506,6 +1510,12 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
 ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one arm, offline</span></pre></div>
 
   <ul class="key">
+    <li><b>The network carries goals — never the servo loop</b>
+      <small>This is the whole point of the server. A remote client posts <em>"move to this
+      pose"</em>; the box cabled to the arm then runs the 8&ndash;10 ms control loop locally to get
+      there. The rejected alternative was a socket streaming joint targets from a remote client at
+      100 Hz, which puts every network hiccup straight into the control cycle. Here a dropped packet
+      delays your next <em>command</em> — a motion already running is untouched.</small></li>
     <li><b>Bearer token on every endpoint</b>
       <small><code>ROBOT_API_TOKEN</code>, defaulting to <code>changeme</code> with a startup warning.
       Set it for anything beyond a direct cable.</small></li>
@@ -1523,6 +1533,24 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
       <small>If the lease holder goes silent while the arm is live, a watchdog stops it and
       releases the lease.</small></li>
   </ul>
+
+  <details class="deep"><summary>Why that boundary is what makes remote control safe</summary>
+    <div class="body">
+      <p>Every other safety property on this slide follows from it. Because the arm only ever
+      receives <em>goals</em>, the worst a badly-behaved or disconnected client can do is fail to
+      send the next one. It cannot produce a jerky motion, and it cannot leave the arm mid-trajectory
+      with no one driving it — the motion in flight completes under local control regardless.</p>
+      <p>That is also why the <b>deadman</b> is a watchdog on the telemetry socket rather than
+      something in the motion path. The question it answers is not "did a packet arrive on time"
+      (nothing depends on that) but "is the operator still there at all". If the lease holder goes
+      silent while the arm is live, the watchdog stops it — a policy decision layered on top, not a
+      real-time requirement.</p>
+      <p>And it is why <code>speed</code> is validated to <code>(0, 1.0]</code> and joint vectors are
+      shape- and finiteness-checked at the edge: since the client's influence is limited to the
+      <em>content</em> of a goal, validating that content is sufficient. There is no second channel
+      through which a client could affect the arm.</p>
+    </div>
+  </details>
 
   <details class="deep"><summary>Endpoint reference</summary>
     <div class="body">
