@@ -1378,8 +1378,7 @@ Connecting to ur15 ...
 <section class="slide" data-part="Operating it" data-title="Remote API">
   <p class="kicker">Operating it · 17</p>
   <h2>The remote API</h2>
-  <p class="lede">HTTP + WebSocket over the controller. High-level goals only — the network carries
-     commands and telemetry, never the servo loop.</p>
+  <p class="lede">HTTP + WebSocket over the controller.</p>
 
   <div class="code"><button class="copy">copy</button><pre>ROBOT_API_TOKEN=secret uv run scripts/real.py api        <span class="c"># both arms, console at /</span>
 ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one arm, offline</span></pre></div>
