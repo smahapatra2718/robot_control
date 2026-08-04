@@ -1960,7 +1960,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   <h3>Gripper, cameras, install</h3>
   <table>
     <tr><th style="width:31%">Symptom</th><th>Cause</th><th>Fix</th></tr>
-    <tr><td>Gripper renders but never moves</td><td>Port 63352 unreachable — best-effort connect fell back to viz-only</td><td>Open 63352 in the firewall; run <code>verify_hande.py</code></td></tr>
+    <tr><td>Gripper renders but never moves</td><td>Port 63352 unreachable — best-effort connect fell back to viz-only</td><td>Open 63352 <b>on the UR pendant</b> — Settings → Security → Services, the same place as the RTDE ports. It is the <em>robot's</em> firewall, not the PC's. Then <code>verify_hande.py</code></td></tr>
     <tr><td><code>/camera/*</code> returns 503</td><td>Device not forwarded, or the wrong index</td><td><code>usbipd attach</code>; then <code>verify_cameras.py --save</code></td></tr>
     <tr><td>OpenCV says "configure with libavdevice"</td><td>No device present; cv2 fell through to the FFMPEG backend</td><td>It's a <b>missing camera</b>, not a build flag — check <code>/dev/video*</code></td></tr>
     <tr><td>Second camera opens but yields no frames</td><td>Grabbed the UVC <b>metadata</b> node, not the capture node</td><td>Use index 2 (Linux) or a <code>/dev/v4l/by-id/…</code> path</td></tr>
