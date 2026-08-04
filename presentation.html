@@ -275,6 +275,12 @@
   .shot-ph span{font-size:13.4px; max-width:54ch; line-height:1.55; color:var(--muted)}
   .shot-ph code{font-size:11.5px}
   .cols figure.shot{margin:0}
+  figure.shot.step{max-width:430px; margin:11px 0 2px}
+  figure.shot.step .shot-ph{min-height:104px; padding:15px 16px; gap:5px}
+  figure.shot.step .shot-ph b{font-size:10px}
+  figure.shot.step .shot-ph span{font-size:12.3px}
+  figure.shot.step figcaption{padding:7px 12px; font-size:11.7px}
+  figure.shot.step img{max-height:280px; object-fit:contain; background:var(--bg)}
 
   /* keyboard hint footer */
   .hint{
@@ -873,11 +879,19 @@ uv sync</pre></div>
   <ol>
     <li><b>Power on the pendant</b> — the button on top. The LED goes green and it boots to the
         Getting Started screen; give it a couple of minutes.
+        <figure class="shot step" data-shot="ur-pendant-power">
+          <div class="shot-ph"><b>Photo &middot; ur-pendant-power</b><span>The pendant power button on top, or the Getting Started screen once it has booted.</span></div>
+          <figcaption>&nbsp;</figcaption>
+        </figure>
         <br><small style="color:var(--muted)">The control box is up at this point, but <b>the arm
         itself is not powered yet</b>.</small></li>
 
     <li><b>Power the arm</b> — tap the status button (red while the arm is off), then <b>ON</b> in the
-        popup. The indicators go green and the button changes to <b>START</b>.</li>
+        popup. The indicators go green and the button changes to <b>START</b>.
+        <figure class="shot step" data-shot="ur-arm-power">
+          <div class="shot-ph"><b>Photo &middot; ur-arm-power</b><span>The status button while the arm is unpowered, and the ON popup.</span></div>
+          <figcaption>&nbsp;</figcaption>
+        </figure></li>
 
     <li><b>Release the brakes</b> — <b>light-press and hold a 3PE button</b> on the back of the
         pendant, then tap <b>START</b>. You will hear the brakes click out and see the arm twitch.
@@ -885,17 +899,29 @@ uv sync</pre></div>
         <b>light press = enabled</b> → hard squeeze = stop. Squeeze too hard or release too early and
         it drops out, so it is a hold, not a mash. They gate motion in <b>Manual</b> mode; in
         Automatic, motion does not require one — which is why the behaviour can feel inconsistent
-        between sessions.</small></li>
+        between sessions.</small>
+        <figure class="shot step" data-shot="ur-brake-release">
+          <div class="shot-ph"><b>Photo &middot; ur-brake-release</b><span>A 3PE button on the back of the pendant &mdash; ideally showing the light-press position.</span></div>
+          <figcaption>&nbsp;</figcaption>
+        </figure></li>
 
     <li><b>Confirm Normal</b> — every indicator green and the status button now reads
-        <b>Normal</b>. Tap <b>EXIT</b> for the main view.</li>
+        <b>Normal</b>. Tap <b>EXIT</b> for the main view.
+        <figure class="shot step" data-shot="ur-normal">
+          <div class="shot-ph"><b>Photo &middot; ur-normal</b><span>All indicators green with the status button reading Normal.</span></div>
+          <figcaption>&nbsp;</figcaption>
+        </figure></li>
 
     <li><b>Remote Control mode</b> — the top-right toggle.
         <code>RTDEControlInterface</code> refuses to attach in Local mode, and if a script cannot
         attach while every port is open and the ring is green, this is almost always why.
         <br><small style="color:var(--muted)"><b>Coming from Manual mode, switch to Automatic
         first.</b> The pendant will not go from Manual straight to Remote Control — the option is
-        simply unavailable, with no explanation.</small></li>
+        simply unavailable, with no explanation.</small>
+        <figure class="shot step" data-shot="ur-remote-control">
+          <div class="shot-ph"><b>Photo &middot; ur-remote-control</b><span>The top-right mode toggle, showing Remote Control selected.</span></div>
+          <figcaption>&nbsp;</figcaption>
+        </figure></li>
   </ol>
 
   <p style="font-size:13.4px; color:var(--muted)"><b>Powering down:</b> press the pendant power button
