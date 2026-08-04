@@ -2000,32 +2000,8 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 <!-- ============================ PART VII — HANDOFF ============================ -->
 
-<section class="slide" data-part="Handoff" data-title="What's not done">
-  <p class="kicker">Handoff · 28</p>
-  <h2>What isn't done</h2>
-  <p class="lede">Stated plainly, because the next person will find these anyway — better they find
-     them here first, with context.</p>
-
-  <table>
-    <tr><th style="width:26%">Item</th><th>Status</th><th>Where to start</th></tr>
-    <tr><td><b>Simulate / preview in the 3D view</b></td><td><b>Fully specified, never implemented.</b> A translucent ghost arm animating the exact planned path before you commit to it.</td><td><code>docs/superpowers/specs/2026-06-18-simulate-preview-design.md</code> — decisions already locked: server-side path computation reusing the real planner, auth-only, idle-only</td></tr>
-    <tr><td><b>RAPID program start over RWS</b></td><td>Never cracked — the installer asks you to press PP-to-Main + Play</td><td>Find the correct OmniCore URL shape; would make the install fully unattended</td></tr>
-    <tr><td><b><code>ROBOT_API_TOKEN</code> is <code>changeme</code> in the lab today</b></td><td>The default. It warns at startup but still serves — and with mirrored networking + a <code>0.0.0.0</code> bind, that exposes both arms to the ordinary network</td><td><b>Highest-value quick fix in this table.</b> Set a real token, or bind <code>127.0.0.1</code>; longer term make it required rather than defaulted</td></tr>
-    <tr><td><b>Stale claims in <code>CLAUDE.md</code></b></td><td>Two things it documents are no longer true: WSL cameras "cannot work", and GoFa lead-through "verify on hardware". Both work.</td><td>One-line fixes; worth doing before handover so the docs don't argue with reality</td></tr>
-    <tr><td><b>The viser teleops still duplicate the motion loop</b></td><td><code>teleop_ur15.py</code> and <code>teleop_gofa_egm.py</code> never moved onto <code>RobotController</code> — they borrow <code>cartesian_q</code> and <code>step_pose_toward</code> and keep their own <code>servoJ</code>/EGM loops. A controller fix does not reach them.</td><td><b>The most valuable refactor left.</b> The headless players were migrated in a day each; these are bigger, but the pattern is established and the offline sim makes it testable without a robot</td></tr>
-    <tr><td><b>No CI</b></td><td>Three good offline suites, run by hand</td><td>They're stdlib-assert scripts — trivial to wire into any runner</td></tr>
-    <tr><td><b>Cross-arm collision awareness</b></td><td><b>Nothing prevents the two arms hitting each other.</b> Their envelopes overlap, each plans in its own frame, and one server can drive both. Today the interlock is the operator.</td><td>The prerequisite for any coordinated dual-arm work: a shared world model, or at minimum a mutual-exclusion rule in the multi-arm server</td></tr>
-    <tr><td><b>Legacy <code>robot_control/</code> directory</b></td><td>The dead pre-uv venv, gitignored, still on disk</td><td><code>rm -rf robot_control/</code> — noted in <code>.gitignore</code> as safe to delete</td></tr>
-  </table>
-
-  <div class="note">
-    <b>The <code>albany</code> branch holds nothing of value</b> — no work to merge or recover.
-    Everything that matters is on <code>main</code>.
-  </div>
-</section>
-
 <section class="slide" data-part="Handoff" data-title="Day one">
-  <p class="kicker">Handoff · 29</p>
+  <p class="kicker">Handoff · 28</p>
   <h2>If you're inheriting this — start here</h2>
   <p class="lede">A path from zero to commanding a real arm, ordered so that each step's failures are
      diagnosable before the next step can confuse them.</p>
@@ -2073,7 +2049,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Summary">
-  <p class="kicker">Handoff · 30</p>
+  <p class="kicker">Handoff · 29</p>
   <h2>What was built</h2>
 
   <div class="stats" style="margin:22px 0 26px">
@@ -2106,7 +2082,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Open items">
-  <p class="kicker">Handoff · 31</p>
+  <p class="kicker">Handoff · 30</p>
   <h2>Open items</h2>
   <p class="lede">This page collects anything still marked <b>NEEDS INPUT</b> — facts that live in
      someone's head rather than in the repository. Keep it at zero.</p>
