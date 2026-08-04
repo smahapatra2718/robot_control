@@ -157,6 +157,8 @@
 
   /* two-column compare */
   .cols{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:14px 0}
+  .cols>*{min-width:0}          /* grid items default to min-width:auto and refuse to shrink,
+                                   which makes wide <pre> overflow the card instead of scrolling */
   .cols>.card{margin:0}
   .cols h4{margin:0 0 8px; font-size:14px; letter-spacing:.02em}
   .cols h4 .tag{font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:99px; background:var(--accent-soft); color:var(--accent); margin-left:6px}
@@ -215,6 +217,7 @@
   .dg-box.ghost{background:var(--bg); border-style:dashed}
   .dg-down{text-align:center; color:var(--muted); line-height:1; padding:6px 0; font-size:15px}
   .dg-split{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .dg-split>*{min-width:0}
   @media (max-width:700px){ .dg-split{grid-template-columns:1fr} }
   .dg-note{font-size:11.8px; color:var(--muted); text-align:center; margin:6px 0 0}
 
@@ -845,7 +848,7 @@ uv run scripts/sim.py ur15          <span class="c"># nothing needs activating; 
       <p>Boost 1.87+ made Boost.System header-only, which breaks <code>ur_rtde</code>'s
       <code>find_package</code>. Use the keg-only 1.85:</p>
       <div class="code"><button class="copy">copy</button><pre>brew install boost@1.85
-export BOOST_ROOT=/opt/homebrew/opt/boost@1.85
+export BOOST_ROOT=$(brew --prefix boost@1.85)
 export CMAKE_PREFIX_PATH=$BOOST_ROOT
 uv sync</pre></div>
       <p style="font-size:13.2px;color:var(--muted)">The mirror image of Linux: Homebrew ships 1.90, so
