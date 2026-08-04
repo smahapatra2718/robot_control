@@ -1526,11 +1526,17 @@ curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
   </ul>
 
   <div class="warn">
-    <b>An MJPEG connection stays open as long as <code>src</code> is set.</b> Hiding the element is not
-    enough — the console <em>removes the <code>src</code> attribute</em> when you leave the Camera tab,
-    and tears the feed down and rebuilds it on disconnect and on arm switch. Get this wrong in your own
-    client and you'll hold capture connections open indefinitely, or show one arm's video on the other
-    arm's panel.
+    <b>An MJPEG stream never finishes.</b> <code>/camera/stream</code> is a single HTTP response that
+    keeps pushing frames for as long as the client is listening — so the connection lives exactly as
+    long as the <code>&lt;img&gt;</code> has a <code>src</code>.
+    <br><br>
+    <b>Hiding the element does not stop it.</b> <code>display:none</code> leaves <code>src</code> set,
+    and the browser carries on pulling frames from a picture nobody is looking at. The only way to end
+    the stream is to <b>remove the <code>src</code> attribute</b>.
+    <br><br>
+    That is what the console does when you leave the Camera tab, and it rebuilds the feed from scratch
+    on disconnect and on arm switch. Skip the first and you leak capture connections; skip the second
+    and one arm's video keeps playing on the other arm's panel.
   </div>
 
   <details class="deep"><summary>Tunables, bandwidth, and the defaults on this machine</summary>
