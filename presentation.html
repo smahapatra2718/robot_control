@@ -365,30 +365,6 @@
     the real code path, which is why the simulator never drifts from reality.
   </div>
 
-  <details class="deep"><summary>What the controller actually buys — and what it doesn't</summary>
-    <div class="body">
-      <p><b>Mostly it is code reuse, and that is worth saying plainly.</b> Nothing here is impossible
-      without it — four scripts could each carry their own motion loop, and for the first ten days
-      they did. The payoff is economic: one place to tune, one place to fix. The only part that rises
-      above developer convenience is that it becomes <em>operator-observable</em> — a CLI replay that
-      stops 2 mm shorter than the same trajectory played from the console is a real problem, and
-      duplication is how you get one.</p>
-
-      <p><b>The one piece that is genuinely more than convenience</b> is the command executor: one
-      motion at a time, a submit while busy raises <code>Busy</code>, <code>stop</code> and
-      <code>estop</code> preempt. That is a concurrency invariant, and the API needs it because
-      multiple clients exist. Enforcing it identically across four independent copies is hard in a
-      way that copying a servo loop is not.</p>
-
-      <p>(The <em>network</em> boundary — what the remote API lets a client push, and what it
-      deliberately does not — is a separate decision, and a more consequential one. See
-      <em>The remote API</em>.)</p>
-
-      <p><b>What it costs: indirection.</b> <code>teleop_ur15.py</code> shows you the servo loop right
-      there on the page; <code>play_trajectory.py</code> sends you to <code>lib/control/base.py</code>.
-      That is the honest reason the two viser scripts were never migrated — see <em>What's not done</em>.</p>
-    </div>
-  </details>
 
   <details class="deep"><summary>Module map — what each file owns</summary>
     <div class="body">
