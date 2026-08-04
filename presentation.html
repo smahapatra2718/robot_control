@@ -856,43 +856,11 @@ uv sync</pre></div>
     </div>
   </div>
 
-  <div class="note">
-    <b>uv owns the interpreter.</b> <code>python-preference = "only-managed"</code> means builds never
-    touch a system or conda Python. This is deliberate: the original hand-built venv was linked against
-    miniconda and broke the moment the repo directory moved. Do not <code>pip install</code> into
-    <code>.venv/</code> — change <code>pyproject.toml</code> and re-run <code>uv sync</code>, then commit
-    the regenerated <code>uv.lock</code>.
-  </div>
+  
 
-  <div class="warn">
-    <b>You do not need ffmpeg or the <code>libav*-dev</code> packages.</b> They appear in this host's
-    apt history because they were installed while chasing OpenCV's
-    <em>"configure with libavdevice"</em> message — which is <b>not a build problem at all</b>. cv2
-    emits it when no camera device is present, having silently fallen through to its FFMPEG backend.
-    The real fix was attaching the camera. <code>camera.py</code> now names the backend explicitly
-    (V4L2 / AVFoundation) so the error points at the missing device instead of a build flag.
-  </div>
+  
 
-  <details class="deep"><summary>Non-obvious entries in the dependency manifest</summary>
-    <div class="body">
-      <ul>
-        <li><b><code>protobuf</code> is a direct dependency.</b> <code>lib/egm_pb2.py</code> imports
-          <code>google.protobuf</code> at runtime and nothing else pulls it in. Drop it and the GoFa
-          EGM path breaks silently.</li>
-        <li><b><code>opencv-python-headless</code>, not <code>opencv-python</code>.</b> The server only
-          grabs and JPEG-encodes; it never opens a window, so the GUI build's system libraries are
-          dead weight. <code>camera.py</code> imports it defensively — the repo still runs without it,
-          cameras just report unavailable.</li>
-        <li><b><code>xacrodoc</code> is imported nowhere.</b> It regenerates <code>urdf/*.urdf</code> from
-          xacro. The generated URDFs are committed, so it's only needed to rebuild them.</li>
-        <li><b>jaxls comes from git, not PyPI.</b> pyroki depends on it by URL;
-          <code>uv.lock</code> pins an exact commit, so a cold-cache <code>uv sync</code> needs git and
-          network access.</li>
-        <li><b>pyroki is installed editable from <code>pyroki_src/</code>.</b> There is no
-          <code>pip install pyroki</code>. Don't move that directory.</li>
-      </ul>
-    </div>
-  </details>
+  
 </section>
 
 
