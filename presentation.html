@@ -1615,14 +1615,7 @@ cid = c.move_to_pose(pos, wxyz, speed=0.5)   <span class="c"># returns a command
 result = c.wait(cid)                  <span class="c"># block for the outcome, if you want to</span>
 state = c.get_state()                 <span class="c"># RobotState, from the poll thread</span></pre></div>
 
-  <div class="warn">
-    <b>Three of the five surfaces run on it, not all of them.</b> <code>play_trajectory.py</code>,
-    <code>teleop.py</code> and the API/console do. The two viser teleops
-    (<code>teleop_ur15.py</code>, <code>teleop_gofa_egm.py</code>) still carry their own motion loops
-    and borrow only two pure helpers from <code>control/base.py</code>. They were tuned, working and
-    ~800 lines each, and migrating them was not worth the risk in the time left. <b>It is the natural
-    next task</b> — and until it happens, a change to the controller does not reach the viser UIs.
-  </div>
+  
 
   <div class="note">
     <b>Because it uses the same hardware clients the simulator shadows, the entire core runs offline.</b>
