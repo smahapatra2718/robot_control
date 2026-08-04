@@ -306,7 +306,6 @@
   <div class="meta">
     <div><b>Samarth Mahapatra</b>Author</div>
     <div><b>May 19 – Jul 31, 2026</b>Project window</div>
-    <div><b>Deep dive</b>Audience: engineers inheriting the system</div>
   </div>
 
   <div class="note" style="margin-top:22px">
@@ -346,8 +345,7 @@
 <section class="slide" data-part="Orientation" data-title="Architecture at a glance">
   <p class="kicker">Orientation · 02</p>
   <h2>Architecture at a glance</h2>
-  <p class="lede">Every surface reduces to the same controller. The network carries goals and
-     telemetry — never the servo loop.</p>
+  <p class="lede">Every surface reduces to the same controller.</p>
 
   <div class="stack">
     <div class="layer"><b>Surfaces</b><span>viser teleop UI &nbsp;·&nbsp; <code>teleop.py</code> recorder &nbsp;·&nbsp; <code>play_trajectory.py</code> &nbsp;·&nbsp; web console</span></div>
@@ -367,15 +365,24 @@
     the real code path, which is why the simulator never drifts from reality.
   </div>
 
-  <details class="deep"><summary>Why the API sits above the controller, not inside it</summary>
+  <details class="deep"><summary>What the controller actually buys — and what it doesn't</summary>
     <div class="body">
-      <p>The controller is a plain Python object with a thread-safe command queue. It has no idea
-      HTTP exists. That separation is what lets the viser teleop, the CLI player, and the API server
-      each own a controller instance without any of them depending on the others.</p>
-      <p>It also draws the safety boundary in the right place: the servo loop
-      (<code>servoJ</code> at 125 Hz, EGM at 100 Hz) runs <em>in-process next to the hardware</em>.
-      A dropped WiFi packet delays the next <em>goal</em>; it can never stall a control cycle
-      mid-motion. The network carries "go to this pose", not "here is your next joint target".</p>
+      <p><b>Mostly it is code reuse, and that is worth saying plainly.</b> Nothing here is impossible
+      without it — four scripts could each carry their own motion loop, and for the first ten days
+      they did. The payoff is economic: one place to tune, one place to fix. The only part that rises
+      above developer convenience is that it becomes <em>operator-observable</em> — a CLI replay that
+      stops 2 mm shorter than the same trajectory played from the console is a real problem, and
+      duplication is how you get one.</p>
+
+      <p><b>The one piece that is genuinely more than convenience</b> is the command executor: one
+      motion at a time, a submit while busy raises <code>Busy</code>, <code>stop</code> and
+      <code>estop</code> preempt. That is a concurrency invariant, and the API needs it because
+      multiple clients exist. Enforcing it identically across four independent copies is hard in a
+      way that copying a servo loop is not.</p>
+
+      <p><b>What it costs: indirection.</b> <code>teleop_ur15.py</code> shows you the servo loop right
+      there on the page; <code>play_trajectory.py</code> sends you to <code>lib/control/base.py</code>.
+      That is the honest reason the two viser scripts were never migrated — see <em>What's not done</em>.</p>
     </div>
   </details>
 
@@ -1727,8 +1734,8 @@ X-Frame-Seq:     11</pre></div>
 <section class="slide" data-part="How it works" data-title="RobotController">
   <p class="kicker">How it works · 23</p>
   <h2>The controller core</h2>
-  <p class="lede">One thread-safe motion implementation behind every surface. This refactor is the
-     spine of the project — everything after it was cheap because of it.</p>
+  <p class="lede">One thread-safe motion implementation behind the headless tools and the API.
+     This refactor is what made everything after it cheap.</p>
 
   <div class="cols">
     <div class="card">
@@ -1751,7 +1758,7 @@ X-Frame-Seq:     11</pre></div>
         <li><code>_graceful_stop</code> / <code>_hard_stop</code>.</li>
       </ul>
       <p style="font-size:13.2px;color:var(--muted)">The motion loops were <em>lifted from the tuned
-      teleop scripts</em>, not rewritten — so behaviour is identical on every surface.</p>
+      teleop scripts</em>, not rewritten — so behaviour matches what those scripts already did.</p>
     </div>
   </div>
 
@@ -1761,6 +1768,15 @@ c = make_controller("ur15")           <span class="c"># owns the hardware client
 cid = c.move_to_pose(pos, wxyz, speed=0.5)   <span class="c"># returns a command id immediately</span>
 result = c.wait(cid)                  <span class="c"># block for the outcome, if you want to</span>
 state = c.get_state()                 <span class="c"># RobotState, from the poll thread</span></pre></div>
+
+  <div class="warn">
+    <b>Three of the five surfaces run on it, not all of them.</b> <code>play_trajectory.py</code>,
+    <code>teleop.py</code> and the API/console do. The two viser teleops
+    (<code>teleop_ur15.py</code>, <code>teleop_gofa_egm.py</code>) still carry their own motion loops
+    and borrow only two pure helpers from <code>control/base.py</code>. They were tuned, working and
+    ~800 lines each, and migrating them was not worth the risk in the time left. <b>It is the natural
+    next task</b> — and until it happens, a change to the controller does not reach the viser UIs.
+  </div>
 
   <div class="note">
     <b>Because it uses the same hardware clients the simulator shadows, the entire core runs offline.</b>
@@ -2321,6 +2337,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
     <tr><td><b>RAPID program start over RWS</b></td><td>Never cracked — the installer asks you to press PP-to-Main + Play</td><td>Find the correct OmniCore URL shape; would make the install fully unattended</td></tr>
     <tr><td><b><code>ROBOT_API_TOKEN</code> is <code>changeme</code> in the lab today</b></td><td>The default. It warns at startup but still serves — and with mirrored networking + a <code>0.0.0.0</code> bind, that exposes both arms to the ordinary network</td><td><b>Highest-value quick fix in this table.</b> Set a real token, or bind <code>127.0.0.1</code>; longer term make it required rather than defaulted</td></tr>
     <tr><td><b>Stale claims in <code>CLAUDE.md</code></b></td><td>Two things it documents are no longer true: WSL cameras "cannot work", and GoFa lead-through "verify on hardware". Both work.</td><td>One-line fixes; worth doing before handover so the docs don't argue with reality</td></tr>
+    <tr><td><b>The viser teleops still duplicate the motion loop</b></td><td><code>teleop_ur15.py</code> and <code>teleop_gofa_egm.py</code> never moved onto <code>RobotController</code> — they borrow <code>cartesian_q</code> and <code>step_pose_toward</code> and keep their own <code>servoJ</code>/EGM loops. A controller fix does not reach them.</td><td><b>The most valuable refactor left.</b> The headless players were migrated in a day each; these are bigger, but the pattern is established and the offline sim makes it testable without a robot</td></tr>
     <tr><td><b>No CI</b></td><td>Three good offline suites, run by hand</td><td>They're stdlib-assert scripts — trivial to wire into any runner</td></tr>
     <tr><td><b>Cross-arm collision awareness</b></td><td><b>Nothing prevents the two arms hitting each other.</b> Their envelopes overlap, each plans in its own frame, and one server can drive both. Today the interlock is the operator.</td><td>The prerequisite for any coordinated dual-arm work: a shared world model, or at minimum a mutual-exclusion rule in the multi-arm server</td></tr>
     <tr><td><b>Legacy <code>robot_control/</code> directory</b></td><td>The dead pre-uv venv, gitignored, still on disk</td><td><code>rm -rf robot_control/</code> — noted in <code>.gitignore</code> as safe to delete</td></tr>
