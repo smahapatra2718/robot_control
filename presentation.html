@@ -537,83 +537,10 @@
 </section>
 
 
-<section class="slide" data-part="Orientation" data-title="How it was built">
-  <p class="kicker">Orientation · 05</p>
-  <h2>How it got built</h2>
-  <p class="lede">Roughly one capability per few days, each one layered on the last —
-     and each one specified in <code>docs/</code> before it was written.</p>
-
-  <div class="tl">
-    <div class="ev">
-      <div class="when">May 19 – Jun 1 · pre-git</div>
-      <div class="what">Controller bring-up</div>
-      <div class="detail">Safety jumpers, networking, and the discovery that the popular ABB Python client is
-        IRC5-only — so <code>abb_rws.py</code> and the EGM protobuf bindings were written from scratch.
-        The first commit is already a working dual-arm scaffold.</div>
-    </div>
-    <div class="ev">
-      <div class="when">Jun 1 – 3</div>
-      <div class="what">Teleop core</div>
-      <div class="detail">viser + pyroki + a 6-DoF gizmo, seeded IK, the collaborative TCP-speed cap,
-        the Hand-E gripper (and the pivot from RS-485 to the URCap socket), live gizmo-follow,
-        safety-state polling, clean Ctrl-C shutdown — plus a nine-commit run tightening
-        end-of-play convergence down to the <code>servoJ</code> hardware floor.</div>
-    </div>
-    <div class="ev">
-      <div class="when">Jun 3 – 4</div>
-      <div class="what">Teach &amp; replay, headless</div>
-      <div class="detail">Free-drive capture, the trajectory JSON format, <code>play_trajectory.py</code>,
-        the <code>teleop.py</code> keypress recorder, GoFa <code>SetLeadThrough</code>. The repo was split
-        into <code>lib/</code> + <code>scripts/</code> and all duplicated constants collapsed into
-        <code>robot_common.py</code>.</div>
-    </div>
-    <div class="ev">
-      <div class="when">Jun 8 – 10</div>
-      <div class="what">Offline simulator, then the controller core</div>
-      <div class="detail">Transport shims made every script runnable with no robot. That safety net is what
-        made the next refactor possible: two large teleop scripts' motion logic was lifted into one
-        <code>RobotController</code>, and the headless players migrated onto it.</div>
-    </div>
-    <div class="ev">
-      <div class="when">Jun 12</div>
-      <div class="what">Remote API</div>
-      <div class="detail">Bearer auth → single-writer lease → async commands → telemetry WebSocket with a
-        deadman watchdog → end-to-end tests against a real subprocess server.</div>
-    </div>
-    <div class="ev">
-      <div class="when">Jun 17 – 18</div>
-      <div class="what">Web console</div>
-      <div class="detail">A dependency-free dashboard, both arms from one server, remote trajectory authoring,
-        server-side chaining, and a live three.js arm viewer driven off telemetry.
-        Straight-line Cartesian motion landed in this window too.</div>
-    </div>
-    <div class="ev">
-      <div class="when">Jul 15 – 31</div>
-      <div class="what">Hardening for handover</div>
-      <div class="detail">uv migration (reproducible builds), offline Swagger UI, the drag-a-target gizmo,
-        a flattened <code>RobotState</code> with a full field reference, and dual-clock USB cameras
-        whose frames pair exactly with telemetry.</div>
-    </div>
-  </div>
-
-  <details class="deep"><summary>The working method — spec, then plan, then code, then docs</summary>
-    <div class="body">
-      <p>Every non-trivial feature in <code>docs/superpowers/</code> has a design spec committed
-      <em>before</em> its implementation, and the larger ones have an implementation plan too. In git
-      you can see the pattern repeat: <code>docs: design spec for X</code> → <code>docs: plan for X</code>
-      → several <code>feat(X)</code> commits → <code>docs: document X</code>.</p>
-      <p>Ten specs and five plans are committed. Two useful consequences for whoever inherits this:
-      the reasoning behind each decision is written down at the time it was made, and one spec
-      (<code>2026-06-18-simulate-preview-design.md</code>) is approved but never implemented — a
-      fully-specified starting point for the next person.</p>
-    </div>
-  </details>
-</section>
-
 <!-- ============================ PART II — THE LAB ============================ -->
 
 <section class="slide" data-part="The lab" data-title="Lab overview">
-  <p class="kicker">The lab · 06</p>
+  <p class="kicker">The lab · 05</p>
   <h2>The physical setup</h2>
   <p class="lede">None of this is in the repository. The code documents itself; the room does not.
      This part is the day-one survival guide.</p>
@@ -689,7 +616,7 @@
 
 
 <section class="slide" data-part="The lab" data-title="Network">
-  <p class="kicker">The lab · 07</p>
+  <p class="kicker">The lab · 06</p>
   <h2>Network topology</h2>
   <p class="lede">Both robots live on one private subnet. The control PC is a third host on it.
      Nothing about this is discoverable from the code except the addresses.</p>
@@ -866,7 +793,7 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
 
 
 <section class="slide" data-part="The lab" data-title="Windows + WSL host">
-  <p class="kicker">The lab · 08</p>
+  <p class="kicker">The lab · 07</p>
   <h2>The control PC: Windows hosting WSL</h2>
   <p class="lede">The code is developed on macOS and deployed into WSL. Those two environments
      differ in ways that have already bitten — know which one you're in.</p>
@@ -915,7 +842,7 @@ uv run scripts/real.py api --host 127.0.0.1</pre></div>
 
 
 <section class="slide" data-part="The lab" data-title="USB cameras into WSL">
-  <p class="kicker">The lab · 09</p>
+  <p class="kicker">The lab · 08</p>
   <h2>Getting the USB cameras into WSL</h2>
   <p class="lede">Two USB cameras, one per arm, forwarded from native Windows into WSL with
      <a href="https://github.com/dorssel/usbipd-win">usbipd-win</a>.</p>
@@ -991,7 +918,7 @@ uv run scripts/verify_cameras.py --save   <span class="c"># writes JPEGs so you 
 
 
 <section class="slide" data-part="The lab" data-title="Software install">
-  <p class="kicker">The lab · 10</p>
+  <p class="kicker">The lab · 09</p>
   <h2>Installing the software</h2>
   <p class="lede">Dependencies are managed with <a href="https://docs.astral.sh/uv/">uv</a>.
      <code>pyproject.toml</code> declares them, <code>uv.lock</code> pins them exactly —
@@ -1067,7 +994,7 @@ uv sync</pre></div>
 
 
 <section class="slide" data-part="The lab" data-title="UR15 bring-up">
-  <p class="kicker">The lab · 11</p>
+  <p class="kicker">The lab · 10</p>
   <h2>UR15 controller bring-up</h2>
   <p class="lede">One-time pendant configuration. PolyScope X ships locked down, and every symptom
      of that looks like a network fault.</p>
@@ -1106,7 +1033,7 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
 
 
 <section class="slide" data-part="The lab" data-title="GoFa bring-up">
-  <p class="kicker">The lab · 12</p>
+  <p class="kicker">The lab · 11</p>
   <h2>GoFa controller bring-up</h2>
   <p class="lede">Considerably more involved — roughly twenty minutes the first time.
      ABB controllers always run a RAPID program to move, so there is onboard code to install.</p>
@@ -1171,7 +1098,7 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
 
 
 <section class="slide" data-part="The lab" data-title="EGM supervisor">
-  <p class="kicker">The lab · 13</p>
+  <p class="kicker">The lab · 12</p>
   <h2>Push the EGM supervisor</h2>
   <p class="lede">The GoFa only listens to Python because a RAPID program called
      <code>PyEgm</code> is running and parked, waiting for a flag. Installing that program is a
@@ -1325,7 +1252,7 @@ ENDMODULE</pre></div>
 
 
 <section class="slide" data-part="The lab" data-title="Cold start">
-  <p class="kicker">The lab · 14</p>
+  <p class="kicker">The lab · 13</p>
   <h2>Cold start — powering up the cell</h2>
   <p class="lede">The order matters. This is the checklist to run before demoing anything.</p>
 
@@ -1374,7 +1301,7 @@ uv run scripts/api_smoketest.py</pre></div>
 <!-- ============================ PART III — OPERATING IT ============================ -->
 
 <section class="slide" data-part="Operating it" data-title="Running things">
-  <p class="kicker">Operating it · 15</p>
+  <p class="kicker">Operating it · 14</p>
   <h2>Two dispatchers, five targets</h2>
   <p class="lede"><code>real.py</code> and <code>sim.py</code> are the same dispatcher.
      The only difference is that <code>sim.py</code> installs the fake-transport shim first.</p>
@@ -1409,7 +1336,7 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
 
 
 <section class="slide" data-part="Operating it" data-title="Teleop UI">
-  <p class="kicker">Operating it · 16</p>
+  <p class="kicker">Operating it · 15</p>
   <h2>The viser teleop UI</h2>
   <p class="lede">Both arms share one UI. Drag a 3D handle, add waypoints, plan, play —
      with the browser preview and the real arm driven by the same joint values, every tick.</p>
@@ -1491,7 +1418,7 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
 
 
 <section class="slide" data-part="Operating it" data-title="Live &amp; free-drive">
-  <p class="kicker">Operating it · 17</p>
+  <p class="kicker">Operating it · 16</p>
   <h2>Live follow and free-drive teaching</h2>
 
   <div class="cols">
@@ -1551,7 +1478,7 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
 
 
 <section class="slide" data-part="Operating it" data-title="Trajectories">
-  <p class="kicker">Operating it · 18</p>
+  <p class="kicker">Operating it · 17</p>
   <h2>Trajectories — teach once, replay anywhere</h2>
   <p class="lede">One JSON format, written by three different tools and replayed by four.</p>
 
@@ -1627,7 +1554,7 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
 
 
 <section class="slide" data-part="Operating it" data-title="Remote API">
-  <p class="kicker">Operating it · 19</p>
+  <p class="kicker">Operating it · 18</p>
   <h2>The remote API</h2>
   <p class="lede">HTTP + WebSocket over the controller. High-level goals only — the network carries
      commands and telemetry, never the servo loop.</p>
@@ -1718,7 +1645,7 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
 
 
 <section class="slide" data-part="Operating it" data-title="Web console">
-  <p class="kicker">Operating it · 20</p>
+  <p class="kicker">Operating it · 19</p>
   <h2>The web console</h2>
   <p class="lede">A single static page served at <code>/</code> — same origin, so there's no CORS and
      the token never leaves the tab. Vanilla HTML and JS, no build step.</p>
@@ -1770,7 +1697,7 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
 
 
 <section class="slide" data-part="Operating it" data-title="Camera streaming">
-  <p class="kicker">Operating it · 21</p>
+  <p class="kicker">Operating it · 20</p>
   <h2>Camera streaming</h2>
   <p class="lede">One USB camera per arm, four endpoints, and one capture thread no matter how
      many people are watching.</p>
@@ -1855,7 +1782,7 @@ curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
 
 
 <section class="slide" data-part="Operating it" data-title="Frame pairing">
-  <p class="kicker">Operating it · 22</p>
+  <p class="kicker">Operating it · 21</p>
   <h2>Pairing frames with telemetry</h2>
   <p class="lede">One USB camera per arm. The interesting part isn't the video, it's the timestamps.</p>
 
@@ -1886,7 +1813,7 @@ X-Frame-Seq:     11</pre></div>
 <!-- ============================ PART IV — HOW IT WORKS ============================ -->
 
 <section class="slide" data-part="How it works" data-title="RobotController">
-  <p class="kicker">How it works · 23</p>
+  <p class="kicker">How it works · 22</p>
   <h2>The controller core</h2>
   <p class="lede">One thread-safe motion implementation behind the headless tools and the API.
      This refactor is what made everything after it cheap.</p>
@@ -1955,7 +1882,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="Motion model">
-  <p class="kicker">How it works · 24</p>
+  <p class="kicker">How it works · 23</p>
   <h2>The motion model</h2>
   <p class="lede">Two interpolation modes, one velocity profile, and a hard speed ceiling that the
      user interface cannot raise.</p>
@@ -2042,7 +1969,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="Seeded IK">
-  <p class="kicker">How it works · 25</p>
+  <p class="kicker">How it works · 24</p>
   <h2>Why the stock IK solver wasn't enough</h2>
   <p class="lede">PyRoki's example <code>solve_ik</code> has no seed and no posture cost. It returns
      <em>a</em> valid solution — frequently in a distant null-space branch.</p>
@@ -2071,7 +1998,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="Offline simulator">
-  <p class="kicker">How it works · 26</p>
+  <p class="kicker">How it works · 25</p>
   <h2>The offline simulator</h2>
   <p class="lede">It doesn't reimplement the robot. It runs the real scripts and lies to them about
      what's on the other end of the socket.</p>
@@ -2117,7 +2044,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="Safety architecture">
-  <p class="kicker">How it works · 27</p>
+  <p class="kicker">How it works · 26</p>
   <h2>Safety, layer by layer</h2>
   <p class="lede">No single mechanism is trusted. Each layer below assumes the one above it failed.</p>
 
@@ -2166,7 +2093,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="How it works" data-title="RobotState">
-  <p class="kicker">How it works · 28</p>
+  <p class="kicker">How it works · 27</p>
   <h2><code>RobotState</code> — the one shape</h2>
   <p class="lede">Produced by the controller's poll thread, consumed by every surface. If you learn
      one data structure in this codebase, learn this one.</p>
@@ -2206,7 +2133,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 <!-- ============================ PART V — WAR STORIES ============================ -->
 
 <section class="slide" data-part="War stories" data-title="Convergence">
-  <p class="kicker">War stories · 29</p>
+  <p class="kicker">War stories · 28</p>
   <h2>Chasing the last millimetre</h2>
   <p class="lede">Nine commits over two days, all on one problem: the arm stopped <em>near</em> the end
      of a trajectory instead of <em>at</em> it.</p>
@@ -2244,7 +2171,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 
 <section class="slide" data-part="War stories" data-title="Gripper pivot">
-  <p class="kicker">War stories · 30</p>
+  <p class="kicker">War stories · 29</p>
   <h2>The gripper that couldn't be talked to</h2>
   <p class="lede">A design constraint that only appears once both halves are running at the same time.</p>
 
@@ -2292,7 +2219,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="War stories" data-title="OmniCore RWS">
-  <p class="kicker">War stories · 31</p>
+  <p class="kicker">War stories · 30</p>
   <h2>Ten ways OmniCore RWS will waste your afternoon</h2>
   <p class="lede">The most-starred ABB Python client doesn't work on this controller. Here is
      everything learned the hard way, so nobody relearns it.</p>
@@ -2321,7 +2248,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="War stories" data-title="Offline by design">
-  <p class="kicker">War stories · 32</p>
+  <p class="kicker">War stories · 31</p>
   <h2>A machine cabled to a robot has no internet</h2>
   <p class="lede">An obvious statement that quietly invalidates a lot of standard tooling.
      Several decisions in this repo exist only because of it.</p>
@@ -2374,7 +2301,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VI — OPERATIONS ============================ -->
 
 <section class="slide" data-part="Operations" data-title="E-stop &amp; recovery">
-  <p class="kicker">Operations · 33</p>
+  <p class="kicker">Operations · 32</p>
   <h2>E-stop and recovery</h2>
   <p class="lede">The most important operational procedure in the system, and the one most likely to
      be needed while someone is watching.</p>
@@ -2444,7 +2371,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Operations" data-title="Troubleshooting">
-  <p class="kicker">Operations · 34</p>
+  <p class="kicker">Operations · 33</p>
   <h2>Troubleshooting matrix</h2>
   <p class="lede">Symptom → cause → fix. Everything learned in the lab and everything learned in the
      code, in one table. Start here before reading any source.</p>
@@ -2492,7 +2419,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Operations" data-title="Testing">
-  <p class="kicker">Operations · 35</p>
+  <p class="kicker">Operations · 34</p>
   <h2>Verifying the system</h2>
   <p class="lede">Three offline test suites and two hardware probes. All five run without touching
      a robot except the probes, which exist precisely to test hardware.</p>
@@ -2522,7 +2449,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VII — HANDOFF ============================ -->
 
 <section class="slide" data-part="Handoff" data-title="What's not done">
-  <p class="kicker">Handoff · 36</p>
+  <p class="kicker">Handoff · 35</p>
   <h2>What isn't done</h2>
   <p class="lede">Stated plainly, because the next person will find these anyway — better they find
      them here first, with context.</p>
@@ -2547,7 +2474,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Handoff" data-title="Day one">
-  <p class="kicker">Handoff · 37</p>
+  <p class="kicker">Handoff · 36</p>
   <h2>If you're inheriting this — start here</h2>
   <p class="lede">A path from zero to commanding a real arm, ordered so that each step's failures are
      diagnosable before the next step can confuse them.</p>
@@ -2596,7 +2523,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Handoff" data-title="Summary">
-  <p class="kicker">Handoff · 38</p>
+  <p class="kicker">Handoff · 37</p>
   <h2>What was built</h2>
 
   <div class="stats" style="margin:22px 0 26px">
@@ -2630,7 +2557,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 
 
 <section class="slide" data-part="Handoff" data-title="Open items">
-  <p class="kicker">Handoff · 39</p>
+  <p class="kicker">Handoff · 38</p>
   <h2>Open items</h2>
   <p class="lede">This page collects anything still marked <b>NEEDS INPUT</b> — facts that live in
      someone's head rather than in the repository. Keep it at zero.</p>
