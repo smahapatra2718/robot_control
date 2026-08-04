@@ -1704,36 +1704,8 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   </details>
 </section>
 
-<section class="slide" data-part="How it works" data-title="Seeded IK">
-  <p class="kicker">How it works · 22</p>
-  <h2>Why the stock IK solver wasn't enough</h2>
-  <p class="lede">PyRoki's example <code>solve_ik</code> has no seed and no posture cost. It returns
-     <em>a</em> valid solution — frequently in a distant null-space branch.</p>
-
-  <ul class="key">
-    <li><b>The failure looks like a bug but isn't</b>
-      <small>You ask for a pose 5 cm away and the wrist flips 180° or the elbow swings to the other
-      side. The solution is <em>correct</em>; it's just not the one a human meant.</small></li>
-    <li><b>Two additions fix it</b>
-      <small><code>pk.costs.rest_cost(joint_var, q_seed, weight=rest_weight)</code> pulls the solution
-      toward the seed, and <code>initial_vals</code> starts the optimizer <em>at</em> the seed rather
-      than at zeros.</small></li>
-    <li><b>The trade-off is ~0.5 mm of pose error at <code>rest_weight = 2.0</code></b>
-      <small>Raise it to 5–10 if branches still flip; the target drifts more but stays in the same
-      kinematic family. That's almost always the better deal for teleoperation.</small></li>
-  </ul>
-
-  <div class="note">
-    <b>First call costs ~800 ms</b> — JAX JIT compilation. Subsequent calls are milliseconds.
-    Both teleop scripts call <code>_warmup_ik()</code> at launch (a no-op solve at the current pose)
-    so that cost lands during startup instead of on your first Plan click. The headless scripts import
-    jax <em>lazily</em> for the same reason, which is also why forward kinematics is deliberately
-    <b>not</b> shared in <code>robot_common.py</code>.
-  </div>
-</section>
-
 <section class="slide" data-part="How it works" data-title="Offline simulator">
-  <p class="kicker">How it works · 23</p>
+  <p class="kicker">How it works · 22</p>
   <h2>The offline simulator</h2>
   <p class="lede">It doesn't reimplement the robot. It runs the real scripts and lies to them about
      what's on the other end of the socket.</p>
@@ -1778,7 +1750,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="How it works" data-title="Safety architecture">
-  <p class="kicker">How it works · 24</p>
+  <p class="kicker">How it works · 23</p>
   <h2>Safety, layer by layer</h2>
   <p class="lede">No single mechanism is trusted. Each layer below assumes the one above it failed.</p>
 
@@ -1826,7 +1798,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="How it works" data-title="RobotState">
-  <p class="kicker">How it works · 25</p>
+  <p class="kicker">How it works · 24</p>
   <h2><code>RobotState</code> — the one shape</h2>
   <p class="lede">Produced by the controller's poll thread, consumed by every surface. If you learn
      one data structure in this codebase, learn this one.</p>
@@ -1866,7 +1838,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 <!-- ============================ PART V — WAR STORIES ============================ -->
 
 <section class="slide" data-part="War stories" data-title="Convergence">
-  <p class="kicker">War stories · 26</p>
+  <p class="kicker">War stories · 25</p>
   <h2>Chasing the last millimetre</h2>
   <p class="lede">Nine commits over two days, all on one problem: the arm stopped <em>near</em> the end
      of a trajectory instead of <em>at</em> it.</p>
@@ -1903,7 +1875,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="War stories" data-title="Gripper pivot">
-  <p class="kicker">War stories · 27</p>
+  <p class="kicker">War stories · 26</p>
   <h2>The gripper that couldn't be talked to</h2>
   <p class="lede">A design constraint that only appears once both halves are running at the same time.</p>
 
@@ -1950,7 +1922,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="War stories" data-title="OmniCore RWS">
-  <p class="kicker">War stories · 28</p>
+  <p class="kicker">War stories · 27</p>
   <h2>Ten ways OmniCore RWS will waste your afternoon</h2>
   <p class="lede">The most-starred ABB Python client doesn't work on this controller. Here is
      everything learned the hard way, so nobody relearns it.</p>
@@ -1978,7 +1950,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="War stories" data-title="Offline by design">
-  <p class="kicker">War stories · 29</p>
+  <p class="kicker">War stories · 28</p>
   <h2>A machine cabled to a robot has no internet</h2>
   <p class="lede">An obvious statement that quietly invalidates a lot of standard tooling.
      Several decisions in this repo exist only because of it.</p>
@@ -2031,7 +2003,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VI — OPERATIONS ============================ -->
 
 <section class="slide" data-part="Operations" data-title="E-stop &amp; recovery">
-  <p class="kicker">Operations · 30</p>
+  <p class="kicker">Operations · 29</p>
   <h2>E-stop and recovery</h2>
   <p class="lede">The most important operational procedure in the system, and the one most likely to
      be needed while someone is watching.</p>
@@ -2106,7 +2078,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Operations" data-title="Troubleshooting">
-  <p class="kicker">Operations · 31</p>
+  <p class="kicker">Operations · 30</p>
   <h2>Troubleshooting matrix</h2>
   <p class="lede">Symptom → cause → fix. Everything learned in the lab and everything learned in the
      code, in one table. Start here before reading any source.</p>
@@ -2153,7 +2125,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Operations" data-title="Testing">
-  <p class="kicker">Operations · 32</p>
+  <p class="kicker">Operations · 31</p>
   <h2>Verifying the system</h2>
   <p class="lede">Three offline test suites and two hardware probes. All five run without touching
      a robot except the probes, which exist precisely to test hardware.</p>
@@ -2183,7 +2155,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 <!-- ============================ PART VII — HANDOFF ============================ -->
 
 <section class="slide" data-part="Handoff" data-title="What's not done">
-  <p class="kicker">Handoff · 33</p>
+  <p class="kicker">Handoff · 32</p>
   <h2>What isn't done</h2>
   <p class="lede">Stated plainly, because the next person will find these anyway — better they find
      them here first, with context.</p>
@@ -2207,7 +2179,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Day one">
-  <p class="kicker">Handoff · 34</p>
+  <p class="kicker">Handoff · 33</p>
   <h2>If you're inheriting this — start here</h2>
   <p class="lede">A path from zero to commanding a real arm, ordered so that each step's failures are
      diagnosable before the next step can confuse them.</p>
@@ -2255,7 +2227,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Summary">
-  <p class="kicker">Handoff · 35</p>
+  <p class="kicker">Handoff · 34</p>
   <h2>What was built</h2>
 
   <div class="stats" style="margin:22px 0 26px">
@@ -2288,7 +2260,7 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Open items">
-  <p class="kicker">Handoff · 36</p>
+  <p class="kicker">Handoff · 35</p>
   <h2>Open items</h2>
   <p class="lede">This page collects anything still marked <b>NEEDS INPUT</b> — facts that live in
      someone's head rather than in the repository. Keep it at zero.</p>
