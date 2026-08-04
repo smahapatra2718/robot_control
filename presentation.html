@@ -1756,14 +1756,28 @@ X-Frame-Seq:     11</pre></div>
     <div class="card">
       <h4>Subclasses own <span class="tag">per arm</span></h4>
       <ul>
-        <li><code>_read_q</code> — read joints from the hardware.</li>
-        <li><code>_ik</code> — seeded inverse kinematics.</li>
-        <li><code>_run_play</code> — the servo stream (servoJ vs EGM).</li>
-        <li><code>_graceful_stop</code> / <code>_hard_stop</code>.</li>
+        <li><code>_connect</code> / <code>_close</code></li>
+        <li><code>_read_q</code> · <code>_read_safety</code></li>
+        <li><code>_fk_pose</code> · <code>_ik</code></li>
+        <li><code>_run_play</code> — the servo stream (servoJ vs EGM)</li>
+        <li><code>_graceful_stop</code></li>
       </ul>
       <p style="font-size:13.2px;color:var(--muted)">The motion loops were <em>lifted from the tuned
-      teleop scripts</em>, not rewritten — so behaviour matches what those scripts already did.</p>
+      teleop scripts</em>, not rewritten — so behaviour matches what those scripts already did.
+      Each subclass also adds its own extras: the GoFa carries four methods with no UR counterpart
+      (<code>_set_go</code>, <code>_start_egm</code> and the two TCP-speed caps), all EGM-session
+      machinery that has no reason to exist in the base.</p>
     </div>
+  </div>
+
+  <div class="note">
+    <b>A third arm is eight methods.</b> The base declares exactly eight hooks as
+    <code>NotImplementedError</code> — <code>_connect</code>, <code>_close</code>,
+    <code>_read_q</code>, <code>_read_safety</code>, <code>_fk_pose</code>, <code>_ik</code>,
+    <code>_run_play</code>, <code>_graceful_stop</code>. Implement those and the new arm inherits
+    the API, the web console, the trajectory format, the offline sim, the lease and deadman, and
+    every speed cap without further work. That is the clearest measure of what the abstraction
+    actually bought.
   </div>
 
   <div class="code"><button class="copy">copy</button><pre>from control import make_controller
