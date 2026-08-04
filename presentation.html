@@ -1407,11 +1407,8 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
   </ul>
 
   <div class="warn">
-    <b>In the lab today the token is still <code>changeme</code>.</b> On its own that would be a
-    reasonable default for a machine nobody else can reach — but this one is reachable. Mirrored
-    networking shares every Windows interface and the server binds <code>0.0.0.0</code>, so while it
-    is running, <b>anyone on the ordinary <code>192.168.42.0/24</code> network can acquire the lease,
-    send a move, or engage free-drive on either arm.</b>
+    <b>Set a real auth token.</b> It is still <code>changeme</code> in the lab, and the server binds
+    <code>0.0.0.0</code> — so anyone on the ordinary network can drive either arm while it is running.
     <div class="code" style="margin-top:11px"><button class="copy">copy</button><pre><span class="c"># pick a real token...</span>
 export ROBOT_API_TOKEN='something-long'        <span class="c"># in ~/.bashrc to make it stick</span>
 
