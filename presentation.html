@@ -1878,6 +1878,10 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   <div class="cols">
     <div class="card">
       <h4>UR15 recovery</h4>
+      <figure class="shot step" data-shot="ur-estop">
+        <div class="shot-ph"><b>Photo &middot; ur-estop</b><span>The UR15 E-stop on its pendant.</span></div>
+        <figcaption>&nbsp;</figcaption>
+      </figure>
       <ol style="padding-left:20px">
         <li>Clear the cause (release the E-stop, remove the obstruction).</li>
         <li>On the pendant: acknowledge the fault and re-enable the robot; confirm the ring is
@@ -1888,8 +1892,13 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     </div>
     <div class="card">
       <h4>GoFa recovery</h4>
+      <figure class="shot step" data-shot="gofa-estop">
+        <div class="shot-ph"><b>Photo &middot; gofa-estop</b><span>The GoFa E-stop on the FlexPendant.</span></div>
+        <figcaption>&nbsp;</figcaption>
+      </figure>
       <ol style="padding-left:20px">
         <li>Clear the cause; release the E-stop.</li>
+        <li>Pendant: back to <b>Auto mode</b>.</li>
         <li>Pendant: <b>motors on</b>.</li>
         <li>Pendant: <b>PP to Main</b>, then green <b>Play</b> — <code>PyEgm</code> must be running and
             parked again.</li>
