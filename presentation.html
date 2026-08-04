@@ -390,8 +390,22 @@
 <section class="slide" data-part="Orientation" data-title="The two arms">
   <p class="kicker">Orientation · 03</p>
   <h2>The two arms are not alike</h2>
-  <p class="lede">This is the single most important thing to understand before touching the code.
-     Almost every design decision downstream falls out of this table.</p>
+  <p class="lede">Python controls the UR directly. The GoFa is a little more complicated.</p>
+
+  <div class="card">
+    <h4 style="margin:0 0 9px">The four protocols</h4>
+    <ul style="margin:0">
+      <li><b>RTDE</b> — Real-Time Data Exchange, Universal Robots. Python reads joint state and writes
+        <code>servoJ</code> targets straight over TCP. <b>Nothing runs on the robot.</b></li>
+      <li><b>RAPID</b> — ABB's robot programming language. An ABB arm moves <em>only</em> because a
+        RAPID program tells it to. There is no direct motion API to call.</li>
+      <li><b>EGM</b> — Externally Guided Motion, a <b>licensed</b> ABB option. It lets a running RAPID
+        program hand control to an external UDP stream. Ours — <code>PyEgm.mod</code> — calls
+        <code>EGMRunJoint</code> and follows the joint targets we send at 100 Hz.</li>
+      <li><b>RWS</b> — Robot Web Services, ABB's HTTPS API. <b>Not motion:</b> mastership, reading and
+        writing RAPID variables such as <code>egm_go</code>, loading modules, start and stop.</li>
+    </ul>
+  </div>
 
   <table>
     <tr><th style="width:20%"></th><th>UR15 <span class="pill">Universal Robots</span></th><th>GoFa CRB 15000 <span class="pill">ABB OmniCore C30</span></th></tr>
@@ -407,12 +421,6 @@
     <tr><td><b>Failure mode to expect</b></td><td>Firewalled port, or Local-mode lockout</td><td>Orphaned mastership, or the RAPID program not at Main</td></tr>
   </table>
 
-  <div class="note">
-    <b>The mental model.</b> With the UR, Python <em>is</em> the controller.
-    With the GoFa, Python is a <em>peripheral</em> that a RAPID program chooses to listen to —
-    and that program has to be parked in the right place, in the right mode, with motors on,
-    before a single packet matters.
-  </div>
 </section>
 
 
