@@ -1552,18 +1552,7 @@ curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
     </div>
   </details>
 
-  <details class="deep"><summary>Failure behaviour</summary>
-    <div class="body">
-      <p>Cameras are <b>best-effort</b>, exactly like the Hand-E gripper. If the device isn't
-      configured, cv2 is missing, or the camera never delivers a frame, the server <em>still starts</em>
-      and <code>/camera/*</code> returns <code>503</code>, with <code>/camera/info</code> reporting
-      <code>{"available": false, "error": "&lt;why&gt;"}</code>. The reason is printed at startup too.</p>
-      <p>The design rule: a missing camera is a degraded view, never a reason the robot can't be
-      driven. Nothing in the motion path depends on capture succeeding.</p>
-      <p>An arm with no camera shows a quiet "no camera on ‹ARM›" note in the console, taken from
-      <code>/camera/info</code> rather than from a failed image load.</p>
-    </div>
-  </details>
+  
 </section>
 
 <section class="slide" data-part="Operating it" data-title="Frame pairing">
