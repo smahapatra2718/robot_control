@@ -110,6 +110,7 @@
   .pill.warn{background:var(--warn-bg); color:var(--warn)}
   .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px 20px; margin:14px 0}
   .note{border-left:3px solid var(--accent); background:var(--accent-soft); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
+  .note.done{border-left-color:var(--ok); background:var(--ok-bg)}
   .warn{border-left:3px solid var(--warn); background:var(--warn-bg); padding:12px 16px; border-radius:8px; margin:14px 0; font-size:14px}
   .warn b, .note b{font-weight:700}
 
@@ -867,19 +868,30 @@ uv sync</pre></div>
 <section class="slide" data-part="The lab" data-title="UR15 bring-up">
   <p class="kicker">The lab · 10</p>
   <h2>UR15 controller bring-up</h2>
-  <p class="lede">One-time pendant configuration. PolyScope X ships locked down, and every symptom
-     of that looks like a network fault.</p>
+  <p class="lede">PolyScope X ships locked down, and every symptom of that looks like a network
+     fault.</p>
 
+  <div class="note done">
+    <span class="pill ok">already done</span> <b>The firewall on this robot is configured — you should
+    never need to repeat this.</b> Settings → Security → Services has <b>Dashboard (29999)</b>,
+    <b>Primary (30001)</b>, <b>RTDE (30004)</b> and <b>63352</b> (Hand-E URCap) enabled, and the
+    setting persists across reboots.
+    <br><br>
+    It is written down only because it is invisible until it bites: on a <em>fresh</em> UR — or if a
+    PolyScope update ever resets it — ping succeeds while every TCP port times out, which is the most
+    misleading failure in the whole system.
+  </div>
+
+  <h3>Every session</h3>
   <ol>
-    <li><b>Settings → Security → Services</b> — enable <b>Dashboard (29999)</b>,
-        <b>Primary (30001)</b>, <b>RTDE (30004)</b>, and <b>63352</b> for the Hand-E URCap socket.
-        <br><small style="color:var(--muted)">Without this, ping succeeds and every TCP port times out —
-        the most misleading failure in the whole system.</small></li>
-    <li><b>Switch to Remote Control mode</b> (top-right toggle).
-        <code>RTDEControlInterface</code> refuses to attach in Local mode.</li>
-    <li><b>Confirm Normal state</b> — the base ring is <b>green</b>.</li>
-    <li><b>Verify the gripper before trusting it:</b> <code>uv run scripts/verify_hande.py</code>.</li>
+    <li><b>Remote Control mode</b> — the top-right toggle on the pendant.
+        <code>RTDEControlInterface</code> refuses to attach in Local mode, and this is the one people
+        forget.</li>
+    <li><b>Normal state</b> — the base ring is <b>green</b>.</li>
   </ol>
+
+  <p style="font-size:13.4px; color:var(--muted)">Before trusting gripper control, run
+     <code>uv run scripts/verify_hande.py</code>.</p>
 
   <div class="code"><button class="copy">copy</button><pre><span class="c"># from the control PC — all four should succeed</span>
 for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></div>
