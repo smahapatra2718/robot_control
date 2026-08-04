@@ -1385,11 +1385,9 @@ ROBOT_API_TOKEN=secret uv run scripts/sim.py  api ur15   <span class="c"># one a
 
   <ul class="key">
     <li><b>The network carries goals — never the servo loop</b>
-      <small>This is the whole point of the server. A remote client posts <em>"move to this
-      pose"</em>; the box cabled to the arm then runs the 8&ndash;10 ms control loop locally to get
-      there. The rejected alternative was a socket streaming joint targets from a remote client at
-      100 Hz, which puts every network hiccup straight into the control cycle. Here a dropped packet
-      delays your next <em>command</em> — a motion already running is untouched.</small></li>
+      <small>A client posts <em>"move to this pose"</em>; the box cabled to the arm runs the
+      8&ndash;10 ms loop locally. So a dropped packet delays your next <em>command</em> — a motion
+      already running is untouched.</small></li>
     <li><b>Bearer token on every endpoint</b>
       <small><code>ROBOT_API_TOKEN</code>, defaulting to <code>changeme</code> with a startup warning.
       It still serves with the default — see below.</small></li>
