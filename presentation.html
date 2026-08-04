@@ -867,22 +867,40 @@ uv sync</pre></div>
 <section class="slide" data-part="The lab" data-title="UR15 bring-up">
   <p class="kicker">The lab · 10</p>
   <h2>UR15 controller bring-up</h2>
-  <p class="lede">Two checks before each session — the firewall configuration is already done and
-     persists across reboots.</p>
+  <p class="lede">Cold to ready. The firewall configuration is already done and persists across
+     reboots.</p>
 
   <ol>
-    <li><b>Remote Control mode</b> — the top-right toggle on the pendant.
-        <code>RTDEControlInterface</code> refuses to attach in Local mode, and if a script reports it
-        cannot attach while every port is open and the ring is green, this is almost always why.
+    <li><b>Power on the pendant</b> — the button on top. The LED goes green and it boots to the
+        Getting Started screen; give it a couple of minutes.
+        <br><small style="color:var(--muted)">The control box is up at this point, but <b>the arm
+        itself is not powered yet</b>.</small></li>
+
+    <li><b>Power the arm</b> — tap the status button (red while the arm is off), then <b>ON</b> in the
+        popup. The indicators go green and the button changes to <b>START</b>.</li>
+
+    <li><b>Release the brakes</b> — <b>light-press and hold a 3PE button</b> on the back of the
+        pendant, then tap <b>START</b>. You will hear the brakes click out and see the arm twitch.
+        <br><small style="color:var(--muted)">The 3PE buttons are three-position: released →
+        <b>light press = enabled</b> → hard squeeze = stop. Squeeze too hard or release too early and
+        it drops out, so it is a hold, not a mash. They gate motion in <b>Manual</b> mode; in
+        Automatic, motion does not require one — which is why the behaviour can feel inconsistent
+        between sessions.</small></li>
+
+    <li><b>Confirm Normal</b> — every indicator green and the status button now reads
+        <b>Normal</b>. Tap <b>EXIT</b> for the main view.</li>
+
+    <li><b>Remote Control mode</b> — the top-right toggle.
+        <code>RTDEControlInterface</code> refuses to attach in Local mode, and if a script cannot
+        attach while every port is open and the ring is green, this is almost always why.
         <br><small style="color:var(--muted)"><b>Coming from Manual mode, switch to Automatic
         first.</b> The pendant will not go from Manual straight to Remote Control — the option is
         simply unavailable, with no explanation.</small></li>
-    <li><b>Normal state</b> — the base ring is <b>green</b>.</li>
   </ol>
 
-  <p style="font-size:13.4px; color:var(--muted)"><b>Only if the gripper misbehaves:</b>
-     <code>uv run scripts/verify_hande.py</code> probes the URCap socket on 63352. A diagnostic, not
-     a routine step.</p>
+  <p style="font-size:13.4px; color:var(--muted)"><b>Powering down:</b> press the pendant power button
+     and choose <b>Power off</b>. &nbsp;·&nbsp; <b>Only if the gripper misbehaves:</b>
+     <code>uv run scripts/verify_hande.py</code> probes the URCap socket on 63352.</p>
 </section>
 
 
