@@ -2000,56 +2000,8 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 
 <!-- ============================ PART VII — HANDOFF ============================ -->
 
-<section class="slide" data-part="Handoff" data-title="Day one">
-  <p class="kicker">Handoff · 28</p>
-  <h2>If you're inheriting this — start here</h2>
-  <p class="lede">A path from zero to commanding a real arm, ordered so that each step's failures are
-     diagnosable before the next step can confuse them.</p>
-
-  <div class="cols">
-    <div class="card">
-      <h4>Day 1 — no robot needed</h4>
-      <ol style="padding-left:20px">
-        <li><code>uv sync</code>, then <code>uv run scripts/sim_smoketest.py</code>. If that passes,
-            your install is sound.</li>
-        <li><code>uv run scripts/sim.py ur15</code> → open <code>:8080</code>. Drag the gizmo, add a
-            waypoint, Plan, Play. That's the whole teleop model in five minutes.</li>
-        <li><code>uv run scripts/sim.py api</code> → open <code>:8000</code>. Acquire the lease, send a
-            move, watch telemetry.</li>
-        <li>Read <code>CLAUDE.md</code> top to bottom — it is the real architecture document.</li>
-      </ol>
-    </div>
-    <div class="card">
-      <h4>Day 2 — the lab</h4>
-      <ol style="padding-left:20px">
-        <li>Power both arms up with someone who has done it before — the two bring-up slides are the sequences.</li>
-        <li>Run the connectivity diagnostics <em>before</em> running any Python.</li>
-        <li><code>real.py ur15</code> first — the UR path is far more forgiving than the GoFa's.</li>
-        <li>Only then the GoFa, and confirm <code>PyEgm</code> is parked before blaming anything else.</li>
-        <li>Teach a short trajectory by hand, save it, replay it headless.</li>
-      </ol>
-    </div>
-  </div>
-
-  <h3>Reading order</h3>
-  <table>
-    <tr><th style="width:28%">Document</th><th>Read it when</th></tr>
-    <tr><td>This page</td><td>Now — setup, operation, recovery, and why things are the way they are</td></tr>
-    <tr><td><code>CLAUDE.md</code></td><td>Before changing code. Full architecture, every tunable, every gotcha</td></tr>
-    <tr><td><code>API.md</code> + <code>usage.html</code></td><td>Writing a client against the remote API</td></tr>
-    <tr><td><code>docs/robot-state-reference.md</code></td><td>Consuming telemetry — every field, with the traps called out</td></tr>
-    <tr><td><code>docs/superpowers/specs/</code></td><td>Wondering <em>why</em> a feature is shaped the way it is</td></tr>
-    <tr><td><code>lib/robot_common.py</code></td><td>Changing any constant. It's the single source of truth</td></tr>
-  </table>
-
-  <div class="note">
-    <b>The one habit to adopt:</b> reproduce in <code>sim.py</code> before touching hardware. It runs the
-    real code, it costs seconds instead of minutes, and it cannot damage anything.
-  </div>
-</section>
-
 <section class="slide" data-part="Handoff" data-title="Summary">
-  <p class="kicker">Handoff · 29</p>
+  <p class="kicker">Handoff · 28</p>
   <h2>What was built</h2>
 
   <div class="stats" style="margin:22px 0 26px">
@@ -2082,7 +2034,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
 </section>
 
 <section class="slide" data-part="Handoff" data-title="Open items">
-  <p class="kicker">Handoff · 30</p>
+  <p class="kicker">Handoff · 29</p>
   <h2>Open items</h2>
   <p class="lede">This page collects anything still marked <b>NEEDS INPUT</b> — facts that live in
      someone's head rather than in the repository. Keep it at zero.</p>
