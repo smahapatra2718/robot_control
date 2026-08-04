@@ -1471,26 +1471,9 @@ uv run scripts/real.py api --host 127.0.0.1</pre></div>
       several saved trajectories and lets the <em>server</em> concatenate them.</small></li>
   </ul>
 
-  <div class="warn">
-    <b>Two consequences of the browser having no IK.</b> The rendered arm does <em>not</em> preview the
-    target pose — only real telemetry moves it. And an unreachable target is <em>not</em> rejected
-    client-side: seeded IK always returns something, so the arm moves to the closest solution it finds
-    rather than erroring. Watch the real arm, not the render.
-  </div>
+  
 
-  <details class="deep"><summary>The 3D viewer, and the MJPEG teardown detail</summary>
-    <div class="body">
-      <p>A vendored <code>urdf-loader</code> loads a baked glTF bundle from <code>web/models/&lt;arm&gt;/</code>.
-      Each telemetry frame sets the six joint values from <code>RobotState.q</code>, plus the Hand-E
-      finger from <code>gripper_frac</code>. It's display-only: OrbitControls move the camera, telemetry
-      moves the joints. Missing WebGL or a missing bundle degrades to a quiet "3D model unavailable"
-      note. Regenerate bundles with <code>scripts/export_web_models.py</code>.</p>
-      <p><b>Leaving the Camera tab removes the <code>src</code> attribute</b> rather than hiding the
-      element — an MJPEG connection stays open for as long as <code>src</code> is set. The feed is also
-      torn down and re-established on disconnect and on arm switch, so one arm's video can't linger on
-      the other's panel.</p>
-    </div>
-  </details>
+  
 </section>
 
 <section class="slide" data-part="Operating it" data-title="Camera streaming">
