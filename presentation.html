@@ -1993,17 +1993,9 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     <tr><td><code>uv run scripts/verify_cameras.py --save</code></td><td><b>Yes</b> — cameras</td><td>Which device index is which arm, with JPEGs written out to prove it</td></tr>
   </table>
 
-  <div class="note">
-    <b>These are stdlib-assert scripts, not pytest.</b> One fewer dependency, and they run identically
-    on the lab machine and a laptop. Run all three offline suites after any change and before any demo —
-    if they fail, the problem is your install or your change, not the lab.
-  </div>
+  
 
-  <div class="warn">
-    <b>The most useful debugging habit in this project:</b> reproduce it in <code>sim.py</code> first.
-    If it reproduces offline, it's a software bug and you can iterate in seconds. If it doesn't, it's
-    the network, the pendant, or the hardware — and the troubleshooting matrix is the faster path.
-  </div>
+  
 </section>
 
 <!-- ============================ PART VII — HANDOFF ============================ -->
