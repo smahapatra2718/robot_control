@@ -868,54 +868,33 @@ uv sync</pre></div>
 <section class="slide" data-part="The lab" data-title="UR15 bring-up">
   <p class="kicker">The lab · 10</p>
   <h2>UR15 controller bring-up</h2>
-  <p class="lede">PolyScope X ships locked down, and every symptom of that looks like a network
-     fault.</p>
+  <p class="lede">Two checks before each session. The one-time configuration is already done
+     on this robot.</p>
 
-  <div class="note done">
-    <span class="pill ok">already done</span> <b>The firewall on this robot is configured — you should
-    never need to repeat this.</b> Settings → Security → Services has <b>Dashboard (29999)</b>,
-    <b>Primary (30001)</b>, <b>RTDE (30004)</b> and <b>63352</b> (Hand-E URCap) enabled, and the
-    setting persists across reboots.
-    <br><br>
-    It is written down only because it is invisible until it bites: on a <em>fresh</em> UR — or if a
-    PolyScope update ever resets it — ping succeeds while every TCP port times out, which is the most
-    misleading failure in the whole system.
-  </div>
-
-  <h3>Every session</h3>
   <ol>
     <li><b>Remote Control mode</b> — the top-right toggle on the pendant.
-        <code>RTDEControlInterface</code> refuses to attach in Local mode, and this is the one people
-        forget.
-        <br><small style="color:var(--muted)"><b>If you are in Manual mode, switch to Automatic
+        <code>RTDEControlInterface</code> refuses to attach in Local mode, and if a script reports it
+        cannot attach while every port is open and the ring is green, this is almost always why.
+        <br><small style="color:var(--muted)"><b>Coming from Manual mode, switch to Automatic
         first.</b> The pendant will not go from Manual straight to Remote Control — the option is
-        simply unavailable, with no explanation of why.</small></li>
+        simply unavailable, with no explanation.</small></li>
     <li><b>Normal state</b> — the base ring is <b>green</b>.</li>
   </ol>
-
-  <p style="font-size:13.4px; color:var(--muted)"><b>Only if the gripper misbehaves:</b>
-     <code>uv run scripts/verify_hande.py</code> probes the URCap socket on 63352 and reports whether
-     it is reachable. It is a diagnostic, not a routine step — skip it unless something is wrong.</p>
 
   <div class="code"><button class="copy">copy</button><pre><span class="c"># from the control PC — all four should succeed</span>
 for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></div>
 
-  <div class="warn">
-    <b>Remote Control mode is the one people forget.</b> If a script reports it cannot attach a control
-    interface while every port is open and the ring is green, check that toggle first.
+  <div class="note done">
+    <span class="pill ok">already done</span> <b>The firewall is configured and persists across
+    reboots</b> — Settings → Security → Services has Dashboard (29999), Primary (30001), RTDE (30004)
+    and 63352 (Hand-E URCap) enabled. Recorded only because it is invisible until it bites: on a
+    <em>fresh</em> UR, or if a PolyScope update resets it, ping succeeds while every TCP port times
+    out.
   </div>
 
-  <div class="note">
-    <b>The UR15 has its tool configured on the pendant.</b> That does not change how the software
-    drives it — every motion command is joint-space (<code>servoJ</code>), and the grasp point is
-    computed independently in Python as a fixed <code>tool0</code> offset from the Hand-E URDF. The
-    pendant tool matters for jogging, for what the pendant displays, and for gravity compensation.
-    <br><br>
-    <b>Keep the payloads consistent:</b> Python also sends
-    <code>setPayload(1.0 kg, (0, 0, 0.06))</code> at startup, which is what removes the end-of-play
-    droop. If the pendant's declared payload and that call ever disagree, the arm is being told two
-    different things about the same gripper.
-  </div>
+  <p style="font-size:13.4px; color:var(--muted)"><b>Only if the gripper misbehaves:</b>
+     <code>uv run scripts/verify_hande.py</code> probes the URCap socket on 63352. A diagnostic, not
+     a routine step.</p>
 </section>
 
 
