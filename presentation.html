@@ -38,6 +38,8 @@
     background:var(--panel); border-bottom:1px solid var(--line);
     display:flex; align-items:center; gap:12px; padding:0 14px;
   }
+  .topbar .topmark{display:flex; align-items:center; flex:0 0 auto}
+  .topbar .topmark img{height:17px; width:auto; display:block}
   .topbar .brand{font-weight:700; font-size:14.5px; letter-spacing:.2px; white-space:nowrap}
   .topbar .brand span{color:var(--accent)}
   .topbar .spacer{flex:1}
@@ -316,6 +318,7 @@
 <body class="deck">
 
 <div class="topbar">
+  <span class="topmark" id="topLogo"></span>
   <div class="brand">robot_control</div>
   <div class="spacer"></div>
   <span class="counter" id="counter">1 / 1</span>
@@ -2061,6 +2064,8 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   toc.appendChild(logo);
   var titleLogo = document.getElementById('titleLogo');
   if (titleLogo) titleLogo.innerHTML = '<img alt="Oracle" src="' + ORACLE_LOGO + '">';
+  var topLogo = document.getElementById('topLogo');
+  if (topLogo) topLogo.innerHTML = '<img alt="Oracle" src="' + ORACLE_LOGO + '">';
   var tocLinks = Array.prototype.slice.call(toc.querySelectorAll('a'));
 
   /* ---------- deck navigation ---------- */
