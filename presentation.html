@@ -977,11 +977,25 @@ uv sync</pre></div>
      FlexPendant's top status bar. Tap it → Automatic → confirm.</p>
 
   <figure class="shot" data-shot="gofa-pendant-auto">
-  <div class="shot-ph"><b>Photo &middot; gofa-pendant-auto</b><span>The FlexPendant screen with the <b>mode icon in the top status bar</b> visible, ideally mid-switch to Automatic. A second shot of the PP-to-Main / Play controls would pair well.</span></div>
+  <div class="shot-ph"><b>Photo &middot; gofa-pendant-auto</b><span>The FlexPendant screen with the <b>mode icon in the top status bar</b> visible, ideally mid-switch to Automatic.</span></div>
   <figcaption>Mode lives in the pendant status bar, not on a key switch &mdash; the step newcomers hunt for.</figcaption>
 </figure>
 
-  
+  <h3>4 · Start the supervisor</h3>
+  <p>On the pendant: <b>PP to Main</b>, then the green <b>Play</b> button. <code>PyEgm</code> must be
+     running and parked at its <code>WaitUntil</code> before Python can move the arm.</p>
+
+  <figure class="shot" data-shot="gofa-pp-play">
+    <div class="shot-ph"><b>Photo &middot; gofa-pp-play</b><span>The PP-to-Main control and the green
+      Play button on the FlexPendant.</span></div>
+    <figcaption>Required after every power cycle, and again after any stop that halts the program.</figcaption>
+  </figure>
+
+  <div class="warn">
+    <b>Skip this and nothing reports an error.</b> RWS still connects, <code>egm_go</code> still sets
+    true, the UDP stream still sends — and the arm does not move, because no RAPID program is waiting
+    to receive it. If the GoFa is silent, check this first.
+  </div>
 
 </section>
 
