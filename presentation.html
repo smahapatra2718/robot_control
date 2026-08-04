@@ -1870,23 +1870,14 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
      be needed while someone is watching.</p>
 
   <div class="warn">
-    <b>The rule, from your notes:</b> after any E-stop or safety stop, you must <b>restart the script
-    <em>and</em> restart the robot-side processes.</b> Recovering the robot alone is not enough —
-    the Python side is holding a transport session that no longer corresponds to reality.
+    <b>After any E-stop or safety stop, restart the script <em>and</em> the robot-side processes.</b>
+    Recovering the robot alone is not enough — the Python side is still holding a transport session
+    that no longer corresponds to reality.
   </div>
-
-  <h3>Why a restart is genuinely required</h3>
-  <ul>
-    <li><b>UR15:</b> a protective stop tears down the control session. <code>ur_rtde</code>'s resident
-        control script is gone, so every subsequent <code>servoJ</code> goes nowhere.</li>
-    <li><b>GoFa:</b> the safety stop halts the RAPID program. <code>PyEgm</code> is no longer parked at
-        its <code>WaitUntil</code>, so setting <code>egm_go</code> has no effect and the arm silently
-        ignores a perfectly valid UDP stream. It must be brought back to Main and started.</li>
-  </ul>
 
   <div class="cols">
     <div class="card">
-      <h4>UR15 recovery <span class="tag">verified</span></h4>
+      <h4>UR15 recovery</h4>
       <ol style="padding-left:20px">
         <li>Clear the cause (release the E-stop, remove the obstruction).</li>
         <li>On the pendant: acknowledge the fault and re-enable the robot; confirm the ring is
@@ -1896,7 +1887,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
       </ol>
     </div>
     <div class="card">
-      <h4>GoFa recovery <span class="tag">verified</span></h4>
+      <h4>GoFa recovery</h4>
       <ol style="padding-left:20px">
         <li>Clear the cause; release the E-stop.</li>
         <li>Pendant: <b>motors on</b>.</li>
