@@ -379,7 +379,6 @@
   </div>
 </section>
 
-
 <section class="slide" data-part="Orientation" data-title="What this is">
   <p class="kicker">Orientation · 01</p>
   <h2>What the system does</h2>
@@ -403,7 +402,6 @@
   </ul>
 </section>
 
-
 <section class="slide" data-part="Orientation" data-title="Architecture at a glance">
   <p class="kicker">Orientation · 02</p>
   <h2>Architecture at a glance</h2>
@@ -420,7 +418,6 @@
     <div class="arrow">↓</div>
     <div class="layer"><b>Robots</b><span>UR15 controller (PolyScope X) &nbsp;·&nbsp; ABB OmniCore C30 running <code>PyEgm.mod</code></span></div>
   </div>
-
 
 
   <details class="deep"><summary>Module map — what each file owns</summary>
@@ -442,7 +439,6 @@
     </div>
   </details>
 </section>
-
 
 <section class="slide" data-part="Orientation" data-title="The two arms">
   <p class="kicker">Orientation · 03</p>
@@ -478,7 +474,6 @@
   </table>
 
 </section>
-
 
 <section class="slide" data-part="Orientation" data-title="Repo map">
   <p class="kicker">Orientation · 04</p>
@@ -527,7 +522,6 @@
     </div>
   </details>
 </section>
-
 
 <!-- ============================ PART II — THE LAB ============================ -->
 
@@ -589,7 +583,6 @@
 
   
 </section>
-
 
 <section class="slide" data-part="The lab" data-title="Network">
   <p class="kicker">The lab · 06</p>
@@ -734,7 +727,6 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
   </details>
 </section>
 
-
 <section class="slide" data-part="The lab" data-title="Windows + WSL host">
   <p class="kicker">The lab · 07</p>
   <h2>The control PC: Windows hosting WSL</h2>
@@ -766,7 +758,6 @@ for p in 29999 30001 30004 63352; do nc -zv -w 2 192.168.125.2 $p; done</pre></d
 
   <p>Nothing else starts automatically at boot beyond the camera attach — every run is launched by hand.</p>
 </section>
-
 
 <section class="slide" data-part="The lab" data-title="USB cameras into WSL">
   <p class="kicker">The lab · 08</p>
@@ -825,7 +816,6 @@ uv run scripts/verify_cameras.py --save   <span class="c"># writes JPEGs so you 
   </details>
 </section>
 
-
 <section class="slide" data-part="The lab" data-title="Software install">
   <p class="kicker">The lab · 09</p>
   <h2>Installing the software</h2>
@@ -868,7 +858,6 @@ uv sync</pre></div>
 
   
 </section>
-
 
 <section class="slide" data-part="The lab" data-title="UR15 bring-up">
   <p class="kicker">The lab · 10</p>
@@ -929,7 +918,6 @@ uv sync</pre></div>
      <code>uv run scripts/verify_hande.py</code> probes the URCap socket on 63352.</p>
 </section>
 
-
 <section class="slide" data-part="The lab" data-title="GoFa bring-up">
   <p class="kicker">The lab · 11</p>
   <h2>GoFa controller bring-up</h2>
@@ -937,6 +925,12 @@ uv sync</pre></div>
      ABB controllers always run a RAPID program to move, so there is onboard code to install.</p>
 
   <h3>1 · Safety jumpers on X14</h3>
+
+  <div class="note">
+    <b>All four pairs are already jumpered on this controller</b> and stay that way. This is here for
+    a rebuild or a second cabinet — not something you need to do.
+  </div>
+
   <p>The OmniCore C30 expects an external safety device. For a standalone benchtop lab, four
      pairs on the <b>X14</b> terminal block must be jumpered:</p>
   <table>
@@ -957,10 +951,20 @@ uv sync</pre></div>
   <figcaption>X14 with ES1/ES2 and AS1/AS2 jumpered &mdash; without AS, Auto mode guard-stops immediately.</figcaption>
 </figure>
 
+
   <h3>2 · Network — use the MGMT port</h3>
   <p>The C30 has three logical networks. RWS lives on <b>MGMT</b> (rightmost of the three at the
      bottom-right) at <code>192.168.125.1</code>, and on WAN if configured. The <b>LAN</b> port and the
      X1–X5 switch are the I/O network — fieldbus only, <b>no RWS</b>.</p>
+
+  <div class="warn">
+    <b>The boot-order rule: unplug MGMT before powering the controller on.</b> Boot it with the cable
+    in and you get a startup error; disconnect first, let it come up, then reconnect. This is a
+    known-and-followed rule in this lab — <b>the exact error text was never recorded</b>, so treat
+    it as a procedure rather than something you'll recognise by its message. If you do hit it, capture
+    what the pendant says and add it here; the likely mechanism is an address conflict on
+    <code>192.168.125.0/24</code> while the controller brings its interface up.
+  </div>
 
   <h3>3 · Enter Auto mode</h3>
   <p>The C30 has <b>no physical Auto/Manual key switch</b> — mode is a touchscreen control in the
@@ -972,28 +976,14 @@ uv sync</pre></div>
   <figcaption>Mode lives in the pendant status bar, not on a key switch &mdash; the step newcomers hunt for.</figcaption>
 </figure>
 
-
-  <div class="warn">
-    <b>The boot-order rule: unplug MGMT before powering the controller on.</b> Boot it with the cable
-    in and you get a startup error; disconnect first, let it come up, then reconnect. This is a
-    known-and-followed rule in this lab — <b>the exact error text was never recorded</b>, so treat
-    it as a procedure rather than something you'll recognise by its message. If you do hit it, capture
-    what the pendant says and add it here; the likely mechanism is an address conflict on
-    <code>192.168.125.0/24</code> while the controller brings its interface up.
-  </div>
+  
 
   <div class="note">
-    <b>EGM is licensed on this controller</b> — confirmed. Worth checking first on any <em>other</em>
-    OmniCore, though (pendant → Settings → System → installed options): without the option the entire
-    GoFa motion path is dead, and the failure is not obvious from the Python side.
-    <br><br>
     <b>The GoFa has no tool defined</b> — it runs in the flange frame, which is why
     <code>TARGET_LINK = "tool0"</code> is the end of the chain for this arm and there is no
-    grasp-offset step like the UR15's. The UR15, by contrast, <em>does</em> have its tool configured
-    on the pendant.
+    grasp-offset step like the UR15's.
   </div>
 </section>
-
 
 <section class="slide" data-part="The lab" data-title="EGM supervisor">
   <p class="kicker">The lab · 12</p>
@@ -1148,7 +1138,6 @@ ENDMODULE</pre></div>
   </div>
 </section>
 
-
 <section class="slide" data-part="The lab" data-title="Cold start">
   <p class="kicker">The lab · 13</p>
   <h2>Cold start — powering up the lab</h2>
@@ -1232,7 +1221,6 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
   </div>
 </section>
 
-
 <section class="slide" data-part="Operating it" data-title="Teleop UI">
   <p class="kicker">Operating it · 15</p>
   <h2>The viser teleop UI</h2>
@@ -1314,7 +1302,6 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
   </details>
 </section>
 
-
 <section class="slide" data-part="Operating it" data-title="Live &amp; free-drive">
   <p class="kicker">Operating it · 16</p>
   <h2>Live follow and free-drive teaching</h2>
@@ -1373,7 +1360,6 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
     </div>
   </details>
 </section>
-
 
 <section class="slide" data-part="Operating it" data-title="Trajectories">
   <p class="kicker">Operating it · 17</p>
@@ -1449,7 +1435,6 @@ uv run scripts/real.py api     [ur15|gofa]          <span class="c"># omit the a
     </div>
   </details>
 </section>
-
 
 <section class="slide" data-part="Operating it" data-title="Remote API">
   <p class="kicker">Operating it · 18</p>
@@ -1554,7 +1539,6 @@ uv run scripts/real.py api --host 127.0.0.1</pre></div>
   </details>
 </section>
 
-
 <section class="slide" data-part="Operating it" data-title="Web console">
   <p class="kicker">Operating it · 19</p>
   <h2>The web console</h2>
@@ -1605,7 +1589,6 @@ uv run scripts/real.py api --host 127.0.0.1</pre></div>
     </div>
   </details>
 </section>
-
 
 <section class="slide" data-part="Operating it" data-title="Camera streaming">
   <p class="kicker">Operating it · 20</p>
@@ -1690,7 +1673,6 @@ curl -s localhost:8000/ur15/camera/info -H "Authorization: Bearer $TOK"
     </div>
   </details>
 </section>
-
 
 <section class="slide" data-part="Operating it" data-title="Frame pairing">
   <p class="kicker">Operating it · 21</p>
@@ -1791,7 +1773,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   </div>
 </section>
 
-
 <section class="slide" data-part="How it works" data-title="Motion model">
   <p class="kicker">How it works · 23</p>
   <h2>The motion model</h2>
@@ -1878,7 +1859,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   </details>
 </section>
 
-
 <section class="slide" data-part="How it works" data-title="Seeded IK">
   <p class="kicker">How it works · 24</p>
   <h2>Why the stock IK solver wasn't enough</h2>
@@ -1906,7 +1886,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     <b>not</b> shared in <code>robot_common.py</code>.
   </div>
 </section>
-
 
 <section class="slide" data-part="How it works" data-title="Offline simulator">
   <p class="kicker">How it works · 25</p>
@@ -1952,7 +1931,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     <code>lib/robot_sim.py</code>.
   </div>
 </section>
-
 
 <section class="slide" data-part="How it works" data-title="Safety architecture">
   <p class="kicker">How it works · 26</p>
@@ -2001,7 +1979,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     </div>
   </details>
 </section>
-
 
 <section class="slide" data-part="How it works" data-title="RobotState">
   <p class="kicker">How it works · 27</p>
@@ -2080,7 +2057,6 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
   </div>
 </section>
 
-
 <section class="slide" data-part="War stories" data-title="Gripper pivot">
   <p class="kicker">War stories · 29</p>
   <h2>The gripper that couldn't be talked to</h2>
@@ -2128,7 +2104,6 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
   </div>
 </section>
 
-
 <section class="slide" data-part="War stories" data-title="OmniCore RWS">
   <p class="kicker">War stories · 30</p>
   <h2>Ten ways OmniCore RWS will waste your afternoon</h2>
@@ -2156,7 +2131,6 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
     a good first task for whoever picks this up.
   </div>
 </section>
-
 
 <section class="slide" data-part="War stories" data-title="Offline by design">
   <p class="kicker">War stories · 31</p>
@@ -2280,7 +2254,6 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
   </details>
 </section>
 
-
 <section class="slide" data-part="Operations" data-title="Troubleshooting">
   <p class="kicker">Operations · 33</p>
   <h2>Troubleshooting matrix</h2>
@@ -2327,7 +2300,6 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
     ones worth writing down, especially anything intermittent.
   </div>
 </section>
-
 
 <section class="slide" data-part="Operations" data-title="Testing">
   <p class="kicker">Operations · 34</p>
@@ -2383,7 +2355,6 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
   </div>
 </section>
 
-
 <section class="slide" data-part="Handoff" data-title="Day one">
   <p class="kicker">Handoff · 36</p>
   <h2>If you're inheriting this — start here</h2>
@@ -2432,7 +2403,6 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
   </div>
 </section>
 
-
 <section class="slide" data-part="Handoff" data-title="Summary">
   <p class="kicker">Handoff · 37</p>
   <h2>What was built</h2>
@@ -2465,7 +2435,6 @@ GET OBJ                             →  OBJ 2      <span class="c"># 1/2 = stop
       this handbook so the lab knowledge doesn't leave with me.</small></li>
   </ul>
 </section>
-
 
 <section class="slide" data-part="Handoff" data-title="Open items">
   <p class="kicker">Handoff · 38</p>
