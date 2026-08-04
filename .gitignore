@@ -17,7 +17,7 @@ __pycache__/
 # on the lab machine only. presentation.html points at this file rather than quoting it.
 important_notes.txt
 
-# Photo/screenshot sources for presentation.html. Baked in by
-# scripts/embed_images.py, so the deck stays a single self-contained file.
-# Keep originals out of git: the embedded copies are what ship.
-images/
+# Photo/screenshot sources for presentation.html are tracked (via Git LFS, see
+# .gitattributes). The deck embeds its own copies through scripts/embed_images.py
+# so it stays self-contained, but the originals are kept so slots can be re-baked
+# on any machine after a re-crop or a re-shoot.
