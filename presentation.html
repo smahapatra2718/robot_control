@@ -1954,10 +1954,7 @@ state = c.get_state()                 <span class="c"># RobotState, from the pol
     <tr><th style="width:31%">Symptom</th><th>Cause</th><th>Fix</th></tr>
     <tr><td>Everything reports success, <b>the arm never moves</b></td><td><code>PyEgm</code> isn't running/parked, or the EGM peer IP is wrong</td><td>PP to Main + Play on the pendant; confirm <code>EGM_COMM.cfg</code> <code>RemoteAddress</code> = the PC's IP. If it still will not move, <b>re-run <code>install_gofa_egm.py</code></b> to reload the supervisor — Ctrl-C any running teleop first so RAPID mastership is free</td></tr>
     <tr><td>RWS returns <b>403</b> on mastership</td><td>Orphaned mastership from a crashed process</td><td>Wait ~30 s, or reboot from the pendant</td></tr>
-    <tr><td><b>406 Not Acceptable</b> on a POST</td><td>Missing the <code>;v=2.0</code> content-type suffix</td><td>Use <code>abb_rws._post()</code>, which sets it</td></tr>
-    <tr><td>"Errors in RAPID program" (event 40160)</td><td>Usually the <code>MainModule</code> <code>main()</code> collision</td><td>Read <code>/rw/rapid/tasks/T_ROB1/program/builderror</code>; re-run the installer, which unloads it</td></tr>
     <tr><td>Auto mode fires a guard stop instantly</td><td>Missing <b>AS1/AS2</b> jumpers on X14</td><td>Jumper pins 5–6 and 7–8; confirm the event log names AS1/AS2</td></tr>
-    <tr><td>Brief hitch after a long pause in Live</td><td><code>\CondTime := 1</code> closed the EGM session</td><td>Expected — the loop detects the stale feed and re-arms</td></tr>
   </table>
 
   <h3>Gripper, cameras, install</h3>
